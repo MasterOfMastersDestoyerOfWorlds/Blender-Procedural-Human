@@ -15,6 +15,7 @@ class PROCEDURAL_MT_add_menu(Menu):
         layout.operator("mesh.procedural_human", text="Procedural Human")
         layout.operator("mesh.procedural_torso", text="Procedural Torso")
         layout.operator("mesh.procedural_head", text="Procedural Head")
+        layout.operator("mesh.procedural_finger", text="Procedural Finger")
 
 
 def menu_func(self, context):

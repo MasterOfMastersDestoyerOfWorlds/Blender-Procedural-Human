@@ -19,19 +19,46 @@ A comprehensive Blender add-on for creating procedural human characters using Ge
 
 ## Installation
 
-### Method 1: Using the Zip File (Recommended)
-1. Download the `procedural_human.zip` file
+### For Development (VS Code Extension - Recommended)
+
+This addon is optimized for development with the [Blender VS Code Extension](https://marketplace.visualstudio.com/items?itemName=JacquesLucke.blender-development).
+
+1. **Install the Blender VS Code Extension**:
+   - Open VS Code
+   - Go to Extensions (Ctrl+Shift+X)
+   - Search for "Blender" and install the extension by Jacques Lucke
+
+2. **Open the Addon Folder in VS Code**:
+   - Open the `procedural_human` folder in VS Code
+
+3. **Start Blender from VS Code**:
+   - Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
+   - Type "Blender: Start" and select it
+   - Choose your Blender executable path (first time only)
+
+4. **The extension automatically**:
+   - Creates a soft link to Blender's addon directory
+   - Enables hot-reloading (reloads addon on file save)
+   - Provides debugging support with breakpoints
+
+5. **Enable the Addon**:
+   - In Blender, go to Edit > Preferences > Add-ons
+   - Search for "Procedural Human Generator"
+   - Enable the addon
+
+**Benefits**:
+- Automatic reloading on file save (no need to restart Blender)
+- Full debugging support with breakpoints
+- Integrated terminal output
+- No manual installation needed
+
+### For Distribution (Zip File)
+
+1. Run `python package.py` to create `procedural_human.zip`
 2. Open Blender
 3. Go to Edit > Preferences > Add-ons
 4. Click "Install..." and select the zip file
-5. Enable the add-on by checking the box next to "Procedural Human Generator"
-
-### Method 2: Manual Installation
-1. Create a folder named `procedural_human` in your Blender addons directory
-2. Copy all the plugin files into this folder
-3. Open Blender
-4. Go to Edit > Preferences > Add-ons
-5. Enable the add-on by checking the box next to "Procedural Human Generator"
+5. Enable the add-on
 
 ## Usage
 
@@ -100,14 +127,23 @@ Blender-Procedural-Human/
 │   ├── panels.py                 # UI Panel classes
 │   ├── menus.py                  # Menu classes
 │   └── utils.py                  # Utility functions
-├── package.py                    # Packaging script
-├── test_plugin.py               # Testing script
-├── README.md                    # This file
-├── PlanOfTheWork.md             # Detailed technical plan
-└── AGENTS.md                    # Development notes
+├── package.py                    # Packaging script (for distribution)
+├── README.md                     # This file
+├── PlanOfTheWork.md              # Detailed technical plan
+└── AGENTS.md                     # Development notes
 ```
 
-## Development Notes
+## Development
+
+### VS Code Workflow
+
+This addon is configured for development with the Blender VS Code Extension:
+
+1. **Open in VS Code**: Load the `procedural_human` folder
+2. **Start Blender**: Use `Ctrl+Shift+P` > "Blender: Start"
+3. **Edit Code**: Make changes to any `.py` file
+4. **Auto-Reload**: The extension reloads the addon automatically on save
+5. **Debug**: Set breakpoints in VS Code and debug directly in Blender
 
 ### Key Concepts Implemented
 

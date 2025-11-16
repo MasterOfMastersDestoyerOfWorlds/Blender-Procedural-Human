@@ -182,9 +182,15 @@ def register():
     bpy.utils.register_class(PROCEDURAL_OT_create_human)
     bpy.utils.register_class(PROCEDURAL_OT_create_torso)
     bpy.utils.register_class(PROCEDURAL_OT_create_head)
+    # Finger operator is registered in hand.finger.operator
+    from .hand.finger import operator as finger_operator
+    finger_operator.register()
 
 
 def unregister():
+    bpy.utils.unregister_class(PROCEDURAL_OT_create_human)
     bpy.utils.unregister_class(PROCEDURAL_OT_create_head)
     bpy.utils.unregister_class(PROCEDURAL_OT_create_torso)
-    bpy.utils.unregister_class(PROCEDURAL_OT_create_human)
+    # Finger operator is unregistered in hand.finger.operator
+    from .hand.finger import operator as finger_operator
+    finger_operator.unregister()

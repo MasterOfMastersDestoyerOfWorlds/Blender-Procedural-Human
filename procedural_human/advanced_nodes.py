@@ -4,10 +4,8 @@ This module contains functions to create complex node setups for human anatomy
 """
 
 
-def create_advanced_torso_nodes(node_group):
-    """Create advanced torso shaping with proper anatomical proportions"""
-
-    # Add geometry socket to node group interface
+def _setup_node_group_interface(node_group):
+    """Helper function to setup node group interface with geometry sockets"""
     if "Geometry" not in [socket.name for socket in node_group.interface.items_tree]:
         node_group.interface.new_socket(
             name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
@@ -15,6 +13,11 @@ def create_advanced_torso_nodes(node_group):
         node_group.interface.new_socket(
             name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
         )
+
+
+def create_advanced_torso_nodes(node_group):
+    """Create advanced torso shaping with proper anatomical proportions"""
+    _setup_node_group_interface(node_group)
 
     # Input/Output nodes
     input_node = node_group.nodes.new("NodeGroupInput")
@@ -85,15 +88,7 @@ def create_advanced_torso_nodes(node_group):
 
 def create_advanced_limb_nodes(node_group, limb_type="arm"):
     """Create advanced limb shaping with muscle definition"""
-
-    # Add geometry socket to node group interface
-    if "Geometry" not in [socket.name for socket in node_group.interface.items_tree]:
-        node_group.interface.new_socket(
-            name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
-        )
-        node_group.interface.new_socket(
-            name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
-        )
+    _setup_node_group_interface(node_group)
 
     # Input/Output nodes
     input_node = node_group.nodes.new("NodeGroupInput")
@@ -172,15 +167,7 @@ def create_advanced_limb_nodes(node_group, limb_type="arm"):
 
 def create_advanced_head_nodes(node_group):
     """Create advanced head shaping with facial features"""
-
-    # Add geometry socket to node group interface
-    if "Geometry" not in [socket.name for socket in node_group.interface.items_tree]:
-        node_group.interface.new_socket(
-            name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
-        )
-        node_group.interface.new_socket(
-            name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
-        )
+    _setup_node_group_interface(node_group)
 
     # Input/Output nodes
     input_node = node_group.nodes.new("NodeGroupInput")
@@ -252,41 +239,3 @@ def create_advanced_head_nodes(node_group):
     return node_group
 
 
-def create_hand_nodes(node_group):
-    """Create hand with separate objects approach - fallback to simple geometry"""
-
-    # Add geometry socket to node group interface
-    if "Geometry" not in [socket.name for socket in node_group.interface.items_tree]:
-        node_group.interface.new_socket(
-            name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
-        )
-        node_group.interface.new_socket(
-            name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
-        )
-
-    # Input/Output nodes
-    input_node = node_group.nodes.new("NodeGroupInput")
-    output_node = node_group.nodes.new("NodeGroupOutput")
-
-    # Position nodes
-    input_node.location = (-400, 0)
-    output_node.location = (400, 0)
-
-    # Simple subdivision for smoother palm
-    subdiv = node_group.nodes.new("GeometryNodeSubdivisionSurface")
-    subdiv.location = (0, 0)
-    subdiv.inputs["Level"].default_value = 2
-
-    # Smooth shading
-    smooth = node_group.nodes.new("GeometryNodeSetShadeSmooth")
-    smooth.location = (200, 0)
-
-    # Connect nodes - just enhance the palm since fingers are separate objects now
-    node_group.links.new(input_node.outputs["Geometry"], subdiv.inputs["Mesh"])
-    node_group.links.new(subdiv.outputs["Mesh"], smooth.inputs["Geometry"])
-    node_group.links.new(smooth.outputs["Geometry"], output_node.inputs["Geometry"])
-
-    return node_group
-
-
-# End of file

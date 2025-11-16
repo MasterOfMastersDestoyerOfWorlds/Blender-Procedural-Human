@@ -1,0 +1,228 @@
+# TODO: Procedural Human Generator - Uncompleted Tasks
+
+This document lists all tasks from `PlanOfTheWork.md` that are not yet implemented in the current codebase.
+
+## Section 2: Anatomical Blueprint - Core Strategies
+
+### 2.2 Curve-Based Modeling for Skeletal Structures
+- [ ] Implement proper curve-based scaffolding using `Curve Line` nodes
+- [ ] Add `Resample Curve` nodes with controllable resolution for vertebrae/control points
+- [ ] Use `Set Position` nodes with noise/texture inputs for natural curvature
+- [ ] Implement curve attributes (Radius, Tilt, Normal) for controlling final mesh shape
+
+### 2.3 Volumetric Construction for Organic Mass
+- [ ] Implement SDF emulation using `Volume Cube` nodes (Method B - preferred)
+- [ ] Create smooth minimum node groups for blending multiple shapes
+- [ ] Implement volumetric merging for seamless body part connections
+- [ ] Add `Mesh to Volume` and `Volume to Mesh` pipeline for organic blending
+
+### 2.4 Modular Assembly with Instancing
+- [ ] Use `Instance on Points` for modular components (vertebrae, phalanges)
+- [ ] Implement attribute-based control for instance rotation and scale
+- [ ] Add `Realize Instances` at appropriate points in the pipeline
+- [ ] Create reusable phalange/finger segment modules
+
+## Section 3: Constructing the Core - Torso and Spine
+
+### 3.1 Generating the Spine: The Central Curve
+- [ ] Replace hardcoded spine points with procedural `Curve Line` generation
+- [ ] Add `Resample Curve` with Count mode for controllable vertebrae count
+- [ ] Implement `Spline Parameter` node for height-based shaping
+- [ ] Use `Set Position` with mathematical functions (Sine, Noise) for natural S-curve
+- [ ] Expose posture parameters (amplitude, frequency) to modifier interface
+
+### 3.2 Creating the Rib Cage and Pelvis Forms
+- [ ] Use `Endpoint Selection` node to identify spine top/bottom
+- [ ] Implement `Separate Geometry` or `Switch` nodes for isolating anchor points
+- [ ] Create profile curves (`Curve Circle` or custom Bezier curves)
+- [ ] Use `Instance on Points` to place profile curves at rib cage and pelvis
+- [ ] Expose profile scale, rotation, and curve selection as parameters
+
+### 3.3 Lofting the Torso: From Curves to Mesh
+- [ ] Implement simple lofting with `Curve to Mesh` node
+- [ ] Add procedural radius control using `Set Curve Radius` before lofting
+- [ ] **Advanced**: Implement bridged edge loops method for superior topology
+- [ ] Ensure all profile curves have matching point counts for advanced lofting
+- [ ] Create custom node group for edge loop bridging
+
+### 3.4 Adding Parametric Detail: Shoulders, Waist, and Volume
+- [ ] Implement `Float Curve` node (or `ShaderNodeMapRange` fallback) for silhouette control
+- [ ] Connect `Spline Parameter` factor to Float Curve input
+- [ ] Use Float Curve output to drive `Set Curve Radius` for torso shaping
+- [ ] Create intuitive curve profiles for: narrow waist, broad chest, wide hips
+- [ ] Expose Float Curve control points as parameters
+
+## Section 4: Modular Appendages - Limbs, Hands, and Feet
+
+### 4.1 Procedural Limbs: Arms and Legs
+- [ ] Replace cylinder-based limbs with proper curve-based scaffolds
+- [ ] Use `Curve Line` with `Resample Curve` (Count=3) for joint definition
+- [ ] Implement `Set Position` to move midpoint (joint) for elbow/knee bends
+- [ ] Use `Curve to Mesh` with `Curve Circle` profile for limb volume
+- [ ] Implement `Spline Parameter` + `Float Curve` for muscle definition
+- [ ] Add bicep/tricep bulges and forearm tapering via Float Curve
+- [ ] Add thigh/calf muscle shapes for legs
+- [ ] Expose joint position as controllable parameter
+
+### 4.2 The Hand Challenge: Multi-Stage Approach
+- [ ] **Stage 1**: Generate palm from `Grid` primitive with `Set Position` shaping
+- [ ] **Stage 2**: Identify knuckle vertices and generate finger curve scaffolds
+- [ ] **Stage 2**: Instance `Curve Line` objects onto selected palm vertices
+- [ ] **Stage 3**: Create reusable phalange geometry module
+- [ ] **Stage 3**: Use `Resample Curve` on finger scaffolds for phalange placement
+- [ ] **Stage 3**: Instance phalange meshes using `Instance on Points`
+- [ ] **Stage 4**: Use `Realize Instances` to convert instances to geometry
+- [ ] **Stage 4**: Apply volumetric merging (Mesh to Volume → Volume to Mesh) for seamless blending
+- [ ] **Stage 4**: Alternative: Implement SDF-based blending for superior results
+- [ ] Expose finger length, rotation, and spacing as parameters
+
+### 4.2.1 Finger Generation Enhancements
+- [x] Create basic finger geometry with three segments using Geometry Nodes
+- [x] Add fingernail geometry on fingertip
+- [x] Organize finger code into modular structure (`procedural_human/hand/finger/`)
+- [ ] Refactor finger framework to support variable segment count (2-3 segments)
+- [ ] Implement anatomical proportions from Proportions.md for each finger type (Thumb/Index/Middle/Ring/Little)
+- [ ] Add curl direction parameter (X/Y/Z axes, default Y-axis)
+- [ ] Reposition fingernail from tip to side of Distal segment (opposite curl direction)
+- [ ] Scale finger geometry to exactly 1 blender unit total length
+- [ ] Create armature with one bone per segment, oriented along curl direction
+- [ ] Implement automatic weight painting for finger segments with smooth joint falloff
+- [ ] Setup Inverse Kinematics chain for finger with IK target at tip
+- [ ] Create keyframe animation with finger curl (straight to curled state)
+
+### 4.3 Feet and Toes
+- [ ] Create base foot mesh (main body of foot)
+- [ ] Generate toe scaffolds using curve-based approach
+- [ ] Instance toe segments at front of foot
+- [ ] Apply volumetric merge to blend toes with foot base
+- [ ] Mirror feet for left/right placement
+- [ ] Add foot positioning relative to leg bottom
+
+### 4.4 Assembling the Body: Joining the Parts
+- [ ] Use `Transform Geometry` nodes for precise component positioning
+- [ ] Derive anchor points from torso mesh vertices (e.g., shoulder vertices)
+- [ ] Implement `Join Geometry` node to combine all components
+- [ ] **Advanced**: Add global volumetric merge for watertight mesh
+- [ ] **Advanced**: Create continuous, seamless character mesh (for 3D printing/simulation)
+
+## Section 5: The Human Head
+
+### 5.1 Base Head Sculpting with Primitives and Displacement
+- [ ] Use `Subdivided Cube` with "To Sphere" operation for clean topology
+- [ ] Implement layered `Noise Texture` nodes for cranium, jaw, cheekbone forms
+- [ ] Create procedural masking using `Position` node + `Color Ramp`
+- [ ] Use Z-axis gradients to isolate jaw area for displacement
+- [ ] Apply masks to `Set Position` Selection input for targeted sculpting
+- [ ] Layer multiple displacement passes for complex facial forms
+
+### 5.2 Adding Facial Features: A Modular Approach
+- [ ] Create nose geometry (simple wedge shape or custom node group)
+- [ ] Create ear geometry (low-poly model or procedural generation)
+- [ ] Use `Transform Geometry` nodes for precise feature positioning
+- [ ] Implement `Geometry Proximity` node to find nearest head surface points
+- [ ] Apply volumetric merging (Mesh to Volume → Volume to Mesh) for seamless attachment
+- [ ] Alternative: Use SDF-based blending for superior nose/ear integration
+- [ ] Ensure seamless transitions where features join head
+
+### 5.3 Procedural Hair System
+- [ ] Define scalp area using vertex groups on head mesh
+- [ ] Use `Distribute Points on Faces` with vertex group selection mask
+- [ ] Implement `Add Hair Curves` node for initial strand generation
+- [ ] Add `Clump Hair Curves` node for natural hair clumping
+- [ ] Add `Frizz Hair Curves` node for realistic variation
+- [ ] Add `Trim Hair Curves` node for haircut shaping
+- [ ] Expose hair density, length, clumping, and frizz as parameters
+- [ ] Package complete hair generator as reusable node group
+
+### 5.4 Eyes and Detailing
+- [ ] Create eye sockets during base head sculpting phase
+- [ ] Instance `UV Sphere` objects for eyes within sockets
+- [ ] Position eyes using procedural calculations or manual placement
+- [ ] Generate procedural masks for skin regions (lips, cheeks, etc.)
+- [ ] Output attributes from Geometry Nodes for shader use
+- [ ] Link geometric attributes to material properties in shader editor
+
+## Section 6: Procedural Rigging
+
+### 6.1 The Hybrid Approach: Driving Traditional Armatures
+- [ ] Create custom outputs from Geometry Nodes modifier (e.g., "Bicep Flex" float)
+- [ ] Implement drivers to connect node outputs to armature bone properties
+- [ ] Use drivers for pose-dependent shape changes (muscle bulges)
+- [ ] **Advanced**: Implement procedural foot placement using `Raycast` node
+- [ ] **Advanced**: Create Empty objects bound to raycast hit positions
+- [ ] **Advanced**: Connect IK bones to procedurally calculated Empty positions
+- [ ] Handle dependency cycle issues between Armature and Geometry Nodes
+
+### 6.2 The Pure Approach: Armature-Free Deformation
+- [ ] Implement direct vertex manipulation using `Set Position` nodes
+- [ ] Calculate vertex positions based on control object proximity/transformation
+- [ ] **Advanced**: Build "node-based skeleton" using curves inside node tree
+- [ ] **Advanced**: Bind character mesh to curve skeleton
+- [ ] **Advanced**: Calculate vertex-to-skeleton offsets and reapply during deformation
+- [ ] **Advanced**: Recreate joint rotations and IK using vector math
+
+### 6.3 Procedural Animation: Creating Motion with Nodes
+- [ ] Use `Scene Time` node to access frame number/time
+- [ ] Implement breathing animation using Sine/Cosine functions
+- [ ] Add idle sway animations with procedural motion
+- [ ] **Advanced**: Create procedural walk cycles
+- [ ] **Advanced**: Calculate foot lifting and placement based on velocity
+- [ ] **Advanced**: Implement dynamic locomotion adapting to speed/direction
+
+## General Improvements
+
+### Code Quality & Architecture
+- [ ] Refactor torso to use proper curve-based scaffolding instead of cylinder primitive
+- [ ] Integrate spine curve with torso generation (currently separate)
+- [ ] Convert hand generation from separate objects to volumetric merged approach
+- [ ] Add proper error handling and fallbacks for all node operations
+- [ ] Create reusable node groups for common operations (lofting, volumetric merge, etc.)
+
+### UI/UX Improvements
+- [ ] Add more parameter controls to operator properties
+- [ ] Create separate panels for different body parts (torso, limbs, head, etc.)
+- [ ] Add presets for common body types (athletic, slender, muscular, etc.)
+- [ ] Implement real-time preview updates as parameters change
+- [ ] Add tooltips and help text for all parameters
+
+### Documentation
+- [ ] Document all node setups and their purposes
+- [ ] Create visual diagrams of node tree structures
+- [ ] Add examples for each major feature
+- [ ] Document parameter ranges and their effects
+- [ ] Create troubleshooting guide for common issues
+
+### Testing & Validation
+- [ ] Test all features across different Blender versions (3.0+, 4.0+)
+- [ ] Validate mesh topology quality
+- [ ] Test performance with high-resolution settings
+- [ ] Verify watertight mesh generation for 3D printing
+- [ ] Test procedural animation performance
+
+## Priority Levels
+
+### High Priority (Core Functionality)
+- Curve-based torso scaffolding
+- Proper limb joints with curve scaffolds
+- Feet and toes generation
+- Facial features (nose, ears, eyes)
+- Volumetric merging for seamless body parts
+
+### Medium Priority (Enhanced Features)
+- Procedural hair system
+- Advanced lofting with bridged edge loops
+- Rib cage and pelvis profile curves
+- Procedural masking for head sculpting
+- Watertight mesh generation
+
+### Low Priority (Advanced Features)
+- Procedural rigging (hybrid and pure approaches)
+- Procedural animation (breathing, walk cycles)
+- SDF emulation for superior blending
+- Advanced foot placement with raycast
+- Node-based skeleton system
+
+---
+
+**Note**: This TODO list is based on the comprehensive plan in `PlanOfTheWork.md`. Items are organized by section to match the original document structure. Current implementation has basic functionality but lacks many of the advanced procedural techniques described in the plan.
+

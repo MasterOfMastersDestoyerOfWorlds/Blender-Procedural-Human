@@ -229,29 +229,24 @@ def create_head_geometry(head_scale=1.0, height=1.7):
 
 def create_hand_geometry():
     """Create hand with separate finger objects and bones"""
-    # Create palm base - flattened cube
+    # Create palm base
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     hand = bpy.context.object
     hand.name = "Hand_Palm"
-
-    # Scale to hand proportions
-    hand.scale = (0.12, 0.06, 0.18)  # Width, depth, length
+    hand.scale = (0.12, 0.06, 0.18)
     bpy.context.view_layer.update()
 
-    # Create armature for hand bones
+    # Create armature
     bpy.ops.object.armature_add(location=(0, 0, 0))
     armature = bpy.context.object
     armature.name = "Hand_Armature"
     bpy.context.view_layer.update()
 
-    # Enter edit mode to create finger bones
+    # Create finger bones and objects
     bpy.context.view_layer.objects.active = armature
     bpy.ops.object.mode_set(mode='EDIT')
-
-    # Remove default bone
     armature.data.edit_bones.remove(armature.data.edit_bones[0])
 
-    # Define finger data: (name, segments, base_pos, length, radius)
     finger_data = [
         ("Thumb", 3, (-0.05, 0.08, 0.025), 0.06, 0.008),
         ("Index", 3, (-0.03, 0.12, 0.0), 0.08, 0.007),
@@ -261,85 +256,60 @@ def create_hand_geometry():
     ]
 
     finger_objects = []
-
-    # Create bones and finger objects for each finger
     for finger_name, segments, base_pos, length, radius in finger_data:
         segment_length = length / segments
-        
-        # Create finger segments as separate objects
+        pos_x, pos_y, pos_z = base_pos
+
+        # Create bones
         for segment_idx in range(segments):
-            # Calculate position for this segment
             segment_offset = segment_idx * segment_length
-            pos_x, pos_y, pos_z = base_pos
             segment_pos = (pos_x, pos_y + segment_offset, pos_z)
-            
-            # Create bone for this segment
             bone = armature.data.edit_bones.new(f"{finger_name}_Segment_{segment_idx+1}")
             bone.head = segment_pos
             bone.tail = (pos_x, pos_y + segment_offset + segment_length, pos_z)
-            
-            # Parent bones in chain
             if segment_idx > 0:
-                parent_bone_name = f"{finger_name}_Segment_{segment_idx}"
-                bone.parent = armature.data.edit_bones[parent_bone_name]
+                bone.parent = armature.data.edit_bones[f"{finger_name}_Segment_{segment_idx}"]
 
-    # Exit edit mode
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # Now create finger segment objects
+    # Create finger segment objects
     for finger_name, segments, base_pos, length, radius in finger_data:
         segment_length = length / segments
-        
+        pos_x, pos_y, pos_z = base_pos
+
         for segment_idx in range(segments):
-            # Calculate position for this segment
             segment_offset = segment_idx * segment_length
-            pos_x, pos_y, pos_z = base_pos
             segment_pos = (pos_x, pos_y + segment_offset + segment_length/2, pos_z)
-            
-            # Create cylinder for finger segment
+
             bpy.ops.mesh.primitive_cylinder_add(
-                radius=radius,
-                depth=segment_length,
-                location=segment_pos,
-                vertices=16
+                radius=radius, depth=segment_length, location=segment_pos, vertices=16
             )
-            
             finger_segment = bpy.context.object
             finger_segment.name = f"{finger_name}_Segment_{segment_idx+1}"
-            
-            # Add slight taper for more natural look
-            if segment_idx == segments - 1:  # Last segment (fingertip)
+
+            if segment_idx == segments - 1:
                 finger_segment.scale = (0.8, 0.8, 1.0)
-            
-            # Add slight rotation for natural finger positioning
             if finger_name == "Thumb":
                 finger_segment.rotation_euler = (0, 0, 0.5)
             elif finger_name in ["Ring", "Pinky"] and segment_idx > 0:
-                curl = segment_idx * 0.1
-                finger_segment.rotation_euler = (curl, 0, 0)
-            
-            # Parent to hand palm
+                finger_segment.rotation_euler = (segment_idx * 0.1, 0, 0)
+
             finger_segment.parent = hand
             finger_objects.append(finger_segment)
-            
-            # Add bone constraint
+
             constraint = finger_segment.constraints.new(type='COPY_TRANSFORMS')
             constraint.target = armature
             constraint.subtarget = f"{finger_name}_Segment_{segment_idx+1}"
 
-    # Parent armature to hand
     armature.parent = hand
 
-    # Create collection for hand parts
+    # Organize in collection
     hand_collection = bpy.data.collections.new("Hand_Parts")
     bpy.context.scene.collection.children.link(hand_collection)
-    
-    # Move all hand parts to collection
     hand_collection.objects.link(hand)
     hand_collection.objects.link(armature)
     for finger_obj in finger_objects:
         hand_collection.objects.link(finger_obj)
-        # Remove from scene collection to avoid duplicates
         try:
             bpy.context.scene.collection.objects.unlink(finger_obj)
         except Exception:
@@ -347,6 +317,3 @@ def create_hand_geometry():
 
     bpy.context.view_layer.update()
     return hand
-
-
-# End of file

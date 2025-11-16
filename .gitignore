@@ -32,6 +32,8 @@ venv.bak/
 
 # IDE
 .vscode/
+# Note: VS Code Blender extension creates soft links in Blender's addon directory,
+# not in the workspace, so no additional ignores needed
 .idea/
 *.swp
 *.swo
@@ -54,6 +56,7 @@ Thumbs.db
 
 # Project specific
 procedural_human.zip
+*.zip
 .pytest_cache/
 .mypy_cache/
 .coverage

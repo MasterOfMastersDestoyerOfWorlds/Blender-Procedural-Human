@@ -25,6 +25,8 @@ class PROCEDURAL_PT_main_panel(Panel):
         row = box.row()
         row.operator("mesh.procedural_torso", text="Torso")
         row.operator("mesh.procedural_head", text="Head")
+        row = box.row()
+        row.operator("mesh.procedural_finger", text="Finger")
 
 
 # Note: Parameters are set directly on operators when run

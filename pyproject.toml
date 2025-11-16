@@ -21,10 +21,8 @@ classifiers = [
     "Topic :: Multimedia :: Graphics :: 3D Modeling",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = [
-    # Note: mathutils is provided by Blender, not installed separately
-    # "mathutils>=1.0.0; python_version>='3.10'",
-]
+dependencies = []
+# Note: mathutils and bpy are provided by Blender runtime
 
 [project.optional-dependencies]
 dev = [
@@ -40,21 +38,10 @@ Documentation = "https://procedural-human.readthedocs.io/"
 Repository = "https://github.com/procedural-human/blender-addon.git"
 "Bug Tracker" = "https://github.com/procedural-human/blender-addon/issues"
 
+# Build system (optional - use package.py for Blender addon distribution)
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["procedural_human"]
-
-[tool.hatch.build.targets.sdist]
-include = [
-    "procedural_human/*.py",
-    "README.md",
-    "LICENSE*",
-]
-
-# Note: Use package.py for Blender addon zip creation
 
 [tool.black]
 line-length = 88
