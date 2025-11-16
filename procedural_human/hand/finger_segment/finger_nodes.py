@@ -210,13 +210,13 @@ def create_finger_nodes(
     # Attach fingernail to distal segment via helper in the fingernail module
     distal_seg_name, distal_transform, distal_idx = segment_node_instances[-1]
     distal_seg_length = segment_lengths[-1]
+    taper_multiplier = max(0.05, 1.0 - max(0, num_segments - 1) * taper_factor)
+    distal_seg_radius = max(0.0005, (distal_seg_length * 0.5) * taper_multiplier)
     nail_instance = attach_fingernail_to_distal_segment(
         node_group=node_group,
         distal_transform_node=distal_transform,
         curl_direction=curl_direction,
-        distal_seg_length=distal_seg_length,
-        num_segments=num_segments,
-        taper_factor=taper_factor,
+        distal_seg_radius=distal_seg_radius,
         finger_type=finger_type,
         nail_size=nail_size,
     )
