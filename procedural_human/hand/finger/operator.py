@@ -91,8 +91,18 @@ class PROCEDURAL_OT_create_finger(Operator):
             except Exception:
                 return default
         
-        finger_type_val = get_property_value("finger_type", "INDEX")
-        curl_direction_val = get_property_value("curl_direction", "Y")
+        # Prefer scene-level settings from the panel if available
+        scene = context.scene
+        if hasattr(scene, "procedural_finger_type"):
+            finger_type_val = scene.procedural_finger_type
+        else:
+            finger_type_val = get_property_value("finger_type", "INDEX")
+        
+        if hasattr(scene, "procedural_finger_curl_direction"):
+            curl_direction_val = scene.procedural_finger_curl_direction
+        else:
+            curl_direction_val = get_property_value("curl_direction", "Y")
+        
         nail_size_val = get_property_value("nail_size", 0.003)
         taper_val = get_property_value("taper_factor", 0.15)
 
@@ -108,8 +118,8 @@ class PROCEDURAL_OT_create_finger(Operator):
         )
         
         # Store finger type as custom property on the object
-        finger["finger_type"] = finger_type_val
-        finger["curl_direction"] = curl_direction_val
+        finger["finger_type"] = str(finger_type_val)
+        finger["curl_direction"] = str(curl_direction_val)
         
         bpy.context.view_layer.objects.active = finger
         finger.select_set(True)
@@ -171,8 +181,12 @@ class PROCEDURAL_OT_add_finger_armature(Operator):
         finger_type_val = finger.get("finger_type", "INDEX")
         curl_direction_val = finger.get("curl_direction", "Y")
         
-        # Get create_animation (bool property)
-        create_anim = self.create_animation
+        # Get create_animation (bool property) - prefer scene toggle
+        scene = context.scene
+        if hasattr(scene, "procedural_finger_create_animation"):
+            create_anim = scene.procedural_finger_create_animation
+        else:
+            create_anim = self.create_animation
 
         try:
             armature = finger_utils.add_finger_armature_to_object(
