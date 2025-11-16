@@ -67,30 +67,23 @@ def create_finger_nodes(
     if segment_lengths is None:
         total_length = 1.0
         segment_lengths = [total_length / num_segments] * num_segments
-    else:
-        total_length = sum(segment_lengths)
 
-    # Base axis curve - all segments grow from this geometry
-    axis_curve = node_group.nodes.new("GeometryNodeCurvePrimitiveLine")
-    axis_curve.label = "Finger Axis"
-    axis_curve.location = (-700, 400)
-    start_point = [0.0, 0.0, 0.0]
-    end_point = [0.0, 0.0, 0.0]
-    end_point[length_axis] = total_length
-    axis_curve.inputs["Start"].default_value = tuple(start_point)
-    axis_curve.inputs["End"].default_value = tuple(end_point)
+    # Create starting axis point at origin (Z=0)
+    # This will be the input for the first segment
+    starting_point = node_group.nodes.new("GeometryNodeCurvePrimitiveLine")
+    starting_point.label = "Starting Axis"
+    starting_point.location = (-700, 400)
+    starting_point.inputs["Start"].default_value = (0.0, 0.0, 0.0)
+    starting_point.inputs["End"].default_value = (0.0, 0.0, 0.0)  # Zero-length line at origin
 
     segment_names = ["Proximal", "Middle", "Distal"]
     segment_node_instances = []
-    cumulative_length = 0.0
+    previous_segment_output = starting_point.outputs["Curve"]
 
     for seg_idx in range(num_segments):
         seg_length = segment_lengths[seg_idx]
         base_radius = seg_length * 0.5
         seg_radius = base_radius * (1.0 - seg_idx * taper_factor)
-
-        start_ratio = (cumulative_length / total_length) if total_length > 0 else 0.0
-        segment_ratio = (seg_length / total_length) if total_length > 0 else 0.0
 
         if num_segments == 2:
             seg_name = "Proximal" if seg_idx == 0 else "Distal"
@@ -103,8 +96,7 @@ def create_finger_nodes(
 
         segment_group = create_finger_segment_node_group(
             f"{finger_type.value}_{seg_name}_Segment_Group",
-            start_ratio,
-            segment_ratio,
+            seg_length,
             seg_radius,
         )
 
@@ -113,21 +105,21 @@ def create_finger_nodes(
         segment_instance.label = f"{seg_name} Segment"
         segment_instance.location = (-400, 200 - seg_idx * 300)
 
+        # Chain: connect previous segment's output to this segment's input
         node_group.links.new(
-            axis_curve.outputs["Curve"], segment_instance.inputs["Geometry"]
+            previous_segment_output, segment_instance.inputs["Geometry"]
         )
         segment_instance.inputs[
-            FingerSegmentProperties.START_RATIO.value
-        ].default_value = start_ratio
-        segment_instance.inputs[
-            FingerSegmentProperties.SEGMENT_RATIO.value
-        ].default_value = segment_ratio
+            FingerSegmentProperties.SEGMENT_LENGTH.value
+        ].default_value = seg_length
         segment_instance.inputs[
             FingerSegmentProperties.SEGMENT_RADIUS.value
         ].default_value = seg_radius
 
         segment_node_instances.append((seg_name, segment_instance, seg_idx, seg_radius))
-        cumulative_length += seg_length
+        
+        # Update previous output for next iteration
+        previous_segment_output = segment_instance.outputs["Geometry"]
 
     # Attach fingernail to distal segment via helper in the fingernail module
     distal_seg_name, distal_node, distal_idx, distal_seg_radius = (
@@ -142,27 +134,8 @@ def create_finger_nodes(
         nail_size=nail_size,
     )
 
-    # Join ALL segments (proximal, middle, distal+nail) - THIS IS THE FINAL OPERATION
-    join_all = node_group.nodes.new("GeometryNodeJoinGeometry")
-    join_all.label = "Join All Finger Parts (FINAL)"
-    join_all.location = (0, 0)
-
-    # Connect all segment outputs to final join
-    for idx, (seg_name, segment_node, seg_idx, seg_radius) in enumerate(
-        segment_node_instances
-    ):
-        if idx == len(segment_node_instances) - 1:
-            # Last segment (distal) - use the nail instance output instead
-            node_group.links.new(
-                nail_instance.outputs["Geometry"], join_all.inputs["Geometry"]
-            )
-        else:
-            # Other segments (proximal, middle)
-            node_group.links.new(
-                segment_node.outputs["Geometry"], join_all.inputs["Geometry"]
-            )
-
-    # Connect final join to output
-    node_group.links.new(join_all.outputs["Geometry"], output_node.inputs["Geometry"])
+    # Since segments are chained, the nail_instance already contains all geometry
+    # Just connect it directly to output
+    node_group.links.new(nail_instance.outputs["Geometry"], output_node.inputs["Geometry"])
 
     return node_group
