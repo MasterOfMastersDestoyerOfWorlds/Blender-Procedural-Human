@@ -3,6 +3,7 @@ Procedural Human Generator
 A Blender add-on for creating procedural human characters using Geometry Nodes
 """
 
+import bpy
 from . import operators
 from . import panels
 from . import menus
@@ -20,8 +21,50 @@ bl_info = {
 }
 
 
+# Scene properties for finger operations
+def register_scene_properties():
+    """Register scene properties for finger operations"""
+    bpy.types.Scene.procedural_finger_type = bpy.props.EnumProperty(
+        name="Finger Type",
+        items=[
+            ("THUMB", "Thumb", "Thumb finger (2 segments)"),
+            ("INDEX", "Index", "Index finger (3 segments)"),
+            ("MIDDLE", "Middle", "Middle finger (3 segments)"),
+            ("RING", "Ring", "Ring finger (3 segments)"),
+            ("LITTLE", "Little", "Little finger (3 segments)"),
+        ],
+        default="INDEX",
+        description="Type of finger to generate",
+    )
+    
+    bpy.types.Scene.procedural_finger_curl_direction = bpy.props.EnumProperty(
+        name="Curl Direction",
+        items=[
+            ("X", "X Axis", "Curl along X axis"),
+            ("Y", "Y Axis", "Curl along Y axis (default)"),
+            ("Z", "Z Axis", "Curl along Z axis"),
+        ],
+        default="Y",
+        description="Axis along which the finger curls",
+    )
+    
+    bpy.types.Scene.procedural_finger_create_animation = bpy.props.BoolProperty(
+        name="Create Animation",
+        default=True,
+        description="Create keyframe animation for finger curl",
+    )
+
+
+def unregister_scene_properties():
+    """Unregister scene properties"""
+    del bpy.types.Scene.procedural_finger_type
+    del bpy.types.Scene.procedural_finger_curl_direction
+    del bpy.types.Scene.procedural_finger_create_animation
+
+
 # Registration
 def register():
+    register_scene_properties()
     operators.register()
     panels.register()
     menus.register()
@@ -31,6 +74,7 @@ def unregister():
     menus.unregister()
     panels.unregister()
     operators.unregister()
+    unregister_scene_properties()
 
 
 if __name__ == "__main__":

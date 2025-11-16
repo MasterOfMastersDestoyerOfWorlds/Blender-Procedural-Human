@@ -24,6 +24,78 @@ def _get_numeric_value(value, default):
         return default
 
 
+def realize_finger_geometry(finger_object):
+    """
+    Apply Geometry Nodes modifier to finger object to get final mesh
+    
+    Args:
+        finger_object: Finger object with Geometry Nodes modifier
+    
+    Returns:
+        finger_object with modifier applied
+    """
+    # Find Geometry Nodes modifier
+    modifier = None
+    for mod in finger_object.modifiers:
+        if mod.type == 'NODES':
+            modifier = mod
+            break
+    
+    if not modifier:
+        raise RuntimeError("No Geometry Nodes modifier found on finger object")
+    
+    # Update view layer to evaluate modifier
+    bpy.context.view_layer.objects.active = finger_object
+    bpy.context.view_layer.update()
+    
+    # Force evaluation of the modifier
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    finger_eval = finger_object.evaluated_get(depsgraph)
+    
+    # Check if we have valid geometry
+    if not finger_eval.data or len(finger_eval.data.vertices) == 0:
+        raise RuntimeError("Geometry Nodes modifier did not produce any geometry")
+    
+    # Apply modifier by copying evaluated data
+    finger_object.data = finger_eval.data.copy()
+    
+    # Remove the modifier since we've copied the evaluated data
+    finger_object.modifiers.remove(modifier)
+    
+    bpy.context.view_layer.update()
+    return finger_object
+
+
+def add_finger_armature_to_object(finger_object, finger_type="INDEX", curl_direction="Y", create_animation=True):
+    """
+    Add armature, bones, weights, IK, and animation to an existing finger object
+    
+    Args:
+        finger_object: Finger mesh object (should have Geometry Nodes modifier applied)
+        finger_type: One of "THUMB", "INDEX", "MIDDLE", "RING", "LITTLE"
+        curl_direction: Curl direction axis ("X", "Y", or "Z")
+        create_animation: Whether to create keyframe animation
+    
+    Returns:
+        armature object
+    """
+    # Get finger proportions
+    finger_data = proportions.get_finger_proportions(finger_type)
+    num_segments = finger_data["segments"]
+    total_length = 1.0  # Finger should already be scaled to 1 unit
+    segment_lengths = proportions.get_segment_lengths_blender_units(finger_type, total_length)
+    
+    # Create armature
+    armature = create_finger_armature(finger_object, num_segments, segment_lengths, curl_direction)
+    
+    # Create animation if requested
+    if create_animation:
+        from . import animation
+        animation.create_finger_curl_animation(armature, num_segments)
+    
+    return armature
+
+
 def create_finger_geometry(
     finger_type="INDEX",
     radius=0.007,
@@ -31,8 +103,6 @@ def create_finger_geometry(
     taper_factor=0.15,
     curl_direction="Y",
     total_length=1.0,
-    create_armature=True,
-    create_animation=True,
 ):
     """
     Create a standalone finger with variable segments and fingernail using Geometry Nodes
@@ -125,18 +195,12 @@ def create_finger_geometry(
     if len(finger_eval.data.vertices) == 0:
         raise RuntimeError("Geometry Nodes modifier produced empty geometry (0 vertices). Check node connections.")
     
-    # Apply modifier to get final mesh (needed for armature deformation)
-    # Use the evaluated mesh data directly instead of applying modifier
-    # This avoids the "no mesh" error
-    finger.data = finger_eval.data.copy()
-    
-    # Remove the modifier since we've copied the evaluated data
-    finger.modifiers.remove(modifier)
+    # Don't apply modifier or create armature here - those are separate operations
+    # Just return the finger with the Geometry Nodes modifier
     
     # Scale to ensure exactly 1 blender unit
-    # Calculate current bounding box
-    bpy.context.view_layer.update()
-    bbox = [finger.matrix_world @ Vector(corner) for corner in finger.bound_box]
+    # Calculate current bounding box from evaluated geometry
+    bbox = [finger_eval.matrix_world @ Vector(corner) for corner in finger_eval.bound_box]
     
     # Find length along Z axis (or appropriate axis based on curl direction)
     if curl_direction == "Y":
@@ -153,15 +217,7 @@ def create_finger_geometry(
     
     bpy.context.view_layer.update()
     
-    # Create armature if requested
-    armature = None
-    if create_armature:
-        armature = create_finger_armature(finger, num_segments, segment_lengths, curl_direction)
-        if create_animation:
-            from . import animation
-            animation.create_finger_curl_animation(armature, num_segments)
-    
-    return finger, armature
+    return finger
 
 
 def create_finger_armature(finger, num_segments, segment_lengths, curl_direction="Y"):
@@ -211,8 +267,8 @@ def create_finger_armature(finger, num_segments, segment_lengths, curl_direction
         bone.head = bone_direction * cumulative_length
         bone.tail = bone_direction * (cumulative_length + seg_length)
         
-        # Set bone roll based on curl direction
-        bone.roll = 0.0  # Can be adjusted if needed
+        # Set bone roll to 0.0 for straight alignment (no curl in rest position)
+        bone.roll = 0.0
         
         # Set parent relationship
         if seg_idx > 0:
@@ -223,6 +279,21 @@ def create_finger_armature(finger, num_segments, segment_lengths, curl_direction
         cumulative_length += seg_length
     
     # Exit edit mode
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    # Verify bones are in rest position (zero rotation)
+    # Enter pose mode to check and reset if needed
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.mode_set(mode='POSE')
+    
+    # Reset all bones to rest position (zero rotation)
+    for seg_idx in range(num_segments):
+        bone_name = f"Finger_Segment_{seg_idx + 1}"
+        if bone_name in armature.pose.bones:
+            bone = armature.pose.bones[bone_name]
+            bone.rotation_euler = (0.0, 0.0, 0.0)
+    
+    # Return to object mode
     bpy.ops.object.mode_set(mode='OBJECT')
     
     # Add armature modifier to finger

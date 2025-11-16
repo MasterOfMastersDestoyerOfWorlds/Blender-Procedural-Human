@@ -19,6 +19,19 @@ def create_finger_curl_animation(armature, num_segments):
     frame_start = 0
     frame_end = 30
     
+    # Ensure animation data exists
+    if not armature.animation_data:
+        armature.animation_data_create()
+    
+    # Create or get action
+    action_name = f"{armature.name}_FingerCurl"
+    if action_name in bpy.data.actions:
+        action = bpy.data.actions[action_name]
+    else:
+        action = bpy.data.actions.new(name=action_name)
+    
+    armature.animation_data.action = action
+    
     # Enter pose mode
     bpy.context.view_layer.objects.active = armature
     bpy.ops.object.mode_set(mode='POSE')
@@ -26,13 +39,14 @@ def create_finger_curl_animation(armature, num_segments):
     # Get all bones
     bones = [armature.pose.bones[f"Finger_Segment_{i + 1}"] for i in range(num_segments)]
     
-    # Frame 0: Straight finger (all bones aligned)
+    # Frame 0: Straight finger (all bones aligned - REST POSITION)
     bpy.context.scene.frame_set(frame_start)
     for bone in bones:
+        # Ensure rest position - zero rotation
         bone.rotation_euler = Euler((0, 0, 0), 'XYZ')
-        bone.keyframe_insert(data_path="rotation_euler", index=0)
-        bone.keyframe_insert(data_path="rotation_euler", index=1)
-        bone.keyframe_insert(data_path="rotation_euler", index=2)
+        bone.keyframe_insert(data_path="rotation_euler", index=0, frame=frame_start)
+        bone.keyframe_insert(data_path="rotation_euler", index=1, frame=frame_start)
+        bone.keyframe_insert(data_path="rotation_euler", index=2, frame=frame_start)
     
     # Frame N: Curled finger
     # Calculate rotations so tip touches base and middle is orthogonal
@@ -42,35 +56,35 @@ def create_finger_curl_animation(armature, num_segments):
         # Thumb: Two segments
         # Rotate first segment to curl
         bones[0].rotation_euler = Euler((math.radians(-45), 0, 0), 'XYZ')
-        bones[0].keyframe_insert(data_path="rotation_euler", index=0)
-        bones[0].keyframe_insert(data_path="rotation_euler", index=1)
-        bones[0].keyframe_insert(data_path="rotation_euler", index=2)
+        bones[0].keyframe_insert(data_path="rotation_euler", index=0, frame=frame_end)
+        bones[0].keyframe_insert(data_path="rotation_euler", index=1, frame=frame_end)
+        bones[0].keyframe_insert(data_path="rotation_euler", index=2, frame=frame_end)
         
         # Rotate second segment to complete curl
         bones[1].rotation_euler = Euler((math.radians(-90), 0, 0), 'XYZ')
-        bones[1].keyframe_insert(data_path="rotation_euler", index=0)
-        bones[1].keyframe_insert(data_path="rotation_euler", index=1)
-        bones[1].keyframe_insert(data_path="rotation_euler", index=2)
+        bones[1].keyframe_insert(data_path="rotation_euler", index=0, frame=frame_end)
+        bones[1].keyframe_insert(data_path="rotation_euler", index=1, frame=frame_end)
+        bones[1].keyframe_insert(data_path="rotation_euler", index=2, frame=frame_end)
     
     else:
         # Three segments: Index, Middle, Ring, Little
         # First segment (proximal) curls
         bones[0].rotation_euler = Euler((math.radians(-30), 0, 0), 'XYZ')
-        bones[0].keyframe_insert(data_path="rotation_euler", index=0)
-        bones[0].keyframe_insert(data_path="rotation_euler", index=1)
-        bones[0].keyframe_insert(data_path="rotation_euler", index=2)
+        bones[0].keyframe_insert(data_path="rotation_euler", index=0, frame=frame_end)
+        bones[0].keyframe_insert(data_path="rotation_euler", index=1, frame=frame_end)
+        bones[0].keyframe_insert(data_path="rotation_euler", index=2, frame=frame_end)
         
         # Second segment (middle) orthogonal to both
         bones[1].rotation_euler = Euler((math.radians(-60), 0, 0), 'XYZ')
-        bones[1].keyframe_insert(data_path="rotation_euler", index=0)
-        bones[1].keyframe_insert(data_path="rotation_euler", index=1)
-        bones[1].keyframe_insert(data_path="rotation_euler", index=2)
+        bones[1].keyframe_insert(data_path="rotation_euler", index=0, frame=frame_end)
+        bones[1].keyframe_insert(data_path="rotation_euler", index=1, frame=frame_end)
+        bones[1].keyframe_insert(data_path="rotation_euler", index=2, frame=frame_end)
         
         # Third segment (distal) curls to touch base
         bones[2].rotation_euler = Euler((math.radians(-60), 0, 0), 'XYZ')
-        bones[2].keyframe_insert(data_path="rotation_euler", index=0)
-        bones[2].keyframe_insert(data_path="rotation_euler", index=1)
-        bones[2].keyframe_insert(data_path="rotation_euler", index=2)
+        bones[2].keyframe_insert(data_path="rotation_euler", index=0, frame=frame_end)
+        bones[2].keyframe_insert(data_path="rotation_euler", index=1, frame=frame_end)
+        bones[2].keyframe_insert(data_path="rotation_euler", index=2, frame=frame_end)
     
     # Set interpolation to bezier for smooth animation
     if armature.animation_data and armature.animation_data.action:
@@ -86,4 +100,7 @@ def create_finger_curl_animation(armature, num_segments):
     # Set playback range
     bpy.context.scene.frame_start = frame_start
     bpy.context.scene.frame_end = frame_end
+    
+    # Update view layer
+    bpy.context.view_layer.update()
 
