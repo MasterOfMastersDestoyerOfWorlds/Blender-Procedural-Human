@@ -7,6 +7,7 @@ import bpy
 from procedural_human.utils import setup_node_group_interface
 from ..finger_types import ensure_finger_type
 from ..finger_nail_proportions import get_fingernail_proportions
+from procedural_human.hand.finger_segment.finger_types import FingerSegmentProperties
 
 DEFAULT_NAIL_SIZE = 0.003
 OFFSET_RATIO = 0.1
@@ -28,7 +29,7 @@ def create_fingernail_node_group(
 
     # Add proportion sockets so they are visible in the node interface.
     radius_socket = nail_group.interface.new_socket(
-        name="Distal Radius", in_out="INPUT", socket_type="NodeSocketFloat"
+        name=FingerSegmentProperties.SEGMENT_RADIUS.value, in_out="INPUT", socket_type="NodeSocketFloat"
     )
     radius_socket.default_value = distal_seg_radius
 
@@ -93,7 +94,7 @@ def create_fingernail_node_group(
     width_value.label = "Width = Radius * Ratio"
     width_value.location = (-700, -500)
     width_value.operation = "MULTIPLY"
-    nail_group.links.new(input_node.outputs["Distal Radius"], width_value.inputs[0])
+    nail_group.links.new(input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value], width_value.inputs[0])
     nail_group.links.new(input_node.outputs["Nail Width Ratio"], width_value.inputs[1])
 
     height_value = nail_group.nodes.new("ShaderNodeMath")
@@ -101,7 +102,9 @@ def create_fingernail_node_group(
     height_value.location = (-500, -420)
     height_value.operation = "MULTIPLY"
     nail_group.links.new(width_value.outputs["Value"], height_value.inputs[0])
-    nail_group.links.new(input_node.outputs["Nail Height Ratio"], height_value.inputs[1])
+    nail_group.links.new(
+        input_node.outputs["Nail Height Ratio"], height_value.inputs[1]
+    )
 
     thickness_value = nail_group.nodes.new("ShaderNodeMath")
     thickness_value.label = "Thickness From Width"
@@ -154,7 +157,7 @@ def create_fingernail_node_group(
     surface_offset.location = (-300, -120)
     surface_offset.operation = "MULTIPLY"
     surface_offset.inputs[1].default_value = OFFSET_RATIO
-    nail_group.links.new(input_node.outputs["Distal Radius"], surface_offset.inputs[0])
+    nail_group.links.new(input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value], surface_offset.inputs[0])
 
     math_offset_curl = nail_group.nodes.new("ShaderNodeMath")
     math_offset_curl.label = "Offset From Surface"
@@ -181,17 +184,27 @@ def create_fingernail_node_group(
     position_nail = nail_group.nodes.new("GeometryNodeTransform")
     position_nail.label = "Place on Distal"
     position_nail.location = (300, -300)
-    nail_group.links.new(flatten_nail.outputs["Geometry"], position_nail.inputs["Geometry"])
-    nail_group.links.new(combine_pos.outputs["Vector"], position_nail.inputs["Translation"])
+    nail_group.links.new(
+        flatten_nail.outputs["Geometry"], position_nail.inputs["Geometry"]
+    )
+    nail_group.links.new(
+        combine_pos.outputs["Vector"], position_nail.inputs["Translation"]
+    )
 
     # Join distal segment + nail
     join_nail = nail_group.nodes.new("GeometryNodeJoinGeometry")
     join_nail.label = "Join Distal + Nail"
     join_nail.location = (600, 0)
-    nail_group.links.new(input_node.outputs["Geometry"], bounding_box.inputs["Geometry"])
-    nail_group.links.new(bounding_box.outputs["Max"], separate_bbox_max.inputs["Vector"])
+    nail_group.links.new(
+        input_node.outputs["Geometry"], bounding_box.inputs["Geometry"]
+    )
+    nail_group.links.new(
+        bounding_box.outputs["Max"], separate_bbox_max.inputs["Vector"]
+    )
     nail_group.links.new(input_node.outputs["Geometry"], join_nail.inputs["Geometry"])
-    nail_group.links.new(position_nail.outputs["Geometry"], join_nail.inputs["Geometry"])
+    nail_group.links.new(
+        position_nail.outputs["Geometry"], join_nail.inputs["Geometry"]
+    )
     nail_group.links.new(join_nail.outputs["Geometry"], output_node.inputs["Geometry"])
 
     return nail_group
@@ -236,17 +249,21 @@ def attach_fingernail_to_distal_segment(
     )
 
     # Ensure exposed sockets reflect the proportions on this instance.
-    if "Distal Radius" in nail_instance.inputs:
-        nail_instance.inputs["Distal Radius"].default_value = distal_seg_radius
+    if FingerSegmentProperties.SEGMENT_RADIUS.value in nail_instance.inputs:
+        nail_instance.inputs[FingerSegmentProperties.SEGMENT_RADIUS.value].default_value = distal_seg_radius
     if "Nail Width Ratio" in nail_instance.inputs:
         nail_instance.inputs["Nail Width Ratio"].default_value = width_ratio
     if "Nail Height Ratio" in nail_instance.inputs:
         nail_instance.inputs["Nail Height Ratio"].default_value = height_ratio
 
+    if FingerSegmentProperties.SEGMENT_RADIUS.value in distal_transform_node.outputs:
+        node_group.links.new(
+            distal_transform_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
+            nail_instance.inputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
+        )
     node_group.links.new(
         distal_transform_node.outputs["Geometry"], nail_instance.inputs["Geometry"]
     )
-
     return nail_instance
 
 
