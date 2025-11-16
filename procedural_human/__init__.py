@@ -7,6 +7,10 @@ import bpy
 from . import operators
 from . import panels
 from . import menus
+from .hand.finger_segment.finger_types import (
+    FingerType,
+    enum_items as finger_type_items,
+)
 
 bl_info = {
     "name": "Procedural Human Generator",
@@ -26,14 +30,8 @@ def register_scene_properties():
     """Register scene properties for finger operations"""
     bpy.types.Scene.procedural_finger_type = bpy.props.EnumProperty(
         name="Finger Type",
-        items=[
-            ("THUMB", "Thumb", "Thumb finger (2 segments)"),
-            ("INDEX", "Index", "Index finger (3 segments)"),
-            ("MIDDLE", "Middle", "Middle finger (3 segments)"),
-            ("RING", "Ring", "Ring finger (3 segments)"),
-            ("LITTLE", "Little", "Little finger (3 segments)"),
-        ],
-        default="INDEX",
+        items=list(finger_type_items()),
+        default=FingerType.INDEX.value,
         description="Type of finger to generate",
     )
     

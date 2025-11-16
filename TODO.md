@@ -80,15 +80,15 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 - [x] Create basic finger geometry with three segments using Geometry Nodes
 - [x] Add fingernail geometry on fingertip
 - [x] Organize finger code into modular structure (`procedural_human/hand/finger/`)
-- [ ] Refactor finger framework to support variable segment count (2-3 segments)
-- [ ] Implement anatomical proportions from Proportions.md for each finger type (Thumb/Index/Middle/Ring/Little)
-- [ ] Add curl direction parameter (X/Y/Z axes, default Y-axis)
-- [ ] Reposition fingernail from tip to side of Distal segment (opposite curl direction)
-- [ ] Scale finger geometry to exactly 1 blender unit total length
-- [ ] Create armature with one bone per segment, oriented along curl direction
-- [ ] Implement automatic weight painting for finger segments with smooth joint falloff
-- [ ] Setup Inverse Kinematics chain for finger with IK target at tip
-- [ ] Create keyframe animation with finger curl (straight to curled state)
+- [x] Refactor finger framework to support variable segment count (2-3 segments)
+- [x] Implement anatomical proportions from Proportions.md for each finger type (Thumb/Index/Middle/Ring/Little)
+- [x] Add curl direction parameter (X/Y/Z axes, default Y-axis)
+- [x] Reposition fingernail from tip to side of Distal segment (opposite curl direction)
+- [x] Scale finger geometry to exactly 1 blender unit total length
+- [x] Create armature with one bone per segment, oriented along curl direction
+- [x] Implement automatic weight painting for finger segments with smooth joint falloff
+- [x] Setup Inverse Kinematics chain for finger with IK target at tip
+- [x] Create keyframe animation with finger curl (straight to curled state)
 
 ### 4.3 Feet and Toes
 - [ ] Create base foot mesh (main body of foot)

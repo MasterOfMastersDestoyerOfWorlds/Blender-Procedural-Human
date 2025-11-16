@@ -6,6 +6,49 @@ import bpy
 from mathutils import Vector
 from . import advanced_nodes
 
+def get_property_value(prop_name, default):
+    """Get actual value from Blender property"""
+    try:
+        val = getattr(self, prop_name, default)
+        # Check if it's a deferred property
+        if hasattr(val, '_default'):
+            return val._default
+        elif hasattr(val, 'default'):
+            return val.default
+        elif str(type(val)) == "<class 'bpy.props._PropertyDeferred'>":
+            return default
+        else:
+            # Try to convert to appropriate type
+            if isinstance(default, (int, float)):
+                return float(val)
+            else:
+                return str(val)
+    except Exception:
+        return default
+
+def setup_node_group_interface(node_group):
+    """Helper function to setup node group interface with geometry sockets"""
+    # Check existing sockets
+    existing_sockets = [socket.name for socket in node_group.interface.items_tree]
+    
+    # Add input geometry socket if it doesn't exist
+    if "Geometry" not in existing_sockets:
+        try:
+            node_group.interface.new_socket(
+                name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+            )
+        except Exception as e:
+            print(f"Warning: Could not create input Geometry socket: {e}")
+    
+    # Add output geometry socket if it doesn't exist
+    existing_sockets = [socket.name for socket in node_group.interface.items_tree]
+    if "Geometry" not in existing_sockets or existing_sockets.count("Geometry") < 2:
+        try:
+            node_group.interface.new_socket(
+                name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+            )
+        except Exception as e:
+            print(f"Warning: Could not create output Geometry socket: {e}")
 
 def create_geometry_nodes_modifier(obj, name):
     """Add Geometry Nodes modifier to object"""

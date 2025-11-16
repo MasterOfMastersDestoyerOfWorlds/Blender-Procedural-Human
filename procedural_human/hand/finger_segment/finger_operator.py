@@ -5,7 +5,9 @@ Finger operator for Procedural Human Generator
 import bpy
 from bpy.types import Operator
 from bpy.props import FloatProperty, EnumProperty, BoolProperty
-from . import utils as finger_utils
+from procedural_human.utils import get_property_value
+from . import finger_utils
+from .finger_types import FingerType, ensure_finger_type, enum_items as finger_type_items
 
 
 class PROCEDURAL_OT_create_finger(Operator):
@@ -17,14 +19,8 @@ class PROCEDURAL_OT_create_finger(Operator):
     # Finger type
     finger_type = EnumProperty(
         name="Finger Type",
-        items=[
-            ("THUMB", "Thumb", "Thumb finger (2 segments)"),
-            ("INDEX", "Index", "Index finger (3 segments)"),
-            ("MIDDLE", "Middle", "Middle finger (3 segments)"),
-            ("RING", "Ring", "Ring finger (3 segments)"),
-            ("LITTLE", "Little", "Little finger (3 segments)"),
-        ],
-        default="INDEX",
+        items=list(finger_type_items()),
+        default=FingerType.INDEX.value,
         description="Type of finger to generate",
     )
 
@@ -71,32 +67,16 @@ class PROCEDURAL_OT_create_finger(Operator):
 
     def execute(self, context):
         # Handle all property access robustly (works for both EnumProperty and FloatProperty)
-        def get_property_value(prop_name, default):
-            """Get actual value from Blender property"""
-            try:
-                val = getattr(self, prop_name, default)
-                # Check if it's a deferred property
-                if hasattr(val, '_default'):
-                    return val._default
-                elif hasattr(val, 'default'):
-                    return val.default
-                elif str(type(val)) == "<class 'bpy.props._PropertyDeferred'>":
-                    return default
-                else:
-                    # Try to convert to appropriate type
-                    if isinstance(default, (int, float)):
-                        return float(val)
-                    else:
-                        return str(val)
-            except Exception:
-                return default
+
         
         # Prefer scene-level settings from the panel if available
         scene = context.scene
         if hasattr(scene, "procedural_finger_type"):
             finger_type_val = scene.procedural_finger_type
         else:
-            finger_type_val = get_property_value("finger_type", "INDEX")
+            finger_type_val = get_property_value(
+                "finger_type", FingerType.INDEX.value
+            )
         
         if hasattr(scene, "procedural_finger_curl_direction"):
             curl_direction_val = scene.procedural_finger_curl_direction
@@ -108,8 +88,10 @@ class PROCEDURAL_OT_create_finger(Operator):
 
         # Radius is now calculated from segment length (~1/2 of length)
         # Pass a default value but it will be overridden by calculation
+        finger_type_enum = ensure_finger_type(finger_type_val)
+
         finger = finger_utils.create_finger_geometry(
-            finger_type=finger_type_val,
+            finger_type=finger_type_enum,
             radius=0.007,  # Not used - calculated from segment length
             nail_size=nail_size_val,
             taper_factor=taper_val,
@@ -118,7 +100,7 @@ class PROCEDURAL_OT_create_finger(Operator):
         )
         
         # Store finger type as custom property on the object
-        finger["finger_type"] = str(finger_type_val)
+        finger["finger_type"] = finger_type_enum.value
         finger["curl_direction"] = str(curl_direction_val)
         
         bpy.context.view_layer.objects.active = finger
