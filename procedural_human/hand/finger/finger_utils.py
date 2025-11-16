@@ -4,25 +4,13 @@ Finger utility functions for Procedural Human Generator
 
 import bpy
 from mathutils import Vector
-from ... import utils as base_utils
+from procedural_human.utils import get_numeric_value, create_geometry_nodes_modifier
 from . import finger_nodes
 from . import finger_proportions as proportions
-from .finger_types import FingerType, ensure_finger_type
-
-
-def _get_numeric_value(value, default):
-    """Extract numeric value from Blender property or return as-is if already numeric"""
-    try:
-        if hasattr(value, "_default"):
-            return value._default
-        elif hasattr(value, "default"):
-            return value.default
-        elif str(type(value)) == "<class 'bpy.props._PropertyDeferred'>":
-            return default
-        else:
-            return float(value)
-    except Exception:
-        return default
+from procedural_human.hand.finger.finger_types import (
+    FingerType,
+    ensure_finger_type,
+)
 
 
 def realize_finger_geometry(finger_object):
@@ -131,10 +119,10 @@ def create_finger_geometry(
         create_animation: Whether to create keyframe animation
     """
     # Extract numeric values from Blender properties
-    radius = _get_numeric_value(radius, 0.007)
-    nail_size = _get_numeric_value(nail_size, 0.003)
-    taper_factor = _get_numeric_value(taper_factor, 0.15)
-    total_length = _get_numeric_value(total_length, 1.0)
+    radius = get_numeric_value(radius, 0.007)
+    nail_size = get_numeric_value(nail_size, 0.003)
+    taper_factor = get_numeric_value(taper_factor, 0.15)
+    total_length = get_numeric_value(total_length, 1.0)
 
     finger_enum = ensure_finger_type(finger_type)
 
@@ -153,9 +141,7 @@ def create_finger_geometry(
     bpy.context.collection.objects.link(finger)
 
     # Add Geometry Nodes modifier
-    modifier, node_group = base_utils.create_geometry_nodes_modifier(
-        finger, "FingerShape"
-    )
+    modifier, node_group = create_geometry_nodes_modifier(finger, "FingerShape")
 
     # Use advanced node setup
     try:

@@ -7,7 +7,7 @@ import bpy
 from . import operators
 from . import panels
 from . import menus
-from .hand.finger_segment.finger_types import (
+from .hand.finger.finger_types import (
     FingerType,
     enum_items as finger_type_items,
 )

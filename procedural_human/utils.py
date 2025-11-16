@@ -26,6 +26,23 @@ def get_property_value(prop_name, default):
     except Exception:
         return default
 
+
+
+def get_numeric_value(value, default):
+    """Extract numeric value from Blender property or return as-is if already numeric"""
+    try:
+        if hasattr(value, "_default"):
+            return value._default
+        elif hasattr(value, "default"):
+            return value.default
+        elif str(type(value)) == "<class 'bpy.props._PropertyDeferred'>":
+            return default
+        else:
+            return float(value)
+    except Exception:
+        return default
+
+
 def setup_node_group_interface(node_group):
     """Helper function to setup node group interface with geometry sockets"""
     # Check existing sockets

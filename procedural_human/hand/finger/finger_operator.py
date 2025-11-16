@@ -6,8 +6,12 @@ import bpy
 from bpy.types import Operator
 from bpy.props import FloatProperty, EnumProperty, BoolProperty
 from procedural_human.utils import get_property_value
-from . import finger_utils
-from .finger_types import FingerType, ensure_finger_type, enum_items as finger_type_items
+from procedural_human.hand.finger import finger_utils
+from procedural_human.hand.finger.finger_types import (
+    FingerType,
+    ensure_finger_type,
+    enum_items as finger_type_items,
+)
 
 
 class PROCEDURAL_OT_create_finger(Operator):

@@ -5,9 +5,15 @@ Geometry Node helpers for fingernail creation and attachment.
 import bpy
 
 from procedural_human.utils import setup_node_group_interface
-from ..finger_types import ensure_finger_type
-from ..finger_nail_proportions import get_fingernail_proportions
-from procedural_human.hand.finger_segment.finger_types import FingerSegmentProperties
+from procedural_human.hand.finger.finger_nail.finger_nail_proportions import (
+    get_fingernail_proportions,
+)
+from procedural_human.hand.finger.finger_segment.finger_segment_properties import (
+    FingerSegmentProperties,
+)
+from procedural_human.hand.finger.finger_types import (
+    ensure_finger_type,
+)
 
 DEFAULT_NAIL_SIZE = 0.003
 OFFSET_RATIO = 0.1
@@ -29,7 +35,9 @@ def create_fingernail_node_group(
 
     # Add proportion sockets so they are visible in the node interface.
     radius_socket = nail_group.interface.new_socket(
-        name=FingerSegmentProperties.SEGMENT_RADIUS.value, in_out="INPUT", socket_type="NodeSocketFloat"
+        name=FingerSegmentProperties.SEGMENT_RADIUS.value,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
     )
     radius_socket.default_value = distal_seg_radius
 
@@ -94,7 +102,10 @@ def create_fingernail_node_group(
     width_value.label = "Width = Radius * Ratio"
     width_value.location = (-700, -500)
     width_value.operation = "MULTIPLY"
-    nail_group.links.new(input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value], width_value.inputs[0])
+    nail_group.links.new(
+        input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
+        width_value.inputs[0],
+    )
     nail_group.links.new(input_node.outputs["Nail Width Ratio"], width_value.inputs[1])
 
     height_value = nail_group.nodes.new("ShaderNodeMath")
@@ -157,7 +168,10 @@ def create_fingernail_node_group(
     surface_offset.location = (-300, -120)
     surface_offset.operation = "MULTIPLY"
     surface_offset.inputs[1].default_value = OFFSET_RATIO
-    nail_group.links.new(input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value], surface_offset.inputs[0])
+    nail_group.links.new(
+        input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
+        surface_offset.inputs[0],
+    )
 
     math_offset_curl = nail_group.nodes.new("ShaderNodeMath")
     math_offset_curl.label = "Offset From Surface"
@@ -250,7 +264,9 @@ def attach_fingernail_to_distal_segment(
 
     # Ensure exposed sockets reflect the proportions on this instance.
     if FingerSegmentProperties.SEGMENT_RADIUS.value in nail_instance.inputs:
-        nail_instance.inputs[FingerSegmentProperties.SEGMENT_RADIUS.value].default_value = distal_seg_radius
+        nail_instance.inputs[
+            FingerSegmentProperties.SEGMENT_RADIUS.value
+        ].default_value = distal_seg_radius
     if "Nail Width Ratio" in nail_instance.inputs:
         nail_instance.inputs["Nail Width Ratio"].default_value = width_ratio
     if "Nail Height Ratio" in nail_instance.inputs:

@@ -2,7 +2,7 @@
 Fingernail proportion helpers.
 """
 
-from .finger_types import FingerType, ensure_finger_type
+from procedural_human.hand.finger.finger_types import FingerType, ensure_finger_type
 
 
 # Ratios are relative to the distal segment radius (width) or to that width.

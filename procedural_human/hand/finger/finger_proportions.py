@@ -2,7 +2,10 @@
 Finger proportions data from anatomical measurements.
 """
 
-from .finger_types import FingerType, ensure_finger_type
+from procedural_human.hand.finger.finger_types import (
+    FingerType,
+    ensure_finger_type,
+)
 
 # Finger proportions in mm (from Proportions.md)
 FINGER_PROPORTIONS = {
