@@ -29,6 +29,7 @@ def create_fingernail_node_group(
 ):
     """
     Create a reusable node group for a fingernail.
+    Now uses segment length to calculate position instead of bounding box.
     """
     nail_group = bpy.data.node_groups.new(name, "GeometryNodeTree")
     setup_node_group_interface(nail_group)
@@ -40,6 +41,7 @@ def create_fingernail_node_group(
         socket_type="NodeSocketFloat",
     )
     radius_socket.default_value = distal_seg_radius
+    
 
     width_socket = nail_group.interface.new_socket(
         name="Nail Width Ratio", in_out="INPUT", socket_type="NodeSocketFloat"
@@ -51,7 +53,7 @@ def create_fingernail_node_group(
     )
     height_socket.default_value = nail_height_ratio
 
-    # Input/Output nodes (expects distal segment geometry as input)
+    # Input/Output nodes (expects chained finger geometry as input)
     input_node = nail_group.nodes.new("NodeGroupInput")
     input_node.label = "Inputs"
     input_node.location = (-900, 0)
@@ -60,14 +62,14 @@ def create_fingernail_node_group(
     output_node.label = "Output"
     output_node.location = (1000, 0)
 
-    # Get bounding box of distal segment
+    # Get bounding box to find the Z endpoint (total finger length)
     bounding_box = nail_group.nodes.new("GeometryNodeBoundBox")
-    bounding_box.label = "Distal Bounds"
-    bounding_box.location = (-700, 0)
+    bounding_box.label = "Find Finger Endpoint"
+    bounding_box.location = (-700, 100)
 
     separate_bbox_max = nail_group.nodes.new("ShaderNodeSeparateXYZ")
-    separate_bbox_max.label = "Get Max XYZ"
-    separate_bbox_max.location = (-500, 0)
+    separate_bbox_max.label = "Get Endpoint Z"
+    separate_bbox_max.location = (-500, 100)
 
     # Create nail sphere
     nail_sphere = nail_group.nodes.new("GeometryNodeMeshUVSphere")
@@ -142,7 +144,7 @@ def create_fingernail_node_group(
     nail_group.links.new(combine_scale.outputs["Vector"], flatten_nail.inputs["Scale"])
     nail_group.links.new(nail_sphere.outputs["Mesh"], flatten_nail.inputs["Geometry"])
 
-    # Calculate nail position (at tip of distal segment, centered, on opposite side of curl)
+    # Calculate nail position (at tip of finger, centered, offset by distal radius)
     length_max_output = (
         separate_bbox_max.outputs["X"]
         if length_axis == 0
@@ -153,30 +155,16 @@ def create_fingernail_node_group(
         )
     )
 
-    curl_max_output = (
-        separate_bbox_max.outputs["X"]
-        if curl_axis == 0
-        else (
-            separate_bbox_max.outputs["Y"]
-            if curl_axis == 1
-            else separate_bbox_max.outputs["Z"]
-        )
-    )
-
+    # Calculate curl position: use distal segment radius directly for positioning
     surface_offset = nail_group.nodes.new("ShaderNodeMath")
     surface_offset.label = "Surface Offset"
     surface_offset.location = (-300, -120)
     surface_offset.operation = "MULTIPLY"
-    surface_offset.inputs[1].default_value = OFFSET_RATIO
+    surface_offset.inputs[1].default_value = (1.0 + OFFSET_RATIO)  # Slightly outside the radius
     nail_group.links.new(
         input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
         surface_offset.inputs[0],
     )
-
-    math_offset_curl = nail_group.nodes.new("ShaderNodeMath")
-    math_offset_curl.label = "Offset From Surface"
-    math_offset_curl.location = (-100, -120)
-    math_offset_curl.operation = "ADD"
 
     combine_pos = nail_group.nodes.new("ShaderNodeCombineXYZ")
     combine_pos.label = "Nail Position"
@@ -190,9 +178,7 @@ def create_fingernail_node_group(
 
     nail_group.links.new(length_max_output, pos_axis_inputs[length_axis])
     pos_axis_inputs[side_axis].default_value = 0.0
-    nail_group.links.new(curl_max_output, math_offset_curl.inputs[0])
-    nail_group.links.new(surface_offset.outputs["Value"], math_offset_curl.inputs[1])
-    nail_group.links.new(math_offset_curl.outputs["Value"], pos_axis_inputs[curl_axis])
+    nail_group.links.new(surface_offset.outputs["Value"], pos_axis_inputs[curl_axis])
 
     # Position nail
     position_nail = nail_group.nodes.new("GeometryNodeTransform")

@@ -116,13 +116,13 @@ def create_finger_nodes(
             FingerSegmentProperties.SEGMENT_RADIUS.value
         ].default_value = seg_radius
 
-        segment_node_instances.append((seg_name, segment_instance, seg_idx, seg_radius))
+        segment_node_instances.append((seg_name, segment_instance, seg_idx, seg_radius, seg_length))
         
         # Update previous output for next iteration
         previous_segment_output = segment_instance.outputs["Geometry"]
 
     # Attach fingernail to distal segment via helper in the fingernail module
-    distal_seg_name, distal_node, distal_idx, distal_seg_radius = (
+    distal_seg_name, distal_node, distal_idx, distal_seg_radius, distal_seg_length = (
         segment_node_instances[-1]
     )
     nail_instance = attach_fingernail_to_distal_segment(
