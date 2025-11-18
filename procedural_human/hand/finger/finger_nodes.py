@@ -3,6 +3,7 @@ Finger Geometry Nodes setup for Procedural Human Generator
 """
 
 import bpy
+from procedural_human.hand.finger.finger_segment.finger_segment_profiles import SegmentType
 from procedural_human.hand.finger.finger_segment.finger_segment_properties import (
     FingerSegmentProperties,
 )
@@ -76,7 +77,7 @@ def create_finger_nodes(
     starting_point.inputs["Start"].default_value = (0.0, 0.0, 0.0)
     starting_point.inputs["End"].default_value = (0.0, 0.0, 0.0)  # Zero-length line at origin
 
-    segment_names = ["Proximal", "Middle", "Distal"]
+    segment_types = [SegmentType.PROXIMAL, SegmentType.MIDDLE, SegmentType.DISTAL]
     segment_node_instances = []
     previous_segment_output = starting_point.outputs["Curve"]
 
@@ -89,8 +90,8 @@ def create_finger_nodes(
             seg_name = "Proximal" if seg_idx == 0 else "Distal"
         else:
             seg_name = (
-                segment_names[seg_idx]
-                if seg_idx < len(segment_names)
+                segment_types[seg_idx]
+                if seg_idx < len(segment_types)
                 else f"Segment {seg_idx}"
             )
 
@@ -98,6 +99,7 @@ def create_finger_nodes(
             f"{finger_type.value}_{seg_name}_Segment_Group",
             seg_length,
             seg_radius,
+            segment_type=segment_types[seg_idx],
         )
 
         segment_instance = node_group.nodes.new("GeometryNodeGroup")
