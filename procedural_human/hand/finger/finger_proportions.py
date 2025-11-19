@@ -7,31 +7,31 @@ from procedural_human.hand.finger.finger_types import (
     ensure_finger_type,
 )
 
-# Finger proportions in mm (from Proportions.md)
+
 FINGER_PROPORTIONS = {
     FingerType.THUMB: {
         "segments": 2,
-        "lengths_mm": [46.22, 21.67],  # Proximal, Distal
+        "lengths_mm": [46.22, 21.67],
         "names": ["Proximal", "Distal"],
     },
     FingerType.INDEX: {
         "segments": 3,
-        "lengths_mm": [39.78, 22.38, 15.82],  # Proximal, Middle, Distal
+        "lengths_mm": [39.78, 22.38, 15.82],
         "names": ["Proximal", "Middle", "Distal"],
     },
     FingerType.MIDDLE: {
         "segments": 3,
-        "lengths_mm": [44.63, 26.33, 17.40],  # Proximal, Middle, Distal
+        "lengths_mm": [44.63, 26.33, 17.40],
         "names": ["Proximal", "Middle", "Distal"],
     },
     FingerType.RING: {
         "segments": 3,
-        "lengths_mm": [41.37, 25.65, 17.30],  # Proximal, Middle, Distal
+        "lengths_mm": [41.37, 25.65, 17.30],
         "names": ["Proximal", "Middle", "Distal"],
     },
     FingerType.LITTLE: {
         "segments": 3,
-        "lengths_mm": [32.74, 18.11, 15.96],  # Proximal, Middle, Distal
+        "lengths_mm": [32.74, 18.11, 15.96],
         "names": ["Proximal", "Middle", "Distal"],
     },
 }

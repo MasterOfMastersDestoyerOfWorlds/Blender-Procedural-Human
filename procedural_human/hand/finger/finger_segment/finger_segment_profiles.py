@@ -42,8 +42,8 @@ DEFAULT_X_PROFILE_PROXIMAL = {
         },
         {
             "co": (0.0, 0.0, 0.5),
-            "handle_left": (-0.15, 0.0, 0.0),  # Extended handle for curvature
-            "handle_right": (0.15, 0.0, 0.0),   # Extended handle for curvature
+            "handle_left": (0.0, 0.0, -0.2),
+            "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
             "radius": 1.05,  # Slight bulge in middle
@@ -71,8 +71,8 @@ DEFAULT_Y_PROFILE_PROXIMAL = {
         },
         {
             "co": (0.0, 0.0, 0.5),
-            "handle_left": (0.0, -0.15, 0.0),  # Extended handle for curvature
-            "handle_right": (0.0, 0.15, 0.0),   # Extended handle for curvature
+            "handle_left": (0.0, 0.0, -0.2),
+            "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
             "radius": 1.05,  # Slight bulge in middle
@@ -100,8 +100,8 @@ DEFAULT_X_PROFILE_MIDDLE = {
         },
         {
             "co": (0.0, 0.0, 0.5),
-            "handle_left": (-0.15, 0.0, 0.0),  # Extended handle for curvature
-            "handle_right": (0.15, 0.0, 0.0),   # Extended handle for curvature
+            "handle_left": (0.0, 0.0, -0.2),
+            "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
             "radius": 1.0,  # Slight bulge in middle
@@ -129,8 +129,8 @@ DEFAULT_Y_PROFILE_MIDDLE = {
         },
         {
             "co": (0.0, 0.0, 0.5),
-            "handle_left": (0.0, -0.15, 0.0),  # Extended handle for curvature
-            "handle_right": (0.0, 0.15, 0.0),   # Extended handle for curvature
+            "handle_left": (0.0, 0.0, -0.2),
+            "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
             "radius": 1.0,  # Slight bulge in middle
@@ -158,8 +158,8 @@ DEFAULT_X_PROFILE_DISTAL = {
         },
         {
             "co": (0.0, 0.0, 0.5),
-            "handle_left": (-0.12, 0.0, 0.0),  # Extended handle for curvature
-            "handle_right": (0.12, 0.0, 0.0),   # Extended handle for curvature
+            "handle_left": (0.0, 0.0, -0.15),
+            "handle_right": (0.0, 0.0, 0.15),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
             "radius": 0.92,  # Slight bulge in middle
@@ -187,8 +187,8 @@ DEFAULT_Y_PROFILE_DISTAL = {
         },
         {
             "co": (0.0, 0.0, 0.5),
-            "handle_left": (0.0, -0.12, 0.0),  # Extended handle for curvature
-            "handle_right": (0.0, 0.12, 0.0),   # Extended handle for curvature
+            "handle_left": (0.0, 0.0, -0.15),
+            "handle_right": (0.0, 0.0, 0.15),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
             "radius": 0.92,  # Slight bulge in middle

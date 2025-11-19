@@ -3,7 +3,11 @@ Finger Geometry Nodes setup for Procedural Human Generator
 """
 
 import bpy
-from procedural_human.hand.finger.finger_segment.finger_segment_profiles import SegmentType
+from procedural_human.hand.finger.finger_segment.finger_segment_profiles import (
+    SegmentType,
+    ProfileType,
+    get_profile_data,
+)
 from procedural_human.hand.finger.finger_segment.finger_segment_properties import (
     FingerSegmentProperties,
 )
@@ -55,15 +59,6 @@ def create_finger_nodes(
     input_node.location = (-1000, 0)
     output_node.location = (1200, 0)
 
-    # Determine axis mapping based on curl direction
-    # Default: Z is up (finger length), Y is curl direction (forward/back)
-    if curl_direction == "X":
-        length_axis = 2  # Z
-    elif curl_direction == "Y":
-        length_axis = 2  # Z
-    else:  # Z
-        length_axis = 1  # Y
-
     # Calculate segment lengths if not provided
     if segment_lengths is None:
         total_length = 1.0
@@ -78,28 +73,39 @@ def create_finger_nodes(
     starting_point.inputs["End"].default_value = (0.0, 0.0, 0.0)  # Zero-length line at origin
 
     segment_types = [SegmentType.PROXIMAL, SegmentType.MIDDLE, SegmentType.DISTAL]
+    segment_profile_meta = {}
+    for seg_type in SegmentType:
+        x_data = get_profile_data(seg_type, ProfileType.X_PROFILE)
+        y_data = get_profile_data(seg_type, ProfileType.Y_PROFILE)
+        start_avg = (x_data["points"][0]["radius"] + y_data["points"][0]["radius"]) * 0.5
+        end_avg = (x_data["points"][-1]["radius"] + y_data["points"][-1]["radius"]) * 0.5
+        segment_profile_meta[seg_type] = {
+            "start": start_avg if start_avg != 0 else 1.0,
+            "end": end_avg,
+        }
+    
     segment_node_instances = []
     previous_segment_output = starting_point.outputs["Curve"]
+    next_segment_radius = None
 
     for seg_idx in range(num_segments):
         seg_length = segment_lengths[seg_idx]
         base_radius = seg_length * 0.5
         seg_radius = base_radius * (1.0 - seg_idx * taper_factor)
-
         if num_segments == 2:
-            seg_name = "Proximal" if seg_idx == 0 else "Distal"
+            segment_enum = SegmentType.PROXIMAL if seg_idx == 0 else SegmentType.DISTAL
         else:
-            seg_name = (
-                segment_types[seg_idx]
-                if seg_idx < len(segment_types)
-                else f"Segment {seg_idx}"
-            )
+            segment_enum = segment_types[seg_idx] if seg_idx < len(segment_types) else segment_types[-1]
+        if isinstance(segment_enum, SegmentType):
+            seg_name = segment_enum.value.capitalize()
+        else:
+            seg_name = str(segment_enum)
 
         segment_group = create_finger_segment_node_group(
             f"{finger_type.value}_{seg_name}_Segment_Group",
             seg_length,
             seg_radius,
-            segment_type=segment_types[seg_idx],
+            segment_type=segment_enum,
         )
 
         segment_instance = node_group.nodes.new("GeometryNodeGroup")
@@ -111,14 +117,20 @@ def create_finger_nodes(
         node_group.links.new(
             previous_segment_output, segment_instance.inputs["Geometry"]
         )
-        segment_instance.inputs[
-            FingerSegmentProperties.SEGMENT_LENGTH.value
-        ].default_value = seg_length
-        segment_instance.inputs[
-            FingerSegmentProperties.SEGMENT_RADIUS.value
-        ].default_value = seg_radius
+        segment_instance.inputs[FingerSegmentProperties.SEGMENT_LENGTH.value].default_value = seg_length
+        if next_segment_radius is None:
+            segment_radius_scale = seg_radius
+        else:
+            segment_radius_scale = next_segment_radius
+        segment_instance.inputs[FingerSegmentProperties.SEGMENT_RADIUS.value].default_value = segment_radius_scale
 
-        segment_node_instances.append((seg_name, segment_instance, seg_idx, seg_radius, seg_length))
+        profile_ratios = segment_profile_meta[segment_enum]
+        continuity_ratio = (
+            profile_ratios["end"] / profile_ratios["start"] if profile_ratios["start"] != 0 else 1.0
+        )
+        next_segment_radius = segment_radius_scale * continuity_ratio
+
+        segment_node_instances.append((seg_name, segment_instance, seg_idx, segment_radius_scale, seg_length))
         
         # Update previous output for next iteration
         previous_segment_output = segment_instance.outputs["Geometry"]

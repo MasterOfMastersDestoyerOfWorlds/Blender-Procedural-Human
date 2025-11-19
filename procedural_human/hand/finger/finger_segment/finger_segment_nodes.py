@@ -98,14 +98,14 @@ def create_finger_segment_node_group(
     if x_profile_name in bpy.data.objects:
         x_profile_obj = bpy.data.objects[x_profile_name]
     else:
-        x_profile_obj = get_default_profile_curve(segment_type, ProfileType.X_PROFILE, segment_length, seg_radius)
+        x_profile_obj = get_default_profile_curve(segment_type, ProfileType.X_PROFILE, segment_length, 1.0)
         bpy.context.scene.collection.objects.link(x_profile_obj)
     
     y_profile_name = f"{segment_type.value}_{ProfileType.Y_PROFILE.value}"
     if y_profile_name in bpy.data.objects:
         y_profile_obj = bpy.data.objects[y_profile_name]
     else:
-        y_profile_obj = get_default_profile_curve(segment_type, ProfileType.Y_PROFILE, segment_length, seg_radius)
+        y_profile_obj = get_default_profile_curve(segment_type, ProfileType.Y_PROFILE, segment_length, 1.0)
         bpy.context.scene.collection.objects.link(y_profile_obj)
     
     x_profile_info = segment_group.nodes.new("GeometryNodeObjectInfo")
@@ -215,18 +215,44 @@ def create_finger_segment_node_group(
     sin_theta.operation = 'SINE'
     segment_group.links.new(theta_node.outputs["Value"], sin_theta.inputs[0])
     
+    x_radius_abs = segment_group.nodes.new("ShaderNodeMath")
+    x_radius_abs.label = "X Radius Abs"
+    x_radius_abs.location = (1200, -200)
+    x_radius_abs.operation = 'ABSOLUTE'
+    segment_group.links.new(sample_x.outputs["Value"], x_radius_abs.inputs[0])
+    
+    y_radius_abs = segment_group.nodes.new("ShaderNodeMath")
+    y_radius_abs.label = "Y Radius Abs"
+    y_radius_abs.location = (1200, -380)
+    y_radius_abs.operation = 'ABSOLUTE'
+    segment_group.links.new(sample_y.outputs["Value"], y_radius_abs.inputs[0])
+    
+    x_radius_scale = segment_group.nodes.new("ShaderNodeMath")
+    x_radius_scale.label = "Scale X Radius"
+    x_radius_scale.location = (1400, -160)
+    x_radius_scale.operation = 'MULTIPLY'
+    segment_group.links.new(x_radius_abs.outputs["Value"], x_radius_scale.inputs[0])
+    segment_group.links.new(input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value], x_radius_scale.inputs[1])
+    
+    y_radius_scale = segment_group.nodes.new("ShaderNodeMath")
+    y_radius_scale.label = "Scale Y Radius"
+    y_radius_scale.location = (1400, -340)
+    y_radius_scale.operation = 'MULTIPLY'
+    segment_group.links.new(y_radius_abs.outputs["Value"], y_radius_scale.inputs[0])
+    segment_group.links.new(input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value], y_radius_scale.inputs[1])
+    
     x_offset = segment_group.nodes.new("ShaderNodeMath")
     x_offset.label = "X Offset"
-    x_offset.location = (1600, -120)
+    x_offset.location = (1800, -120)
     x_offset.operation = 'MULTIPLY'
-    segment_group.links.new(sample_x.outputs["Value"], x_offset.inputs[0])
+    segment_group.links.new(x_radius_scale.outputs["Value"], x_offset.inputs[0])
     segment_group.links.new(cos_theta.outputs["Value"], x_offset.inputs[1])
     
     y_offset = segment_group.nodes.new("ShaderNodeMath")
     y_offset.label = "Y Offset"
-    y_offset.location = (1600, -300)
+    y_offset.location = (1800, -300)
     y_offset.operation = 'MULTIPLY'
-    segment_group.links.new(sample_y.outputs["Value"], y_offset.inputs[0])
+    segment_group.links.new(y_radius_scale.outputs["Value"], y_offset.inputs[0])
     segment_group.links.new(sin_theta.outputs["Value"], y_offset.inputs[1])
     
     z_offset = segment_group.nodes.new("ShaderNodeMath")

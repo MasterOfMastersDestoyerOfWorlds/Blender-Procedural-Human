@@ -89,6 +89,10 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 - [x] Implement automatic weight painting for finger segments with smooth joint falloff
 - [x] Setup Inverse Kinematics chain for finger with IK target at tip
 - [x] Create keyframe animation with finger curl (straight to curled state)
+- [x] Drive finger curl animation by translating the IK target object
+- [x] Align finger segment mesh radii with both X and Y profile curves
+- [x] Ensure neighboring finger segments inherit final radii for seamless joints
+- [x] Provide a Blender command palette script to reset the scene and create a procedural finger
 
 ### 4.3 Feet and Toes
 - [ ] Create base foot mesh (main body of foot)

@@ -46,7 +46,7 @@ def register_scene_properties():
         description="Axis along which the finger curls",
     )
     
-    bpy.types.Scene.procedural_finger_create_animation = bpy.props.BoolProperty(
+    bpy.types.Scene.procedural_create_animation_finger = bpy.props.BoolProperty(
         name="Create Animation",
         default=True,
         description="Create keyframe animation for finger curl",
@@ -57,7 +57,7 @@ def unregister_scene_properties():
     """Unregister scene properties"""
     del bpy.types.Scene.procedural_finger_type
     del bpy.types.Scene.procedural_finger_curl_direction
-    del bpy.types.Scene.procedural_finger_create_animation
+    del bpy.types.Scene.procedural_create_animation_finger
 
 
 # Registration

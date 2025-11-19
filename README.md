@@ -122,7 +122,6 @@ Fingers are generated using:
 Blender-Procedural-Human/
 ├── procedural_human/              # Main addon directory
 │   ├── __init__.py               # Addon entry point
-│   ├── advanced_nodes.py         # Advanced Geometry Nodes functions
 │   ├── operators.py              # Operator classes
 │   ├── panels.py                 # UI Panel classes
 │   ├── menus.py                  # Menu classes
@@ -179,7 +178,6 @@ This addon is configured for development with the Blender VS Code Extension:
 1. **Node Errors**: Ensure Blender version 3.0+ is used
 2. **Import Errors**: Check that all files are in the correct directory structure
 3. **Performance Issues**: Reduce subdivision levels in node groups
-4. **Missing Features**: Advanced nodes require the `advanced_nodes.py` file
 5. **Node Type Errors**: Fixed compatibility issues with Blender 4.5+ by using `GeometryNodeTree` instead of `'GEOMETRY'`
 6. **Float Curve Errors**: Replaced `GeometryNodeFloatCurve` with `ShaderNodeMapRange` for better compatibility
 7. **Geometry Socket Errors**: Fixed node group interface access using `node_group.interface.new_socket()` for Blender 4.5+ compatibility
