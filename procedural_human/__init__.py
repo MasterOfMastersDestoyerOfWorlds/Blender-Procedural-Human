@@ -7,11 +7,12 @@ import bpy
 from . import operators
 from . import panels
 from . import menus
-from .hand.finger.finger_types import (
+from procedural_human.hand.finger.finger_types import (
     FingerType,
+    
     enum_items as finger_type_items,
 )
-
+import procedural_human.hand.finger as finger
 bl_info = {
     "name": "Procedural Human Generator",
     "author": "Procedural Human Team",
@@ -60,12 +61,12 @@ def unregister_scene_properties():
     del bpy.types.Scene.procedural_create_animation_finger
 
 
-# Registration
 def register():
     register_scene_properties()
     operators.register()
     panels.register()
     menus.register()
+    finger.register()
 
 
 def unregister():
@@ -73,6 +74,7 @@ def unregister():
     panels.unregister()
     operators.unregister()
     unregister_scene_properties()
+    finger.unregister()
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@ from . import finger_animation
 from . import finger_types
 from . import finger_segment
 from . import finger_nail
+import bpy
+from bpy.props import PointerProperty
 
 __all__ = [
     "finger_utils",
@@ -22,3 +24,18 @@ __all__ = [
     "finger_segment",
     "finger_nail",
 ]
+from .finger import FingerDataProps
+
+classes = (FingerDataProps,)
+
+
+def register():
+    for cls in classes:
+        bpy.utils.register_class(cls)
+    bpy.types.Object.finger_data = PointerProperty(type=FingerDataProps)
+
+
+def unregister():
+    del bpy.types.Object.finger_data
+    for cls in classes:
+        bpy.utils.unregister_class(cls)

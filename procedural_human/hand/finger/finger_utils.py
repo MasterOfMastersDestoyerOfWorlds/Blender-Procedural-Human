@@ -14,7 +14,7 @@ from procedural_human.hand.finger.finger_types import (
 from procedural_human.hand.finger.finger import FingerData
 
 
-def realize_finger_geometry(finger_object):
+def realize_finger_geometry(finger: FingerData):
     """
     Apply Geometry Nodes modifier to finger object to get final mesh
 
@@ -26,7 +26,7 @@ def realize_finger_geometry(finger_object):
     """
 
     modifier = None
-    for mod in finger_object.modifiers:
+    for mod in finger.blend_obj.modifiers:
         if mod.type == "NODES":
             modifier = mod
             break
@@ -34,75 +34,40 @@ def realize_finger_geometry(finger_object):
     if not modifier:
         raise RuntimeError("No Geometry Nodes modifier found on finger object")
 
-    bpy.context.view_layer.objects.active = finger_object
+    bpy.context.view_layer.objects.active = finger.blend_obj
     bpy.context.view_layer.update()
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    finger_eval = finger_object.evaluated_get(depsgraph)
+    finger_eval = finger.blend_obj.evaluated_get(depsgraph)
 
     if not finger_eval.data or len(finger_eval.data.vertices) == 0:
         raise RuntimeError("Geometry Nodes modifier did not produce any geometry")
 
-    finger_object.data = finger_eval.data.copy()
+    finger.blend_obj.data = finger_eval.data.copy()
 
-    finger_object.modifiers.remove(modifier)
+    finger.blend_obj.modifiers.remove(modifier)
 
     bpy.context.view_layer.update()
-    return finger_object
+    finger.blend_obj.finger_data.is_realized = True
+    return finger.blend_obj
 
 
 def create_finger_geometry(
-    finger_type=FingerType.INDEX,
-    radius=0.007,
-    nail_size=0.003,
-    taper_factor=0.15,
-    curl_direction="Y",
-    total_length=1.0,
+    finger: FingerData,
 ):
     """
     Create a standalone finger with variable segments and fingernail using Geometry Nodes
 
     Args:
-        finger_type: One of "THUMB", "INDEX", "MIDDLE", "RING", "LITTLE"
-        radius: Base finger radius
-        nail_size: Fingernail size
-        taper_factor: How much radius decreases per segment
-        curl_direction: Curl direction axis ("X", "Y", or "Z")
-        total_length: Total finger length in blender units (default 1.0)
-        create_armature: Whether to create armature and bones
-        create_animation: Whether to create keyframe animation
+        finger: Finger data
     """
 
-    radius = get_numeric_value(radius, 0.007)
-    nail_size = get_numeric_value(nail_size, 0.003)
-    taper_factor = get_numeric_value(taper_factor, 0.15)
-    total_length = get_numeric_value(total_length, 1.0)
-
-    finger_enum = ensure_finger_type(finger_type)
-
-    finger_data = proportions.get_finger_proportions(finger_enum)
-    num_segments = finger_data["segments"]
-    segment_lengths = proportions.get_segment_lengths_blender_units(
-        finger_enum, total_length
-    )
-
-    mesh = bpy.data.meshes.new("FingerMesh")
-    mesh.from_pydata([(0, 0, 0)], [], [])
-    finger = bpy.data.objects.new("Finger", mesh)
-    bpy.context.collection.objects.link(finger)
-
-    modifier, node_group = create_geometry_nodes_modifier(finger, "FingerShape")
+    modifier, node_group = create_geometry_nodes_modifier(finger.blend_obj, "FingerShape")
 
     try:
         finger_nodes.create_finger_nodes(
             node_group,
-            num_segments=num_segments,
-            segment_lengths=segment_lengths,
-            radius=radius,
-            nail_size=nail_size,
-            taper_factor=taper_factor,
-            curl_direction=curl_direction,
-            finger_type=finger_enum,
+            finger,
         )
 
         print(f"Node group created with {len(node_group.nodes)} nodes")
@@ -125,17 +90,17 @@ def create_finger_geometry(
         traceback.print_exc()
         raise RuntimeError(f"Failed to create finger Geometry Nodes: {e}")
 
-    bpy.context.view_layer.objects.active = finger
+    bpy.context.view_layer.objects.active = finger.blend_obj
     bpy.context.view_layer.update()
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    finger_eval = finger.evaluated_get(depsgraph)
+    finger_eval = finger.blend_obj.evaluated_get(depsgraph)
 
     if not finger_eval.data:
 
         bpy.context.view_layer.update()
         depsgraph = bpy.context.evaluated_depsgraph_get()
-        finger_eval = finger.evaluated_get(depsgraph)
+        finger_eval = finger.blend_obj.evaluated_get(depsgraph)
 
         if not finger_eval.data:
 
@@ -155,9 +120,9 @@ def create_finger_geometry(
         finger_eval.matrix_world @ Vector(corner) for corner in finger_eval.bound_box
     ]
 
-    if curl_direction == "Y":
+    if finger.curl_direction == "Y":
         axis_idx = 2
-    elif curl_direction == "X":
+    elif finger.curl_direction == "X":
         axis_idx = 2
     else:
         axis_idx = 1
@@ -168,7 +133,7 @@ def create_finger_geometry(
     )
     if current_length > 0:
         scale_factor = 1.0 / current_length
-        finger.scale = (scale_factor, scale_factor, scale_factor)
+        finger.blend_obj.scale = (scale_factor, scale_factor, scale_factor)
 
     bpy.context.view_layer.update()
 
@@ -191,7 +156,7 @@ def create_finger_armature(finger: FingerData):
     bpy.context.collection.objects.link(armature)
 
     armature.parent = finger.blend_obj
-    armature.location = finger.location
+    armature.location = finger.blend_obj.location
 
     bpy.context.view_layer.objects.active = armature
     bpy.ops.object.mode_set(mode="EDIT")
@@ -239,9 +204,10 @@ def create_finger_armature(finger: FingerData):
 
     bpy.ops.object.mode_set(mode="OBJECT")
 
-    armature_mod = finger.modifiers.new(name="Armature", type="ARMATURE")
+    armature_mod = finger.blend_obj.modifiers.new(name="Armature", type="ARMATURE")
     armature_mod.object = armature
 
+    finger.blend_obj.finger_data.has_armature = True
     return armature
 
 
@@ -318,6 +284,7 @@ def paint_finger_weights(finger: FingerData):
             if weight > 0.001:
                 vertex_groups[seg_idx].add([vert_idx], weight, "REPLACE")
 
+    finger.blend_obj.finger_data.has_weights = True
 
 def setup_finger_ik(armature, finger: FingerData):
     """
@@ -352,5 +319,5 @@ def setup_finger_ik(armature, finger: FingerData):
     if ik_target:
         armature["finger_ik_target"] = ik_target.name
     armature["finger_segment_lengths"] = list(finger.segment_lengths)
-
+    finger.blend_obj.finger_data.has_ik = True
     return ik_target

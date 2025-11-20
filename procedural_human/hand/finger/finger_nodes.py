@@ -3,6 +3,7 @@ Finger Geometry Nodes setup for Procedural Human Generator
 """
 
 import bpy
+from procedural_human.hand.finger.finger import FingerData
 from procedural_human.hand.finger.finger_segment.finger_segment_profiles import (
     SegmentType,
     ProfileType,
@@ -26,13 +27,7 @@ from procedural_human.utils import setup_node_group_interface
 
 def create_finger_nodes(
     node_group,
-    num_segments=3,
-    segment_lengths=None,
-    radius=0.007,
-    nail_size=0.003,
-    taper_factor=0.15,
-    curl_direction="Y",
-    finger_type=FingerType.INDEX,
+    finger: FingerData,
 ):
     """
     Create complete finger geometry with variable segments and fingernail
@@ -47,7 +42,7 @@ def create_finger_nodes(
         curl_direction: Curl direction axis ("X", "Y", or "Z")
     """
     setup_node_group_interface(node_group)
-    finger_type = ensure_finger_type(finger_type)
+    finger_type = ensure_finger_type(finger.finger_type)
 
     # Input/Output nodes
     input_node = node_group.nodes.new("NodeGroupInput")
@@ -60,9 +55,8 @@ def create_finger_nodes(
     output_node.location = (1200, 0)
 
     # Calculate segment lengths if not provided
-    if segment_lengths is None:
-        total_length = 1.0
-        segment_lengths = [total_length / num_segments] * num_segments
+    if finger.segment_lengths is None:
+        segment_lengths = [finger.total_length / finger.num_segments] * finger.num_segments
 
     # Create starting axis point at origin (Z=0)
     # This will be the input for the first segment
@@ -88,11 +82,11 @@ def create_finger_nodes(
     previous_segment_output = starting_point.outputs["Curve"]
     next_segment_radius = None
 
-    for seg_idx in range(num_segments):
-        seg_length = segment_lengths[seg_idx]
+    for seg_idx in range(finger.num_segments):
+        seg_length = finger.segment_lengths[seg_idx]
         base_radius = seg_length * 0.5
-        seg_radius = base_radius * (1.0 - seg_idx * taper_factor)
-        if num_segments == 2:
+        seg_radius = base_radius * (1.0 - seg_idx * finger.taper_factor)
+        if finger.num_segments == 2:
             segment_enum = SegmentType.PROXIMAL if seg_idx == 0 else SegmentType.DISTAL
         else:
             segment_enum = segment_types[seg_idx] if seg_idx < len(segment_types) else segment_types[-1]
@@ -142,10 +136,10 @@ def create_finger_nodes(
     nail_instance = attach_fingernail_to_distal_segment(
         node_group=node_group,
         distal_transform_node=distal_node,
-        curl_direction=curl_direction,
+        curl_direction=finger.curl_direction,
         distal_seg_radius=distal_seg_radius,
         finger_type=finger_type,
-        nail_size=nail_size,
+        nail_size=finger.nail_size,
     )
 
     # Since segments are chained, the nail_instance already contains all geometry
