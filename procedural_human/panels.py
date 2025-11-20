@@ -5,7 +5,7 @@ UI Panel classes for Procedural Human Generator
 import bpy
 from bpy.types import Panel
 
-from .hand.finger.finger_operator import finger_panel
+from .hand.finger.finger_panel import finger_panel
 
 class PROCEDURAL_PT_main_panel(Panel):
     bl_label = "Procedural Human"
