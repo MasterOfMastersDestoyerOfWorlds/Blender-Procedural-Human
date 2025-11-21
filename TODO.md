@@ -93,6 +93,7 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 - [x] Align finger segment mesh radii with both X and Y profile curves
 - [x] Ensure neighboring finger segments inherit final radii for seamless joints
 - [x] Provide a Blender command palette script to reset the scene and create a procedural finger
+- [x] Remove radius attribute dependency - use curve geometry positions directly for thickness
 
 ### 4.3 Feet and Toes
 - [ ] Create base foot mesh (main body of foot)
@@ -232,6 +233,132 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 - SDF emulation for superior blending
 - Advanced foot placement with raycast
 - Node-based skeleton system
+
+---
+
+## Section 7: Advanced Finger System Features
+
+### 7.1 Profile Curve Management
+- [ ] Create operator to save profile curves back to codebase
+  - [ ] Implement `PROCEDURAL_OT_export_profile_curve` operator
+  - [ ] Extract curve data from selected Blender curve object
+  - [ ] Generate Python dictionary code from curve data
+  - [ ] Validate curve format (Bezier, correct structure)
+  - [ ] Write formatted code to `finger_segment_profiles.py`
+  - [ ] Update PROFILE_DATA registry automatically
+  - [ ] Add UI button in finger segment panel
+  - [ ] Show success/error messages to user
+
+### 7.2 Variable Profile Curve Sampling
+- [ ] Add dynamic sampling to finger segment node groups
+  - [ ] Add "Sample Count" input socket to segment node group (IntProperty)
+  - [ ] Get curve point count programmatically
+  - [ ] Set minimum samples to max(curve_point_count, user_input)
+  - [ ] Update grid resolution based on sample count
+  - [ ] Expose sample count in finger segment panel UI
+  - [ ] Add tooltip explaining performance implications
+  - [ ] Test with different sample counts (3-64)
+
+### 7.3 Curve-Based Segment Height
+- [ ] Get segment height directly from profile curve geometry
+  - [ ] Calculate Z-extent (max Z - min Z) from profile curve
+  - [ ] Add toggle: "Use Curve Height" vs "Manual Length"
+  - [ ] Create `get_curve_height()` utility function
+  - [ ] Update segment node group to support both modes
+  - [ ] Add UI toggle in finger segment panel
+  - [ ] Ensure backwards compatibility with manual length
+  - [ ] Update existing fingers to use appropriate mode
+
+### 7.4 Operator Decorator System
+- [ ] Create operator registration decorator
+  - [ ] Create `procedural_human/operator_decorator.py`
+  - [ ] Implement `@procedural_operator` decorator
+  - [ ] Auto-generate `bl_idname` from class name (e.g., `CreateFinger` → `mesh.procedural_create_finger`)
+  - [ ] Auto-set common `bl_options` (REGISTER, UNDO)
+  - [ ] Create operator registry list
+  - [ ] Implement `register_all_operators()` function
+  - [ ] Implement `unregister_all_operators()` function
+  - [ ] Update existing operators to use decorator
+  - [ ] Update `operators.py` to use batch registration
+
+### 7.5 Hierarchical Finger Segment Objects
+- [ ] Refactor to separate objects per segment
+  - [ ] Create parent finger object (empty or low-poly placeholder)
+  - [ ] Create child objects for each segment (proximal, middle, distal)
+  - [ ] Set up parent-child relationships with proper transforms
+  - [ ] Pass geometry between segments using Object Info nodes
+  - [ ] Store segment data in parent's custom properties
+  - [ ] Implement "propagate to children" for operations:
+    - [ ] Realize geometry on parent → realize all children
+    - [ ] Create animation on parent → animate all children
+    - [ ] Delete parent → delete all children
+  - [ ] Implement "modify child only" operations:
+    - [ ] Edit child segment doesn't affect parent or siblings
+    - [ ] Individual segment property overrides
+  - [ ] Dynamic segment count based on finger properties:
+    - [ ] Read segment count from parent finger data
+    - [ ] Add/remove child segments automatically
+    - [ ] Apply golden ratio for segment lengths
+    - [ ] Update when finger type changes (thumb=2, others=3)
+  - [ ] Update UI to show hierarchical structure
+  - [ ] Add outliner integration for easy navigation
+
+### 7.6 DSL for Segment and Growth Plans
+- [ ] Design and implement procedural growth DSL
+  - [ ] Design DSL syntax specification:
+    - [ ] `SEGMENT(placement, count, ratio, behavior)` pattern
+    - [ ] `SYMMETRICAL(axis, count, pattern)` for mirroring
+    - [ ] `GOLDEN` ratio constant
+    - [ ] `CURL`, `ZIG_ZAG` behavior patterns
+    - [ ] `TIP_TAIL` placement mode
+  - [ ] Create DSL parser:
+    - [ ] Tokenize DSL strings
+    - [ ] Build abstract syntax tree (AST)
+    - [ ] Validate syntax and semantics
+    - [ ] Handle nested patterns
+  - [ ] Implement DSL interpreter:
+    - [ ] Translate AST to Blender operations
+    - [ ] Generate geometry node trees from DSL
+    - [ ] Apply ratio calculations (golden ratio, fibonacci)
+    - [ ] Set up symmetry and mirroring
+    - [ ] Configure behavior patterns (curl direction, alternating)
+  - [ ] Create DSL examples:
+    - [ ] `FINGER = SEGMENT(TIP_TAIL, 3, GOLDEN, CURL)`
+    - [ ] `LEGS = SYMMETRICAL(Y, 2, SEGMENT(TIP_TAIL, 3, GOLDEN, ZIG_ZAG))`
+    - [ ] `ARM = SEGMENT(TIP_TAIL, 2, [2,1], CURL)`
+  - [ ] Add DSL property to objects:
+    - [ ] Store DSL string in custom property
+    - [ ] Regenerate from DSL on demand
+    - [ ] UI text field for DSL input
+  - [ ] Create DSL documentation and examples
+
+### 7.7 Joint Segments Between Segments
+- [ ] Implement joint segment concept
+  - [ ] Define joint segment as special segment type
+  - [ ] Joint properties:
+    - [ ] Overlap amount (how much it extends into neighboring segments)
+    - [ ] Blend factor (smoothness of transition)
+    - [ ] Joint thickness ratio
+  - [ ] Create joint segment node group:
+    - [ ] Takes two segment endpoints as input
+    - [ ] Generates overlapping geometry
+    - [ ] Smooth blending using SDF or volume merge
+  - [ ] Implement joint insertion logic:
+    - [ ] Insert joints between regular segments
+    - [ ] Update segment list: `[seg1, joint1, seg2, joint2, seg3]`
+    - [ ] Like `join()` with separator: `join(segments, joint_segment)`
+  - [ ] Update finger generation to include joints:
+    - [ ] Add joint insertion step after segment creation
+    - [ ] Apply smooth transitions at joint locations
+    - [ ] Ensure seamless mesh topology
+  - [ ] Add joint customization:
+    - [ ] Configurable joint profiles
+    - [ ] Per-joint overlap amounts
+    - [ ] Joint-specific materials (e.g., skin wrinkles)
+  - [ ] UI controls for joints:
+    - [ ] Toggle joints on/off
+    - [ ] Adjust joint overlap
+    - [ ] Preview joint locations
 
 ---
 
