@@ -44,40 +44,35 @@ def create_finger_nodes(
     setup_node_group_interface(node_group)
     finger_type = ensure_finger_type(finger.finger_type)
 
-    # Input/Output nodes
     input_node = node_group.nodes.new("NodeGroupInput")
     input_node.label = "Input"
     output_node = node_group.nodes.new("NodeGroupOutput")
     output_node.label = "Output"
 
-    # Position nodes
     input_node.location = (-1000, 0)
     output_node.location = (1200, 0)
 
-    # Calculate segment lengths if not provided
     if finger.segment_lengths is None:
-        segment_lengths = [finger.total_length / finger.num_segments] * finger.num_segments
+        segment_lengths = [
+            finger.total_length / finger.num_segments
+        ] * finger.num_segments
 
-    # Create starting axis point at origin (Z=0)
-    # This will be the input for the first segment
     starting_point = node_group.nodes.new("GeometryNodeCurvePrimitiveLine")
     starting_point.label = "Starting Axis"
     starting_point.location = (-700, 400)
     starting_point.inputs["Start"].default_value = (0.0, 0.0, 0.0)
-    starting_point.inputs["End"].default_value = (0.0, 0.0, 0.0)  # Zero-length line at origin
+    starting_point.inputs["End"].default_value = (0.0, 0.0, 0.0)
 
     segment_types = [SegmentType.PROXIMAL, SegmentType.MIDDLE, SegmentType.DISTAL]
     segment_profile_meta = {}
+
     for seg_type in SegmentType:
-        x_data = get_profile_data(seg_type, ProfileType.X_PROFILE)
-        y_data = get_profile_data(seg_type, ProfileType.Y_PROFILE)
-        start_avg = (x_data["points"][0]["radius"] + y_data["points"][0]["radius"]) * 0.5
-        end_avg = (x_data["points"][-1]["radius"] + y_data["points"][-1]["radius"]) * 0.5
+
         segment_profile_meta[seg_type] = {
-            "start": start_avg if start_avg != 0 else 1.0,
-            "end": end_avg,
+            "start": 1.0,
+            "end": 0.85,
         }
-    
+
     segment_node_instances = []
     previous_segment_output = starting_point.outputs["Curve"]
     next_segment_radius = None
@@ -89,7 +84,11 @@ def create_finger_nodes(
         if finger.num_segments == 2:
             segment_enum = SegmentType.PROXIMAL if seg_idx == 0 else SegmentType.DISTAL
         else:
-            segment_enum = segment_types[seg_idx] if seg_idx < len(segment_types) else segment_types[-1]
+            segment_enum = (
+                segment_types[seg_idx]
+                if seg_idx < len(segment_types)
+                else segment_types[-1]
+            )
         if isinstance(segment_enum, SegmentType):
             seg_name = segment_enum.value.capitalize()
         else:
@@ -107,29 +106,34 @@ def create_finger_nodes(
         segment_instance.label = f"{seg_name} Segment"
         segment_instance.location = (-400, 200 - seg_idx * 300)
 
-        # Chain: connect previous segment's output to this segment's input
         node_group.links.new(
             previous_segment_output, segment_instance.inputs["Geometry"]
         )
-        segment_instance.inputs[FingerSegmentProperties.SEGMENT_LENGTH.value].default_value = seg_length
+        segment_instance.inputs[
+            FingerSegmentProperties.SEGMENT_LENGTH.value
+        ].default_value = seg_length
         if next_segment_radius is None:
             segment_radius_scale = seg_radius
         else:
             segment_radius_scale = next_segment_radius
-        segment_instance.inputs[FingerSegmentProperties.SEGMENT_RADIUS.value].default_value = segment_radius_scale
+        segment_instance.inputs[
+            FingerSegmentProperties.SEGMENT_RADIUS.value
+        ].default_value = segment_radius_scale
 
         profile_ratios = segment_profile_meta[segment_enum]
         continuity_ratio = (
-            profile_ratios["end"] / profile_ratios["start"] if profile_ratios["start"] != 0 else 1.0
+            profile_ratios["end"] / profile_ratios["start"]
+            if profile_ratios["start"] != 0
+            else 1.0
         )
         next_segment_radius = segment_radius_scale * continuity_ratio
 
-        segment_node_instances.append((seg_name, segment_instance, seg_idx, segment_radius_scale, seg_length))
-        
-        # Update previous output for next iteration
+        segment_node_instances.append(
+            (seg_name, segment_instance, seg_idx, segment_radius_scale, seg_length)
+        )
+
         previous_segment_output = segment_instance.outputs["Geometry"]
 
-    # Attach fingernail to distal segment via helper in the fingernail module
     distal_seg_name, distal_node, distal_idx, distal_seg_radius, distal_seg_length = (
         segment_node_instances[-1]
     )
@@ -142,8 +146,8 @@ def create_finger_nodes(
         nail_size=finger.nail_size,
     )
 
-    # Since segments are chained, the nail_instance already contains all geometry
-    # Just connect it directly to output
-    node_group.links.new(nail_instance.outputs["Geometry"], output_node.inputs["Geometry"])
+    node_group.links.new(
+        nail_instance.outputs["Geometry"], output_node.inputs["Geometry"]
+    )
 
     return node_group

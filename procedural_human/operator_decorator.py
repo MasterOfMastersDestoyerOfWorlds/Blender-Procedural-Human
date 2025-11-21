@@ -17,44 +17,53 @@ _operator_registry: List[Type[Operator]] = []
 def procedural_operator(cls):
     """
     Decorator for operator classes that automatically sets Blender operator attributes.
-    
+
     Features:
     - Auto-generates bl_idname from class name (e.g., CreateFinger → mesh.procedural_create_finger)
+    - Auto-generates bl_label from class name (e.g., CreateFinger → "Create Finger")
+    - Uses class docstring for bl_description (first line becomes both label and description)
     - Sets default bl_options = {'REGISTER', 'UNDO'}
     - Allows optional override of any bl_* attributes
-    
+
     Usage:
         @procedural_operator
         class CreateFinger(Operator):
-            bl_label = "Create Procedural Finger"
-            
+            '''Create a procedural finger with Geometry Nodes'''
+
             def execute(self, context):
                 ...
     """
-    
+
     class_name = cls.__name__
-    
-    # Generate bl_idname from class name
-    # Remove PROCEDURAL_OT_ prefix if present
-    name_without_prefix = re.sub(r'^PROCEDURAL_OT_', '', class_name)
-    
-    # Convert CamelCase to snake_case
-    snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', name_without_prefix).lower()
-    
-    # Generate bl_idname with mesh.procedural_ prefix
+
+    name_without_prefix = re.sub(r"^PROCEDURAL_OT_", "", class_name)
+
+    snake_case = re.sub(r"(?<!^)(?=[A-Z])", "_", name_without_prefix).lower()
+
     bl_idname = f"mesh.procedural_{snake_case}"
-    
-    # Set bl_idname if not explicitly set
-    if not hasattr(cls, 'bl_idname'):
+
+    if not hasattr(cls, "bl_idname"):
         cls.bl_idname = bl_idname
-    
-    # Set default bl_options if not explicitly set
-    if not hasattr(cls, 'bl_options'):
-        cls.bl_options = {'REGISTER', 'UNDO'}
-    
-    # Add to registry
+
+    if not hasattr(cls, "bl_label"):
+
+        bl_label = re.sub(r"(?<!^)(?=[A-Z])", " ", name_without_prefix)
+        cls.bl_label = bl_label
+
+    if not hasattr(cls, "bl_description"):
+        if cls.__doc__:
+
+            description = cls.__doc__.strip().split("\n")[0].strip()
+            cls.bl_description = description
+        else:
+
+            cls.bl_description = cls.bl_label
+
+    if not hasattr(cls, "bl_options"):
+        cls.bl_options = {"REGISTER", "UNDO"}
+
     _operator_registry.append(cls)
-    
+
     return cls
 
 
@@ -82,9 +91,8 @@ def clear_registry():
 
 
 __all__ = [
-    'procedural_operator',
-    'register_all_operators',
-    'unregister_all_operators',
-    'clear_registry',
+    "procedural_operator",
+    "register_all_operators",
+    "unregister_all_operators",
+    "clear_registry",
 ]
-

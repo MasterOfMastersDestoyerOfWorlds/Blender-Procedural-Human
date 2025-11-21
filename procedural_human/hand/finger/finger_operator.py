@@ -22,8 +22,6 @@ from procedural_human.operator_decorator import procedural_operator
 @procedural_operator
 class CreateFinger(Operator):
     """Create a procedural finger with Geometry Nodes"""
-    bl_label = "Create Procedural Finger"
-    bl_description = "Create a procedural finger with Geometry Nodes"
 
     finger_type = EnumProperty(
         name="Finger Type",
@@ -82,8 +80,6 @@ class CreateFinger(Operator):
 @procedural_operator
 class RealizeFingerGeometry(Operator):
     """Apply Geometry Nodes modifier to selected finger object"""
-    bl_label = "Realize Finger Geometry"
-    bl_description = "Apply Geometry Nodes modifier to selected finger object"
 
     @classmethod
     def poll(cls, context):
@@ -109,8 +105,6 @@ class RealizeFingerGeometry(Operator):
 @procedural_operator
 class AddArmatureFinger(Operator):
     """Add armature, bones, weights, IK, and animation to selected finger"""
-    bl_label = "Add Finger Armature and IK"
-    bl_description = "Add armature, bones, weights, IK, and animation to selected finger (reads finger type from object)"
 
     @classmethod
     def poll(cls, context):
@@ -148,8 +142,6 @@ class AddArmatureFinger(Operator):
 @procedural_operator
 class CreateAnimationFinger(Operator):
     """Create keyframe animation for selected finger"""
-    bl_label = "Create Finger Animation"
-    bl_description = "Create keyframe animation for selected finger"
 
     @classmethod
     def poll(cls, context):
@@ -180,7 +172,3 @@ class CreateAnimationFinger(Operator):
 
             traceback.print_exc()
             return {"CANCELLED"}
-
-
-# Operators are now registered via the decorator system
-# See operator_decorator.py for registration
