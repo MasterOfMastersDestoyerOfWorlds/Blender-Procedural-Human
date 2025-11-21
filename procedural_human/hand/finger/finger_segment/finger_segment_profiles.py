@@ -31,7 +31,6 @@ DEFAULT_X_PROFILE_PROXIMAL = {
             "handle_right": (0.05, 0.0, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 1.0,
         },
         {
             "co": (0.0, 0.0, 0.5),
@@ -47,7 +46,6 @@ DEFAULT_X_PROFILE_PROXIMAL = {
             "handle_right": (0.05, 0.0, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.85,
         },
     ]
 }
@@ -60,7 +58,6 @@ DEFAULT_Y_PROFILE_PROXIMAL = {
             "handle_right": (0.0, 0.05, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 1.0,
         },
         {
             "co": (0.0, 0.0, 0.5),
@@ -76,7 +73,6 @@ DEFAULT_Y_PROFILE_PROXIMAL = {
             "handle_right": (0.0, 0.05, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.85,
         },
     ]
 }
@@ -89,7 +85,6 @@ DEFAULT_X_PROFILE_MIDDLE = {
             "handle_right": (0.05, 0.0, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.95,
         },
         {
             "co": (0.0, 0.0, 0.5),
@@ -97,7 +92,6 @@ DEFAULT_X_PROFILE_MIDDLE = {
             "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
-            "radius": 1.0,
         },
         {
             "co": (0.0, 0.0, 1.0),
@@ -105,7 +99,6 @@ DEFAULT_X_PROFILE_MIDDLE = {
             "handle_right": (0.05, 0.0, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.80,
         },
     ]
 }
@@ -118,7 +111,6 @@ DEFAULT_Y_PROFILE_MIDDLE = {
             "handle_right": (0.0, 0.05, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.95,
         },
         {
             "co": (0.0, 0.0, 0.5),
@@ -126,7 +118,6 @@ DEFAULT_Y_PROFILE_MIDDLE = {
             "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
-            "radius": 1.0,
         },
         {
             "co": (0.0, 0.0, 1.0),
@@ -134,7 +125,6 @@ DEFAULT_Y_PROFILE_MIDDLE = {
             "handle_right": (0.0, 0.05, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.80,
         },
     ]
 }
@@ -147,7 +137,6 @@ DEFAULT_X_PROFILE_DISTAL = {
             "handle_right": (0.05, 0.0, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.90,
         },
         {
             "co": (0.0, 0.0, 0.5),
@@ -163,7 +152,6 @@ DEFAULT_X_PROFILE_DISTAL = {
             "handle_right": (0.05, 0.0, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.75,
         },
     ]
 }
@@ -176,7 +164,6 @@ DEFAULT_Y_PROFILE_DISTAL = {
             "handle_right": (0.0, 0.05, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.90,
         },
         {
             "co": (0.0, 0.0, 0.5),
@@ -192,7 +179,6 @@ DEFAULT_Y_PROFILE_DISTAL = {
             "handle_right": (0.0, 0.05, 0.0),
             "handle_left_type": "AUTO",
             "handle_right_type": "AUTO",
-            "radius": 0.75,
         },
     ]
 }

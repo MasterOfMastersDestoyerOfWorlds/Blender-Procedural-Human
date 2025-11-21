@@ -189,41 +189,39 @@ def create_finger_segment_node_group(
     length_clamp.inputs["Value"].default_value = 1.0
     segment_group.links.new(length_param.outputs["Value"], length_clamp.inputs["Value"])
 
+    # Sample X profile - using position vectors
     sample_x = segment_group.nodes.new("GeometryNodeSampleCurve")
     sample_x.label = "Sample X Profile"
     sample_x.location = (1000, -180)
     sample_x.mode = "FACTOR"
-    sample_x.data_type = "FLOAT"
+    sample_x.data_type = "FLOAT_VECTOR"
     segment_group.links.new(
         x_profile_info.outputs["Geometry"], sample_x.inputs["Curves"]
     )
+    segment_group.links.new(length_clamp.outputs["Result"], sample_x.inputs["Factor"])
+    
+    # Extract X component as radius
+    separate_x_sample = segment_group.nodes.new("ShaderNodeSeparateXYZ")
+    separate_x_sample.label = "Extract X Radius"
+    separate_x_sample.location = (1200, -180)
+    segment_group.links.new(sample_x.outputs["Position"], separate_x_sample.inputs["Vector"])
 
+    # Sample Y profile - using position vectors
     sample_y = segment_group.nodes.new("GeometryNodeSampleCurve")
     sample_y.label = "Sample Y Profile"
     sample_y.location = (1000, -360)
     sample_y.mode = "FACTOR"
-    sample_y.data_type = "FLOAT"
+    sample_y.data_type = "FLOAT_VECTOR"
     segment_group.links.new(
         y_profile_info.outputs["Geometry"], sample_y.inputs["Curves"]
     )
-    segment_group.links.new(length_clamp.outputs["Result"], sample_x.inputs["Factor"])
-    x_radius_attr = segment_group.nodes.new("GeometryNodeInputNamedAttribute")
-    x_radius_attr.label = "X Profile Radius"
-    x_radius_attr.location = (800, -200)
-    x_radius_attr.data_type = "FLOAT"
-    x_radius_attr.inputs["Name"].default_value = "radius"
-    segment_group.links.new(
-        x_radius_attr.outputs["Attribute"], sample_x.inputs["Value"]
-    )
     segment_group.links.new(length_clamp.outputs["Result"], sample_y.inputs["Factor"])
-    y_radius_attr = segment_group.nodes.new("GeometryNodeInputNamedAttribute")
-    y_radius_attr.label = "Y Profile Radius"
-    y_radius_attr.location = (800, -380)
-    y_radius_attr.data_type = "FLOAT"
-    y_radius_attr.inputs["Name"].default_value = "radius"
-    segment_group.links.new(
-        y_radius_attr.outputs["Attribute"], sample_y.inputs["Value"]
-    )
+    
+    # Extract Y component as radius
+    separate_y_sample = segment_group.nodes.new("ShaderNodeSeparateXYZ")
+    separate_y_sample.label = "Extract Y Radius"
+    separate_y_sample.location = (1200, -360)
+    segment_group.links.new(sample_y.outputs["Position"], separate_y_sample.inputs["Vector"])
 
     theta_node = segment_group.nodes.new("ShaderNodeMath")
     theta_node.label = "Angle θ"
@@ -246,15 +244,15 @@ def create_finger_segment_node_group(
 
     x_radius_abs = segment_group.nodes.new("ShaderNodeMath")
     x_radius_abs.label = "X Radius Abs"
-    x_radius_abs.location = (1200, -200)
+    x_radius_abs.location = (1400, -180)
     x_radius_abs.operation = "ABSOLUTE"
-    segment_group.links.new(sample_x.outputs["Value"], x_radius_abs.inputs[0])
+    segment_group.links.new(separate_x_sample.outputs["X"], x_radius_abs.inputs[0])
 
     y_radius_abs = segment_group.nodes.new("ShaderNodeMath")
     y_radius_abs.label = "Y Radius Abs"
-    y_radius_abs.location = (1200, -380)
+    y_radius_abs.location = (1400, -360)
     y_radius_abs.operation = "ABSOLUTE"
-    segment_group.links.new(sample_y.outputs["Value"], y_radius_abs.inputs[0])
+    segment_group.links.new(separate_y_sample.outputs["Y"], y_radius_abs.inputs[0])
 
     x_radius_scale = segment_group.nodes.new("ShaderNodeMath")
     x_radius_scale.label = "Scale X Radius"

@@ -49,9 +49,6 @@ def create_profile_curve_from_data(name, profile_data, segment_length=1.0, base_
         # Set handle types
         point.handle_left_type = point_data.get("handle_left_type", "AUTO")
         point.handle_right_type = point_data.get("handle_right_type", "AUTO")
-        
-        # Set radius (scaled by base radius)
-        point.radius = point_data.get("radius", 1.0) * base_radius
     
     # Create object
     curve_obj = bpy.data.objects.new(name, curve_data)
@@ -94,7 +91,6 @@ def extract_profile_curve_data(curve_object):
             "handle_right": tuple(point.handle_right - point.co),
             "handle_left_type": point.handle_left_type,
             "handle_right_type": point.handle_right_type,
-            "radius": point.radius,
         }
         points.append(point_data)
     
