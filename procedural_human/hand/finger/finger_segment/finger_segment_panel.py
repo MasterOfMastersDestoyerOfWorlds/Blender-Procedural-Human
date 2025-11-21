@@ -75,11 +75,12 @@ class FingerSegmentPanel(Panel):
                 status_row = export_box.row()
                 status_row.label(text=f"Codebase: {codebase.name}", icon='CHECKMARK')
                 
-                # Export button (only enabled when curve is selected)
                 export_row = export_box.row()
-                export_row.operator("mesh.procedural_export_profile_curve", text="Export Selected Curve", icon='EXPORT')
-                if not context.active_object or context.active_object.type != 'CURVE':
-                    export_row.enabled = False
+                export_row.operator(
+                    "mesh.procedural_export_profile_curve",
+                    text="Export Curve Profiles",
+                    icon='EXPORT',
+                )
             else:
                 status_row = export_box.row()
                 status_row.label(text="Codebase not configured", icon='ERROR')

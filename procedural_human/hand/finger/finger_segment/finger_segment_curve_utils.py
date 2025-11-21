@@ -155,6 +155,41 @@ def get_default_profile_curve(segment_type: SegmentType, profile_type: ProfileTy
     return create_profile_curve_from_data(name, profile_data, segment_length, base_radius)
 
 
+def normalize_profile_data(profile_data):
+    """
+    Normalize profile data Z coordinates to 0-1 range.
+    
+    Args:
+        profile_data: Profile data dictionary with "points" list
+        
+    Returns:
+        Normalized profile data dictionary
+    """
+    points = profile_data.get("points", [])
+    if not points:
+        return profile_data
+    
+    z_values = [point["co"][2] for point in points]
+    min_z = min(z_values)
+    max_z = max(z_values)
+    length = max(max_z - min_z, 1e-6)
+    
+    for point in points:
+        co = list(point["co"])
+        co[2] = (co[2] - min_z) / length
+        point["co"] = tuple(co)
+        
+        handle_left = list(point["handle_left"])
+        handle_left[2] = handle_left[2] / length
+        point["handle_left"] = tuple(handle_left)
+        
+        handle_right = list(point["handle_right"])
+        handle_right[2] = handle_right[2] / length
+        point["handle_right"] = tuple(handle_right)
+    
+    return profile_data
+
+
 def normalize_profile_curve(curve_object, segment_length=1.0):
     """
     Normalize a profile curve to 0-1 range for storage.
@@ -191,6 +226,7 @@ __all__ = [
     "extract_profile_curve_data",
     "format_profile_data_as_code",
     "get_default_profile_curve",
+    "normalize_profile_data",
     "normalize_profile_curve",
 ]
 
