@@ -123,7 +123,6 @@ def format_profile_data_as_code(profile_data, variable_name="PROFILE_DATA"):
         lines.append(f'            "handle_right": {point["handle_right"]},')
         lines.append(f'            "handle_left_type": "{point["handle_left_type"]}",')
         lines.append(f'            "handle_right_type": "{point["handle_right_type"]}",')
-        lines.append(f'            "radius": {point["radius"]},')
         
         if i < len(profile_data["points"]) - 1:
             lines.append("        },")
