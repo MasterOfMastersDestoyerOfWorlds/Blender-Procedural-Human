@@ -106,12 +106,20 @@ def create_finger_nodes(
         segment_instance.label = f"{seg_name} Segment"
         segment_instance.location = (-400, 200 - seg_idx * 300)
 
+        # Get sample count from scene
+        sample_count = 64
+        if hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "procedural_finger_segment_sample_count"):
+            sample_count = bpy.context.scene.procedural_finger_segment_sample_count
+
         node_group.links.new(
             previous_segment_output, segment_instance.inputs["Geometry"]
         )
         segment_instance.inputs[
             FingerSegmentProperties.SEGMENT_LENGTH.value
         ].default_value = seg_length
+        segment_instance.inputs[
+            FingerSegmentProperties.SAMPLE_COUNT.value
+        ].default_value = sample_count
         if next_segment_radius is None:
             segment_radius_scale = seg_radius
         else:

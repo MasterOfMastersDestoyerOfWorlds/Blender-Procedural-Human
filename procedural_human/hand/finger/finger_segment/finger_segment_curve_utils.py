@@ -36,15 +36,15 @@ def create_profile_curve_from_data(name, profile_data, segment_length=1.0, base_
     for i, point_data in enumerate(points):
         point = spline.bezier_points[i]
         
-        # Scale coordinates by segment length
+        # Use stored coordinates directly (already absolute)
         co = point_data["co"]
-        point.co = Vector((co[0], co[1], co[2] * segment_length))
+        point.co = Vector(co)
         
-        # Scale handles by segment length
+        # Handles are stored relative to point.co, so add directly
         handle_left = point_data["handle_left"]
         handle_right = point_data["handle_right"]
-        point.handle_left = point.co + Vector((handle_left[0], handle_left[1], handle_left[2] * segment_length))
-        point.handle_right = point.co + Vector((handle_right[0], handle_right[1], handle_right[2] * segment_length))
+        point.handle_left = point.co + Vector(handle_left)
+        point.handle_right = point.co + Vector(handle_right)
         
         # Set handle types
         point.handle_left_type = point_data.get("handle_left_type", "AUTO")

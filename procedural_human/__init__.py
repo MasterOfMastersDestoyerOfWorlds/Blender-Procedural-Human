@@ -94,6 +94,14 @@ def register_scene_properties():
         description="Show/hide finger segment panel content",
     )
     
+    bpy.types.Scene.procedural_finger_segment_sample_count = bpy.props.IntProperty(
+        name="Sample Count",
+        default=64,
+        min=3,
+        description="Number of samples for profile curve resolution. Higher values improve quality but increase geometry count",
+        update=update_profile_curves,
+    )
+    
     # Profile curve pointer properties for each segment type
     # Proximal segment
     bpy.types.Scene.procedural_segment_proximal_x_profile = bpy.props.PointerProperty(
@@ -157,6 +165,7 @@ def unregister_scene_properties():
     del bpy.types.Scene.procedural_finger_expanded
     del bpy.types.Scene.procedural_finger_nail_expanded
     del bpy.types.Scene.procedural_finger_segment_expanded
+    del bpy.types.Scene.procedural_finger_segment_sample_count
     
     # Profile curve pointer properties
     del bpy.types.Scene.procedural_segment_proximal_x_profile

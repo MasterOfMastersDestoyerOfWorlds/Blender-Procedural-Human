@@ -32,6 +32,15 @@ class FingerSegmentPanel(Panel):
         if scene.procedural_finger_segment_expanded:
             content_box = box.box()
             
+            # Sample Count
+            content_box.label(text="Sampling Settings:", icon='MODIFIER')
+            row = content_box.row()
+            row.prop(scene, "procedural_finger_segment_sample_count", text="Sample Count")
+            row.label(text="", icon='QUESTION')
+            row.active = False  
+            
+            content_box.separator()
+            
             # Proximal segment
             content_box.label(text="Proximal Segment:", icon='CURVE_DATA')
             row = content_box.row()

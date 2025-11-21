@@ -58,6 +58,13 @@ def create_finger_segment_node_group(
         socket_type="NodeSocketFloat",
     )
 
+    sample_count_socket = segment_group.interface.new_socket(
+        name=FingerSegmentProperties.SAMPLE_COUNT.value,
+        in_out="INPUT",
+        socket_type="NodeSocketInt",
+    )
+    sample_count_socket.default_value = 64
+
     input_node = segment_group.nodes.new("NodeGroupInput")
     input_node.label = "Inputs"
     input_node.location = (-1400, 0)
@@ -144,11 +151,40 @@ def create_finger_segment_node_group(
     y_profile_info.inputs["Object"].default_value = y_profile_obj
     y_profile_info.transform_space = "ORIGINAL"
 
+    # Calculate Grid Resolution
+    # Get point counts from profiles
+    domain_size_x = segment_group.nodes.new("GeometryNodeAttributeDomainSize")
+    domain_size_x.label = "X Point Count"
+    domain_size_x.location = (-50, -50)
+    domain_size_x.component = 'CURVE'
+    segment_group.links.new(x_profile_info.outputs["Geometry"], domain_size_x.inputs["Geometry"])
+    
+    domain_size_y = segment_group.nodes.new("GeometryNodeAttributeDomainSize")
+    domain_size_y.label = "Y Point Count"
+    domain_size_y.location = (-50, -300)
+    domain_size_y.component = 'CURVE'
+    segment_group.links.new(y_profile_info.outputs["Geometry"], domain_size_y.inputs["Geometry"])
+    
+    max_points = segment_group.nodes.new("ShaderNodeMath")
+    max_points.label = "Max Points"
+    max_points.location = (150, -150)
+    max_points.operation = 'MAXIMUM'
+    segment_group.links.new(domain_size_x.outputs["Point Count"], max_points.inputs[0])
+    segment_group.links.new(domain_size_y.outputs["Point Count"], max_points.inputs[1])
+    
+    final_count = segment_group.nodes.new("ShaderNodeMath")
+    final_count.label = "Final Sample Count"
+    final_count.location = (350, -50)
+    final_count.operation = 'MAXIMUM'
+    segment_group.links.new(max_points.outputs["Value"], final_count.inputs[0])
+    segment_group.links.new(input_node.outputs[FingerSegmentProperties.SAMPLE_COUNT.value], final_count.inputs[1])
+
     grid = segment_group.nodes.new("GeometryNodeMeshGrid")
     grid.label = "Parameter Grid"
-    grid.location = (0, -100)
+    grid.location = (550, -100)
     grid.inputs["Vertices X"].default_value = 64
-    grid.inputs["Vertices Y"].default_value = 64
+    # grid.inputs["Vertices Y"].default_value = 64 # Driven by logic
+    segment_group.links.new(final_count.outputs["Value"], grid.inputs["Vertices Y"])
     grid.inputs["Size X"].default_value = 1.0
     grid.inputs["Size Y"].default_value = 1.0
 

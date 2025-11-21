@@ -239,15 +239,15 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 ## Section 7: Advanced Finger System Features
 
 ### 7.1 Profile Curve Management
-- [ ] Create operator to save profile curves back to codebase
-  - [ ] Implement `PROCEDURAL_OT_export_profile_curve` operator
-  - [ ] Extract curve data from selected Blender curve object
-  - [ ] Generate Python dictionary code from curve data
-  - [ ] Validate curve format (Bezier, correct structure)
-  - [ ] Write formatted code to `finger_segment_profiles.py`
-  - [ ] Update PROFILE_DATA registry automatically
-  - [ ] Add UI button in finger segment panel
-  - [ ] Show success/error messages to user
+- [x] Create operator to save profile curves back to codebase
+  - [x] Implement `PROCEDURAL_OT_export_profile_curve` operator
+  - [x] Extract curve data from selected Blender curve object
+  - [x] Generate Python dictionary code from curve data
+  - [x] Validate curve format (Bezier, correct structure)
+  - [x] Write formatted code to `finger_segment_profiles.py`
+  - [x] Update PROFILE_DATA registry automatically
+  - [x] Add UI button in finger segment panel
+  - [x] Show success/error messages to user
 
 ### 7.2 Variable Profile Curve Sampling
 - [ ] Add dynamic sampling to finger segment node groups
