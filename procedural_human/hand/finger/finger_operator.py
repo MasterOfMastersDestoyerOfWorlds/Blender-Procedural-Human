@@ -16,13 +16,14 @@ from procedural_human.hand.finger.finger_types import (
     enum_items as finger_type_items,
 )
 from procedural_human.hand.finger import finger_animation as finger_animation
+from procedural_human.operator_decorator import procedural_operator
 
 
-class PROCEDURAL_OT_create_finger(Operator):
-    bl_idname = "mesh.procedural_finger"
+@procedural_operator
+class CreateFinger(Operator):
+    """Create a procedural finger with Geometry Nodes"""
     bl_label = "Create Procedural Finger"
     bl_description = "Create a procedural finger with Geometry Nodes"
-    bl_options = {"REGISTER", "UNDO"}
 
     finger_type = EnumProperty(
         name="Finger Type",
@@ -78,11 +79,11 @@ class PROCEDURAL_OT_create_finger(Operator):
         return {"FINISHED"}
 
 
-class PROCEDURAL_OT_realize_finger_geometry(Operator):
-    bl_idname = "mesh.procedural_realize_finger"
+@procedural_operator
+class RealizeFingerGeometry(Operator):
+    """Apply Geometry Nodes modifier to selected finger object"""
     bl_label = "Realize Finger Geometry"
     bl_description = "Apply Geometry Nodes modifier to selected finger object"
-    bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
@@ -105,11 +106,11 @@ class PROCEDURAL_OT_realize_finger_geometry(Operator):
             return {"CANCELLED"}
 
 
-class PROCEDURAL_OT_add_armature_finger(Operator):
-    bl_idname = "mesh.procedural_add_armature_finger"
+@procedural_operator
+class AddArmatureFinger(Operator):
+    """Add armature, bones, weights, IK, and animation to selected finger"""
     bl_label = "Add Finger Armature and IK"
     bl_description = "Add armature, bones, weights, IK, and animation to selected finger (reads finger type from object)"
-    bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
@@ -144,11 +145,11 @@ class PROCEDURAL_OT_add_armature_finger(Operator):
             return {"CANCELLED"}
 
 
-class PROCEDURAL_OT_create_animation_finger(Operator):
-    bl_idname = "mesh.procedural_create_animation_finger"
+@procedural_operator
+class CreateAnimationFinger(Operator):
+    """Create keyframe animation for selected finger"""
     bl_label = "Create Finger Animation"
     bl_description = "Create keyframe animation for selected finger"
-    bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
@@ -181,15 +182,5 @@ class PROCEDURAL_OT_create_animation_finger(Operator):
             return {"CANCELLED"}
 
 
-def register():
-    bpy.utils.register_class(PROCEDURAL_OT_create_finger)
-    bpy.utils.register_class(PROCEDURAL_OT_realize_finger_geometry)
-    bpy.utils.register_class(PROCEDURAL_OT_add_armature_finger)
-    bpy.utils.register_class(PROCEDURAL_OT_create_animation_finger)
-
-
-def unregister():
-    bpy.utils.unregister_class(PROCEDURAL_OT_create_finger)
-    bpy.utils.unregister_class(PROCEDURAL_OT_realize_finger_geometry)
-    bpy.utils.unregister_class(PROCEDURAL_OT_add_armature_finger)
-    bpy.utils.unregister_class(PROCEDURAL_OT_create_animation_finger)
+# Operators are now registered via the decorator system
+# See operator_decorator.py for registration
