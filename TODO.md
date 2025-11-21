@@ -183,10 +183,17 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 - [ ] Create reusable node groups for common operations (lofting, volumetric merge, etc.)
 
 ### UI/UX Improvements
+- [x] Implement collapsible finger panel with boolean toggle
+- [x] Create collapsible finger_nail sub-panel as child of finger panel (separate file)
+- [x] Create collapsible finger_segment sub-panel as child of finger panel (separate file)
+- [x] Add profile curve selection (X and Y) for each finger segment type
+- [x] Implement real-time profile curve updates for existing fingers
+- [x] Create decorator system for auto-registering panels with auto-generated bl_* attributes
+- [x] Implement folder hierarchy-based parent/child panel relationships
+- [x] Refactor all panels to use decorator-based registration system
 - [ ] Add more parameter controls to operator properties
 - [ ] Create separate panels for different body parts (torso, limbs, head, etc.)
 - [ ] Add presets for common body types (athletic, slender, muscular, etc.)
-- [ ] Implement real-time preview updates as parameters change
 - [ ] Add tooltips and help text for all parameters
 
 ### Documentation

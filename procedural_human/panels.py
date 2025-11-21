@@ -5,23 +5,31 @@ UI Panel classes for Procedural Human Generator
 import bpy
 from bpy.types import Panel
 
-from .hand.finger.finger_panel import finger_panel
+# Import panel modules to trigger decorator registration
+from .hand.finger.finger_panel import FingerPanel
+from .hand.finger.finger_nail.finger_nail_panel import FingerNailPanel
+from .hand.finger.finger_segment.finger_segment_panel import FingerSegmentPanel
+from .panel_decorator import procedural_panel, register_all_panels, unregister_all_panels
 
-class PROCEDURAL_PT_main_panel(Panel):
+
+@procedural_panel
+class MainPanel(Panel):
+    """Main panel for Procedural Human Generator"""
+    
+    # Override some settings for the main panel
     bl_label = "Procedural Human"
-    bl_idname = "OBJECT_PT_procedural_human"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "Procedural"
-
+    bl_idname = "PROCEDURAL_PT_main_panel"
+    
     def draw(self, context):
         layout = self.layout
-        finger_panel.draw(self, context)
+        layout.label(text="Procedural Human Generator")
 
 
 def register():
-    bpy.utils.register_class(PROCEDURAL_PT_main_panel)
+    """Register all panels using the decorator system"""
+    register_all_panels()
 
 
 def unregister():
-    bpy.utils.unregister_class(PROCEDURAL_PT_main_panel)
+    """Unregister all panels using the decorator system"""
+    unregister_all_panels()

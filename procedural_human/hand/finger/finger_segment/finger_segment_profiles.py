@@ -10,26 +10,19 @@ from enum import Enum
 
 class ProfileType(Enum):
     """Types of profile curves"""
+
     X_PROFILE = "x_profile"
     Y_PROFILE = "y_profile"
 
 
 class SegmentType(Enum):
     """Types of finger segments"""
+
     PROXIMAL = "proximal"
     MIDDLE = "middle"
     DISTAL = "distal"
 
 
-# Profile data format:
-# Each profile is a list of control points with:
-# - co: (x, y, z) coordinate
-# - handle_left: (x, y, z) relative to co
-# - handle_right: (x, y, z) relative to co
-# - handle_left_type: 'FREE', 'ALIGNED', 'VECTOR', 'AUTO'
-# - handle_right_type: 'FREE', 'ALIGNED', 'VECTOR', 'AUTO'
-
-# Default X Profile (side view) - gentle taper with curvature
 DEFAULT_X_PROFILE_PROXIMAL = {
     "points": [
         {
@@ -46,7 +39,7 @@ DEFAULT_X_PROFILE_PROXIMAL = {
             "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
-            "radius": 1.05,  # Slight bulge in middle
+            "radius": 1.05,
         },
         {
             "co": (0.0, 0.0, 1.0),
@@ -75,7 +68,7 @@ DEFAULT_Y_PROFILE_PROXIMAL = {
             "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
-            "radius": 1.05,  # Slight bulge in middle
+            "radius": 1.05,
         },
         {
             "co": (0.0, 0.0, 1.0),
@@ -104,7 +97,7 @@ DEFAULT_X_PROFILE_MIDDLE = {
             "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
-            "radius": 1.0,  # Slight bulge in middle
+            "radius": 1.0,
         },
         {
             "co": (0.0, 0.0, 1.0),
@@ -133,7 +126,7 @@ DEFAULT_Y_PROFILE_MIDDLE = {
             "handle_right": (0.0, 0.0, 0.2),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
-            "radius": 1.0,  # Slight bulge in middle
+            "radius": 1.0,
         },
         {
             "co": (0.0, 0.0, 1.0),
@@ -162,7 +155,7 @@ DEFAULT_X_PROFILE_DISTAL = {
             "handle_right": (0.0, 0.0, 0.15),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
-            "radius": 0.92,  # Slight bulge in middle
+            "radius": 0.92,
         },
         {
             "co": (0.0, 0.0, 1.0),
@@ -191,7 +184,7 @@ DEFAULT_Y_PROFILE_DISTAL = {
             "handle_right": (0.0, 0.0, 0.15),
             "handle_left_type": "ALIGNED",
             "handle_right_type": "ALIGNED",
-            "radius": 0.92,  # Slight bulge in middle
+            "radius": 0.92,
         },
         {
             "co": (0.0, 0.0, 1.0),
@@ -205,7 +198,6 @@ DEFAULT_Y_PROFILE_DISTAL = {
 }
 
 
-# Profile registry
 PROFILE_DATA = {
     SegmentType.PROXIMAL: {
         ProfileType.X_PROFILE: DEFAULT_X_PROFILE_PROXIMAL,
@@ -225,15 +217,15 @@ PROFILE_DATA = {
 def get_profile_data(segment_type: SegmentType, profile_type: ProfileType):
     """
     Get profile data for a given segment and profile type.
-    
+
     Args:
         segment_type: SegmentType enum
         profile_type: ProfileType enum
-        
+
     Returns:
         Profile data dictionary
     """
-        
+
     return PROFILE_DATA[segment_type][profile_type]
 
 
@@ -249,5 +241,3 @@ __all__ = [
     "DEFAULT_X_PROFILE_DISTAL",
     "DEFAULT_Y_PROFILE_DISTAL",
 ]
-
-

@@ -64,9 +64,3 @@ def get_segment_lengths_blender_units(finger_type, total_length=1.0):
     proportions = get_finger_proportions(finger_type)
     return [ratio * total_length for ratio in proportions["ratios"]]
 
-
-__all__ = [
-    "FINGER_PROPORTIONS",
-    "get_finger_proportions",
-    "get_segment_lengths_blender_units",
-]
