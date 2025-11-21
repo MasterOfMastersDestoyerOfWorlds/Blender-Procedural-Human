@@ -7,6 +7,7 @@ import bpy
 from . import operators
 from . import panels
 from . import menus
+from . import preferences
 from procedural_human.hand.finger.finger_types import (
     FingerType,
     
@@ -167,6 +168,7 @@ def unregister_scene_properties():
 
 
 def register():
+    preferences.register()
     register_scene_properties()
     operators.register()
     panels.register()
@@ -175,11 +177,12 @@ def register():
 
 
 def unregister():
+    finger.unregister()
     menus.unregister()
     panels.unregister()
     operators.unregister()
     unregister_scene_properties()
-    finger.unregister()
+    preferences.unregister()
 
 
 if __name__ == "__main__":

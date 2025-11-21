@@ -12,6 +12,9 @@ from .hand.finger.finger_operator import (
     AddArmatureFinger,
     CreateAnimationFinger,
 )
+from .hand.finger.finger_segment.export_profile_operator import (
+    ExportProfileCurve,
+)
 
 
 def register():

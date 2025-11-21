@@ -270,16 +270,16 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
   - [ ] Update existing fingers to use appropriate mode
 
 ### 7.4 Operator Decorator System
-- [ ] Create operator registration decorator
-  - [ ] Create `procedural_human/operator_decorator.py`
-  - [ ] Implement `@procedural_operator` decorator
-  - [ ] Auto-generate `bl_idname` from class name (e.g., `CreateFinger` → `mesh.procedural_create_finger`)
-  - [ ] Auto-set common `bl_options` (REGISTER, UNDO)
-  - [ ] Create operator registry list
-  - [ ] Implement `register_all_operators()` function
-  - [ ] Implement `unregister_all_operators()` function
-  - [ ] Update existing operators to use decorator
-  - [ ] Update `operators.py` to use batch registration
+- [x] Create operator registration decorator
+  - [x] Create `procedural_human/operator_decorator.py`
+  - [x] Implement `@procedural_operator` decorator
+  - [x] Auto-generate `bl_idname` from class name (e.g., `CreateFinger` → `mesh.procedural_create_finger`)
+  - [x] Auto-set common `bl_options` (REGISTER, UNDO)
+  - [x] Create operator registry list
+  - [x] Implement `register_all_operators()` function
+  - [x] Implement `unregister_all_operators()` function
+  - [x] Update existing operators to use decorator
+  - [x] Update `operators.py` to use batch registration
 
 ### 7.5 Hierarchical Finger Segment Objects
 - [ ] Refactor to separate objects per segment

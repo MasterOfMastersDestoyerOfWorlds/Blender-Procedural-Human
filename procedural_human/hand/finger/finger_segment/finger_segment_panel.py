@@ -61,5 +61,30 @@ class FingerSegmentPanel(Panel):
             content_box.separator()
             info_row = content_box.row()
             info_row.label(text="Select curve objects from the scene", icon='INFO')
+            
+            # Export button
+            content_box.separator()
+            export_box = content_box.box()
+            export_box.label(text="Development Tools:", icon='TOOL_SETTINGS')
+            
+            # Show codebase path status
+            from procedural_human.config import get_codebase_path, validate_codebase_path
+            codebase = get_codebase_path()
+            
+            if codebase and validate_codebase_path(codebase):
+                status_row = export_box.row()
+                status_row.label(text=f"Codebase: {codebase.name}", icon='CHECKMARK')
+                
+                # Export button (only enabled when curve is selected)
+                export_row = export_box.row()
+                export_row.operator("mesh.procedural_export_profile_curve", text="Export Selected Curve", icon='EXPORT')
+                if not context.active_object or context.active_object.type != 'CURVE':
+                    export_row.enabled = False
+            else:
+                status_row = export_box.row()
+                status_row.label(text="Codebase not configured", icon='ERROR')
+                config_row = export_box.row()
+                config_row.label(text="Set path in addon preferences")
+                config_row.operator("screen.userpref_show", text="", icon='PREFERENCES')
 
 
