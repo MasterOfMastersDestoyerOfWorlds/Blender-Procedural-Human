@@ -107,7 +107,7 @@ def create_finger_nodes(
         segment_instance.location = (-400, 200 - seg_idx * 300)
 
         # Get sample count from scene
-        sample_count = 64
+        sample_count = 16
         if hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "procedural_finger_segment_sample_count"):
             sample_count = bpy.context.scene.procedural_finger_segment_sample_count
 

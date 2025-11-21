@@ -63,7 +63,7 @@ def create_finger_segment_node_group(
         in_out="INPUT",
         socket_type="NodeSocketInt",
     )
-    sample_count_socket.default_value = 64
+    sample_count_socket.default_value = 16
 
     input_node = segment_group.nodes.new("NodeGroupInput")
     input_node.label = "Inputs"

@@ -96,7 +96,7 @@ def register_scene_properties():
     
     bpy.types.Scene.procedural_finger_segment_sample_count = bpy.props.IntProperty(
         name="Sample Count",
-        default=64,
+        default=16,
         min=3,
         description="Number of samples for profile curve resolution. Higher values improve quality but increase geometry count",
         update=update_profile_curves,
