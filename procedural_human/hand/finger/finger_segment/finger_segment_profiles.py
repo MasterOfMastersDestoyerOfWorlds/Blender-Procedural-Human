@@ -6,6 +6,7 @@ with radius values as multipliers of the base segment radius.
 """
 
 from enum import Enum
+from procedural_human.operator_decorator import Preset, register_preset_class
 
 
 class ProfileType(Enum):
@@ -225,15 +226,191 @@ def get_profile_data(segment_type: SegmentType, profile_type: ProfileType):
     return PROFILE_DATA[segment_type][profile_type]
 
 
-__all__ = [
-    "ProfileType",
-    "SegmentType",
-    "PROFILE_DATA",
-    "get_profile_data",
-    "DEFAULT_X_PROFILE_PROXIMAL",
-    "DEFAULT_Y_PROFILE_PROXIMAL",
-    "DEFAULT_X_PROFILE_MIDDLE",
-    "DEFAULT_Y_PROFILE_MIDDLE",
-    "DEFAULT_X_PROFILE_DISTAL",
-    "DEFAULT_Y_PROFILE_DISTAL",
-]
+
+
+# User Preset: New Finger Style
+@register_preset_class("New Finger Style")
+class PresetNewFingerStyle(Preset):
+    """Preset for New Finger Style"""
+    
+    def get_data(self):
+        return {
+            "Proximal Segment_X": [
+                {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.09545455873012543,
+                    "y": 0.2562499940395355,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.4954545497894287,
+                    "y": 0.3000001609325409,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.8681817650794983,
+                    "y": 0.20000000298023224,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.9545454382896423,
+                    "y": 0.062499742954969406,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Proximal Segment_Y": [
+                {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.13636364042758942,
+                    "y": 0.23124997317790985,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.5136364698410034,
+                    "y": 0.24374990165233612,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.9272724986076355,
+                    "y": 0.17500001192092896,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Middle Segment_X": [
+                {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.09545455873012543,
+                    "y": 0.2562499940395355,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.4954545497894287,
+                    "y": 0.3000001609325409,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.8681817650794983,
+                    "y": 0.20000000298023224,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.9545454382896423,
+                    "y": 0.062499742954969406,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Middle Segment_Y": [
+                {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.13636364042758942,
+                    "y": 0.23124997317790985,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.5136364698410034,
+                    "y": 0.24374990165233612,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.9272724986076355,
+                    "y": 0.17500001192092896,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Distal Segment_X": [
+                {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.09545455873012543,
+                    "y": 0.2562499940395355,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.4954545497894287,
+                    "y": 0.3000001609325409,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.8681817650794983,
+                    "y": 0.20000000298023224,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.9545454382896423,
+                    "y": 0.062499742954969406,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Distal Segment_Y": [
+                {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.13636364042758942,
+                    "y": 0.23124997317790985,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.5136364698410034,
+                    "y": 0.24374990165233612,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.9272724986076355,
+                    "y": 0.17500001192092896,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                }
+            ]
+        }
+ 

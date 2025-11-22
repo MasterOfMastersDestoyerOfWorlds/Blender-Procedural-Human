@@ -38,13 +38,16 @@ def create_single_profile_radial_group():
     return group
 
 
-def create_dual_profile_radial_group():
+def create_dual_profile_radial_group(suffix=None):
     """
     Creates a node group for radial geometry with 2 profiles (X and Y).
     Uses angle-based interpolation:
     radius(θ) = sqrt((X(t)*cos(θ))² + (Y(t)*sin(θ))²)
     """
     group_name = "Radial Profile (Dual)"
+    if suffix:
+        group_name += f" {suffix}"
+
     if group_name in bpy.data.node_groups:
         return bpy.data.node_groups[group_name]
 

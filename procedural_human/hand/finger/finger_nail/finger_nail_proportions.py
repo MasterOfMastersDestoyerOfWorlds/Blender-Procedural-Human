@@ -38,6 +38,3 @@ def get_fingernail_proportions(finger_type):
         "height_ratio": height_ratio,
     }
 
-
-__all__ = ["get_fingernail_proportions"]
-

@@ -7,11 +7,12 @@ and manages operator registration.
 
 import bpy
 import re
-from typing import List, Type
+from typing import List, Type, Callable, Any
 from bpy.types import Operator
 
 
 _operator_registry: List[Type[Operator]] = []
+_preset_registry: dict = {}  # Maps display_name -> preset_data
 
 
 def procedural_operator(cls_or_kwargs=None, **kwargs):
@@ -102,9 +103,212 @@ def clear_registry():
     _operator_registry.clear()
 
 
-__all__ = [
-    "procedural_operator",
-    "register_all_operators",
-    "unregister_all_operators",
-    "clear_registry",
-]
+def dynamic_enum_operator(enum_prop_name: str, items_getter: Callable[[], list], **kwargs):
+    """
+    Decorator for operators that need dynamic enum properties.
+    
+    This decorator:
+    - Sets up an enum property that calls items_getter dynamically
+    - Adds an invoke method if one doesn't exist to show invoke_props_dialog
+    - Ensures enum items are refreshed each time the dialog is shown
+    
+    Args:
+        enum_prop_name: Name of the enum property to create/update
+        items_getter: Callable that returns a list of (identifier, name, description) tuples
+        **kwargs: Additional keyword arguments to pass to EnumProperty
+    
+    Usage:
+        @dynamic_enum_operator("preset_name", get_preset_enum_items)
+        @procedural_operator
+        class LoadPreset(Operator):
+            ...
+    """
+    def decorator(cls):
+        # Create a wrapper function that calls items_getter fresh each time
+        def enum_items_wrapper(self, context):
+            return items_getter()
+        
+        # Set up the enum property
+        # Don't set default during class definition - let Blender handle it
+        # The default will be set when the dialog is shown
+        enum_prop_kwargs = {
+            "name": kwargs.get("name", enum_prop_name.replace("_", " ").title()),
+            "items": enum_items_wrapper,
+        }
+        
+        # Only add default if explicitly provided
+        if "default" in kwargs:
+            enum_prop_kwargs["default"] = kwargs["default"]
+        
+        # Add any other kwargs
+        for k, v in kwargs.items():
+            if k not in ("name", "default"):
+                enum_prop_kwargs[k] = v
+        
+        enum_prop = bpy.props.EnumProperty(**enum_prop_kwargs)
+        setattr(cls, enum_prop_name, enum_prop)
+        
+        # Add invoke method if it doesn't exist
+        if not hasattr(cls, "invoke") or cls.invoke == Operator.invoke:
+            def invoke(self, context, event):
+                return context.window_manager.invoke_props_dialog(self)
+            cls.invoke = invoke
+        
+        return cls
+    
+    return decorator
+
+
+class Preset:
+    """
+    Base class for preset data.
+    Subclasses should implement get_data() to return the preset dictionary.
+    """
+    
+    def get_data(self) -> dict:
+        """
+        Returns the preset data dictionary.
+        Subclasses must implement this method.
+        """
+        raise NotImplementedError("Subclasses must implement get_data()")
+    
+    def __call__(self):
+        """Allow preset instances to be called like functions."""
+        return self.get_data()
+
+
+def register_preset_class(name: str = None):
+    """
+    Decorator for registering preset classes.
+    
+    The decorated class should inherit from Preset and implement get_data().
+    If name is not provided, it will be derived from the class name.
+    
+    Usage:
+        @register_preset_class("New Finger Style")
+        class MyPreset(Preset):
+            def get_data(self):
+                return {"key": value, ...}
+        
+        # Or with auto-naming:
+        @register_preset_class()
+        class PresetNewFingerStyle(Preset):
+            def get_data(self):
+                return {"key": value, ...}
+    """
+    def decorator(cls):
+        # Ensure the class inherits from Preset
+        if not issubclass(cls, Preset):
+            # Create a new class that inherits from both Preset and the original class
+            class PresetWrapper(Preset, cls):
+                pass
+            PresetWrapper.__name__ = cls.__name__
+            PresetWrapper.__module__ = cls.__module__
+            cls = PresetWrapper
+        
+        # Determine the display name
+        if name:
+            display_name = name
+        else:
+            # Derive from class name: PresetNewFingerStyle -> "New Finger Style"
+            class_name = cls.__name__
+            if class_name.startswith("Preset"):
+                display_name = class_name[6:].replace("_", " ").title()
+            else:
+                display_name = class_name.replace("_", " ").title()
+        
+        # Create an instance and register it
+        preset_instance = cls()
+        _preset_registry[display_name] = preset_instance
+        return cls
+    
+    # Handle both @register_preset_class and @register_preset_class("name")
+    if callable(name):
+        # Used as @register_preset_class without parentheses
+        cls = name
+        name = None
+        return decorator(cls)
+    else:
+        # Used as @register_preset_class() or @register_preset_class("name")
+        return decorator
+
+
+def register_preset(name: str = None):
+    """
+    Decorator for registering preset data functions.
+    
+    The decorated function should return a dictionary containing preset data.
+    If name is not provided, it will be derived from the function name.
+    
+    Usage:
+        @register_preset("New Finger Style")
+        def get_my_preset():
+            return {"key": value, ...}
+        
+        # Or with auto-naming:
+        @register_preset()
+        def preset_new_finger_style():
+            return {"key": value, ...}
+    """
+    def decorator(func):
+        # Determine the display name
+        if name:
+            display_name = name
+        else:
+            # Derive from function name: preset_new_finger_style -> "New Finger Style"
+            func_name = func.__name__
+            if func_name.startswith("preset_"):
+                display_name = func_name[7:].replace("_", " ").title()
+            elif func_name.startswith("get_") and func_name.endswith("_preset"):
+                display_name = func_name[4:-7].replace("_", " ").title()
+            else:
+                display_name = func_name.replace("_", " ").title()
+        
+        # Register the preset
+        _preset_registry[display_name] = func
+        return func
+    
+    # Handle both @register_preset and @register_preset("name")
+    if callable(name):
+        # Used as @register_preset without parentheses
+        func = name
+        name = None
+        return decorator(func)
+    else:
+        # Used as @register_preset() or @register_preset("name")
+        return decorator
+
+
+def register_preset_data(name: str, data: dict):
+    """
+    Directly register preset data without using a decorator.
+    
+    Usage:
+        register_preset_data("My Preset", {"key": value, ...})
+    """
+    _preset_registry[name] = lambda: data
+
+
+def get_all_presets() -> dict:
+    """
+    Get all registered presets by calling their functions or instances.
+    Returns a dictionary mapping display_name -> preset_data.
+    """
+    presets = {}
+    for name, preset_func_or_instance in _preset_registry.items():
+        try:
+            # Handle both callable functions and Preset instances
+            if isinstance(preset_func_or_instance, Preset):
+                presets[name] = preset_func_or_instance.get_data()
+            elif callable(preset_func_or_instance):
+                presets[name] = preset_func_or_instance()
+            else:
+                presets[name] = preset_func_or_instance
+        except Exception as e:
+            print(f"Warning: Failed to load preset '{name}': {e}")
+    return presets
+
+
+def clear_preset_registry():
+    """Clear the preset registry (useful for reloading)."""
+    _preset_registry.clear()

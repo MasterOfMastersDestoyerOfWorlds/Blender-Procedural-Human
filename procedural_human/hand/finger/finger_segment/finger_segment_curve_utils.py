@@ -260,13 +260,3 @@ def normalize_profile_curve(curve_object, segment_length=1.0):
         point["handle_right"] = tuple(handle_right)
 
     return profile_data
-
-
-__all__ = [
-    "create_profile_curve_from_data",
-    "extract_profile_curve_data",
-    "format_profile_data_as_code",
-    "get_default_profile_curve",
-    "normalize_profile_data",
-    "normalize_profile_curve",
-]

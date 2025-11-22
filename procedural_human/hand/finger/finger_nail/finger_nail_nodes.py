@@ -348,8 +348,3 @@ def attach_fingernail_to_distal_segment(
     )
     return nail_instance
 
-
-__all__ = [
-    "attach_fingernail_to_distal_segment",
-    "create_fingernail_node_group",
-]

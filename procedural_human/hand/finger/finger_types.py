@@ -48,5 +48,3 @@ def enum_items() -> Iterable[Tuple[str, str, str]]:
         description = f"{finger.label} finger ({finger.segment_count} segments)"
         yield (finger.value, finger.label, description)
 
-
-__all__ = ["FingerType", "ensure_finger_type", "enum_items"]

@@ -104,11 +104,3 @@ def unregister_all_panels():
 def clear_registry():
     """Clear the panel registry (useful for reloading)."""
     _panel_registry.clear()
-
-
-__all__ = [
-    "procedural_panel",
-    "register_all_panels",
-    "unregister_all_panels",
-    "clear_registry",
-]

@@ -176,5 +176,3 @@ def unregister():
 
     pass
 
-
-__all__ = ["ExportProfileCurve", "register", "unregister"]

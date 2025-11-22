@@ -136,12 +136,3 @@ def validate_codebase_path(path: Path) -> bool:
     markers = ['.git', 'pyproject.toml', 'uv.lock', 'TODO.md']
     return any((path / marker).exists() for marker in markers)
 
-
-__all__ = [
-    'detect_codebase_path',
-    'get_codebase_path',
-    'set_codebase_path',
-    'clear_cache',
-    'validate_codebase_path',
-]
-

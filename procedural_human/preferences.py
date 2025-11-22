@@ -101,6 +101,3 @@ def unregister():
     bpy.utils.unregister_class(RefreshCodebasePath)
     bpy.utils.unregister_class(ProceduralHumanPreferences)
 
-
-__all__ = ['ProceduralHumanPreferences', 'RefreshCodebasePath', 'register', 'unregister']
-

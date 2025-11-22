@@ -14,16 +14,6 @@ from . import finger_nail
 import bpy
 from bpy.props import PointerProperty
 
-__all__ = [
-    "finger_utils",
-    "finger_nodes",
-    "finger_operator",
-    "finger_proportions",
-    "finger_animation",
-    "finger_types",
-    "finger_segment",
-    "finger_nail",
-]
 from .finger import FingerDataProps
 
 classes = (FingerDataProps,)

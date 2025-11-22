@@ -157,7 +157,11 @@ def create_finger_segment_node_group(
     segment_group.links.new(angle_clamp.outputs["Result"], theta_node.inputs[0])
     
     # Radial Profile Lookup
-    radial_group = create_dual_profile_radial_group()
+    # Create a unique radial group for this segment type so curves are distinct
+    radial_suffix = segment_type.value.title() if hasattr(segment_type, "value") else str(segment_type).title()
+    # The SegmentType enum values are like "PROXIMAL", so title() gives "Proximal"
+    
+    radial_group = create_dual_profile_radial_group(suffix=radial_suffix)
     radial_instance = segment_group.nodes.new("GeometryNodeGroup")
     radial_instance.node_tree = radial_group
     radial_instance.label = "Radial Profile (Dual)"
