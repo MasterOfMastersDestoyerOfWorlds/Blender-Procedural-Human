@@ -72,37 +72,53 @@ def find_float_curve_nodes_in_finger(obj):
     if not obj or obj.type != 'MESH':
         return found_nodes
 
+    print(f"Searching for curves in {obj.name}...")
+
     # 1. Find the main Geometry Nodes modifier
     for mod in obj.modifiers:
         if mod.type == 'NODES' and mod.node_group:
             main_group = mod.node_group
-            
-            # 2. Find "Radial Profile (Dual)" instances inside the main group
-            # Or rather, find the "Finger Segment" groups first?
-            # The structure is Main -> Finger Segment Group -> Radial Profile (Dual) -> Float Curves
+            print(f"  Checking modifier {mod.name} with group {main_group.name}")
             
             # Iterate through nodes in the main group to find segment groups
             for node in main_group.nodes:
                 if node.type == 'GROUP' and node.node_tree:
                     # Identify if this is a finger segment group
-                    # We can check the name or outputs?
-                    # Let's assume node.label or node_tree.name contains "Segment"
-                    # The create_finger_segment_node_group usually names them e.g. "Proximal Segment"
+                    # We assume the label or name contains "Segment" or specific types like "Proximal"
+                    # Or better, check if the group has "Radial Profile (Dual)" inside it by checking structure?
+                    # Using label matching for now as we set it in creation.
                     
-                    seg_name = node.label or node.node_tree.name
+                    seg_name = node.label
+                    if not seg_name:
+                        # Try to infer from node_tree name
+                        seg_name = node.node_tree.name
+                        
+                    # Filter to relevant groups if possible
+                    # e.g., Proximal, Middle, Distal
+                    
+                    print(f"    Found group node: {node.name} (Label: {node.label}, Tree: {node.node_tree.name})")
                     
                     # Dive into the segment group
                     for inner_node in node.node_tree.nodes:
                         if inner_node.type == 'GROUP' and inner_node.node_tree:
-                            if "Radial Profile (Dual)" in inner_node.node_tree.name:
-                                # Dive into Radial Profile group
+                            # Check for Radial Profile group
+                            # Name set in code: "Radial Profile (Dual)"
+                            if "Radial Profile (Dual)" in inner_node.node_tree.name or "Radial Profile (Dual)" in inner_node.label:
+                                print(f"      Found Radial Profile group in {seg_name}")
                                 radial_group = inner_node.node_tree
                                 for deep_node in radial_group.nodes:
                                     if deep_node.type == 'FLOAT_CURVE':
                                         # Label should be "X Profile" or "Y Profile"
-                                        axis = "X" if "X" in deep_node.label else ("Y" if "Y" in deep_node.label else "Unknown")
+                                        if "X" in deep_node.label:
+                                            axis = "X"
+                                        elif "Y" in deep_node.label:
+                                            axis = "Y"
+                                        else:
+                                            axis = "Unknown"
+                                            
                                         key = f"{seg_name}_{axis}"
                                         found_nodes[key] = deep_node
+                                        print(f"        Found Curve: {key}")
                                         
     return found_nodes
 
@@ -125,6 +141,7 @@ class SaveFloatCurvePreset(Operator):
         
         if not nodes_dict:
             self.report({'WARNING'}, "No profile curve nodes found in active object")
+            # Don't cancel, just warn, maybe the structure is different
             return {'CANCELLED'}
             
         preset_data = {}
