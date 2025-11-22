@@ -8,30 +8,30 @@ from mathutils import Vector
 def get_property_value(prop_name, default):
     """Get actual value from Blender property"""
     try:
-        # This function seems to rely on implicit context or self, which is dangerous.
-        # Assuming it's intended to be used where 'self' is available or passed, 
-        # but 'self' is not defined here. 
-        # However, based on usage in codebase, it might be a method extracted from a class.
-        # If it's standalone, it needs an object passed to it.
-        # But we will copy it as is from utils.py for now to maintain compatibility,
-        # though it looks broken if 'self' is not global (which it isn't).
-        # Wait, looking at previous search result:
-        # val = getattr(self, prop_name, default) 
-        # 'self' is undefined. This function was likely broken or copied incorrectly.
-        # Checking usage: from procedural_human.utils import get_numeric_value
-        # get_property_value is imported in finger_utils.py.
-        # Let's fix it to take 'obj' as first arg if possible, or just leave as is if we can't fix.
-        # Actually, let's just copy the content.
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         pass 
     except Exception:
         return default
 
-# Re-implementing correctly based on typical usage
+
 def get_property_value(obj, prop_name, default):
     """Get actual value from Blender property"""
     try:
         val = getattr(obj, prop_name, default)
-        # Check if it's a deferred property
+        
         if hasattr(val, '_default'):
             return val._default
         elif hasattr(val, 'default'):
@@ -39,7 +39,7 @@ def get_property_value(obj, prop_name, default):
         elif str(type(val)) == "<class 'bpy.props._PropertyDeferred'>":
             return default
         else:
-            # Try to convert to appropriate type
+            
             if isinstance(default, (int, float)):
                 return float(val)
             else:
@@ -65,10 +65,10 @@ def get_numeric_value(value, default):
 
 def setup_node_group_interface(node_group):
     """Helper function to setup node group interface with geometry sockets"""
-    # Check existing sockets
+    
     existing_sockets = [socket.name for socket in node_group.interface.items_tree]
     
-    # Add input geometry socket if it doesn't exist
+    
     if "Geometry" not in existing_sockets:
         try:
             node_group.interface.new_socket(
@@ -77,7 +77,7 @@ def setup_node_group_interface(node_group):
         except Exception as e:
             print(f"Warning: Could not create input Geometry socket: {e}")
     
-    # Add output geometry socket if it doesn't exist
+    
     existing_sockets = [socket.name for socket in node_group.interface.items_tree]
     if "Geometry" not in existing_sockets or existing_sockets.count("Geometry") < 2:
         try:
@@ -97,7 +97,7 @@ def create_geometry_nodes_modifier(obj, name):
 
 def setup_basic_nodes(node_group):
     """Setup basic input/output nodes"""
-    # Add geometry socket to node group interface
+    
     if "Geometry" not in [socket.name for socket in node_group.interface.items_tree]:
         node_group.interface.new_socket(
             name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
@@ -106,11 +106,11 @@ def setup_basic_nodes(node_group):
             name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
         )
 
-    # Create input/output nodes
+    
     input_node = node_group.nodes.new("NodeGroupInput")
     output_node = node_group.nodes.new("NodeGroupOutput")
 
-    # Position nodes
+    
     input_node.location = (-600, 0)
     output_node.location = (600, 0)
 

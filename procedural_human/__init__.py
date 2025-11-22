@@ -4,6 +4,8 @@ A Blender add-on for creating procedural human characters using Geometry Nodes
 """
 
 import bpy
+
+from procedural_human.hand.finger.finger_segment import SEGMENT_SAMPLE_COUNT
 from . import operators
 from . import panels
 from . import menus
@@ -21,18 +23,18 @@ def update_profile_curves(self, context):
     Update callback for profile curve changes.
     Finds all finger objects and updates their geometry node trees.
     """
-    # Find all finger objects with geometry nodes
+    
     for obj in bpy.data.objects:
         if obj.type == 'MESH' and hasattr(obj, 'finger_data'):
             if obj.finger_data.is_finger:
-                # Find geometry nodes modifier
+                
                 for modifier in obj.modifiers:
                     if modifier.type == 'NODES' and modifier.node_group:
-                        # Update will happen automatically when nodes reference scene properties
-                        # Force a viewport update
+                        
+                        
                         pass
     
-    # Force viewport update
+    
     if context.view_layer:
         context.view_layer.update()
 bl_info = {
@@ -48,7 +50,7 @@ bl_info = {
 }
 
 
-# Scene properties for finger operations
+
 def register_scene_properties():
     """Register scene properties for finger operations"""
     bpy.types.Scene.procedural_finger_type = bpy.props.EnumProperty(
@@ -75,7 +77,7 @@ def register_scene_properties():
         description="Create keyframe animation for finger curl",
     )
     
-    # Collapsible section properties
+    
     bpy.types.Scene.procedural_finger_expanded = bpy.props.BoolProperty(
         name="Finger Expanded",
         default=True,
@@ -96,14 +98,14 @@ def register_scene_properties():
     
     bpy.types.Scene.procedural_finger_segment_sample_count = bpy.props.IntProperty(
         name="Sample Count",
-        default=16,
+        default=SEGMENT_SAMPLE_COUNT,
         min=3,
         description="Number of samples for profile curve resolution. Higher values improve quality but increase geometry count",
         update=update_profile_curves,
     )
     
-    # Profile curve pointer properties for each segment type
-    # Proximal segment
+    
+    
     bpy.types.Scene.procedural_segment_proximal_x_profile = bpy.props.PointerProperty(
         name="Proximal X Profile",
         type=bpy.types.Object,
@@ -120,7 +122,7 @@ def register_scene_properties():
         update=update_profile_curves,
     )
     
-    # Middle segment
+    
     bpy.types.Scene.procedural_segment_middle_x_profile = bpy.props.PointerProperty(
         name="Middle X Profile",
         type=bpy.types.Object,
@@ -137,7 +139,7 @@ def register_scene_properties():
         update=update_profile_curves,
     )
     
-    # Distal segment
+    
     bpy.types.Scene.procedural_segment_distal_x_profile = bpy.props.PointerProperty(
         name="Distal X Profile",
         type=bpy.types.Object,
@@ -161,13 +163,13 @@ def unregister_scene_properties():
     del bpy.types.Scene.procedural_finger_curl_direction
     del bpy.types.Scene.procedural_create_animation_finger
     
-    # Collapsible section properties
+    
     del bpy.types.Scene.procedural_finger_expanded
     del bpy.types.Scene.procedural_finger_nail_expanded
     del bpy.types.Scene.procedural_finger_segment_expanded
     del bpy.types.Scene.procedural_finger_segment_sample_count
     
-    # Profile curve pointer properties
+    
     del bpy.types.Scene.procedural_segment_proximal_x_profile
     del bpy.types.Scene.procedural_segment_proximal_y_profile
     del bpy.types.Scene.procedural_segment_middle_x_profile

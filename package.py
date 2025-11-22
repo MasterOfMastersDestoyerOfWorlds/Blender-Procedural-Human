@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Package the Procedural Human Generator addon for distribution
 Creates a clean zip file ready for Blender installation
@@ -22,17 +22,17 @@ def create_addon_package():
         print(f"❌ Source directory not found: {source_dir}")
         return False
     
-    # Remove existing package
+    
     if output_file.exists():
         output_file.unlink()
         print("🗑️ Removed existing package")
     
-    # Create zip file
+    
     with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        # Add all Python files
+        
         for file_path in source_dir.glob("*.py"):
             if file_path.is_file():
-                # Store with addon directory structure
+                
                 arcname = f"procedural_human/{file_path.name}"
                 zipf.write(file_path, arcname)
                 print(f"✅ Added {file_path.name}")

@@ -29,7 +29,7 @@ class ProceduralHumanPreferences(AddonPreferences):
         box.label(text="Codebase Path Configuration:")
         box.prop(self, "codebase_path")
         
-        # Show detected vs configured path
+        
         from .config import detect_codebase_path, get_codebase_path, validate_codebase_path
         
         detected = detect_codebase_path()
@@ -58,11 +58,11 @@ class ProceduralHumanPreferences(AddonPreferences):
         else:
             info_box.label(text="Current: None (configure above)", icon='ERROR')
         
-        # Manual override
+        
         row = layout.row()
         row.operator("wm.procedural_refresh_codebase_path", text="Refresh Detection", icon='FILE_REFRESH')
         
-        # Help text
+        
         help_box = layout.box()
         help_box.label(text="Help:", icon='QUESTION')
         help_box.label(text="• Auto-detection walks up from addon location to find project root")

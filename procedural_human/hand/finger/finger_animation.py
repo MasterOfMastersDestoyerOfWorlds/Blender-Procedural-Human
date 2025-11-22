@@ -23,7 +23,7 @@ def create_finger_curl_animation(armature: bpy.types.Object, finger: FingerData)
     total_length = sum(segment_lengths)
     ik_target_name = armature.get("finger_ik_target")
     ik_target = bpy.data.objects.get(ik_target_name) if ik_target_name else None
-    # Animate IK target translation to drive curl
+    
     initial_location = ik_target.location.copy()
     bpy.context.scene.frame_set(frame_start)
     ik_target.location = initial_location

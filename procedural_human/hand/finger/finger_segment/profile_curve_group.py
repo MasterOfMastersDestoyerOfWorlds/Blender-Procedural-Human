@@ -83,7 +83,7 @@ def create_profile_curve_offset_node_group(
         y_profile_info.outputs["Geometry"], domain_size_y.inputs["Geometry"]
     )
 
-    # Sample Y profile - using position vectors
+    
     sample_y = profile_offset_group.nodes.new("GeometryNodeSampleCurve")
     sample_y.label = "Sample Y Profile"
     sample_y.location = (1000, -360)
@@ -96,7 +96,7 @@ def create_profile_curve_offset_node_group(
         input_node.outputs["Length Clamp"], sample_y.inputs["Factor"]
     )
 
-    # Extract Y component as radius
+    
     separate_y_sample = profile_offset_group.nodes.new("ShaderNodeSeparateXYZ")
     separate_y_sample.label = "Extract Y Radius"
     separate_y_sample.location = (1200, -360)

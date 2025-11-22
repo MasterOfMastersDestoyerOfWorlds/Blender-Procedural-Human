@@ -4,6 +4,7 @@ Geometry Node helpers for fingernail creation and attachment.
 
 import bpy
 
+from procedural_human.hand.finger.finger_nail import NAIL_SAMPLE_COUNT
 from procedural_human.utils import setup_node_group_interface
 from procedural_human.hand.finger.finger_nail.finger_nail_proportions import (
     get_fingernail_proportions,
@@ -34,7 +35,7 @@ def create_fingernail_node_group(
     nail_group = bpy.data.node_groups.new(name, "GeometryNodeTree")
     setup_node_group_interface(nail_group)
 
-    # Add proportion sockets so they are visible in the node interface.
+    
     radius_socket = nail_group.interface.new_socket(
         name=FingerSegmentProperties.SEGMENT_RADIUS.value,
         in_out="INPUT",
@@ -53,7 +54,7 @@ def create_fingernail_node_group(
     )
     height_socket.default_value = nail_height_ratio
 
-    # Input/Output nodes (expects chained finger geometry as input)
+    
     input_node = nail_group.nodes.new("NodeGroupInput")
     input_node.label = "Inputs"
     input_node.location = (-1400, 0)
@@ -62,28 +63,28 @@ def create_fingernail_node_group(
     output_node.label = "Output"
     output_node.location = (1000, 0)
 
-    # Get bounding box to find the Z endpoint (total finger length)
-    # We assume the finger grows along Z axis locally in this group context usually? 
-    # Or maybe variable axis. But usually distal segment is Z aligned before rotation.
     
-    # Determine axis vectors
+    
+    
+    
+    
     if curl_direction == "X":
-        length_axis_vec = (0, 0, 1) # Z
-        curl_axis_vec = (1, 0, 0)   # X
-        side_axis_vec = (0, 1, 0)   # Y
+        length_axis_vec = (0, 0, 1) 
+        curl_axis_vec = (1, 0, 0)   
+        side_axis_vec = (0, 1, 0)   
         length_idx, curl_idx, side_idx = 2, 0, 1
     elif curl_direction == "Y":
-        length_axis_vec = (0, 0, 1) # Z
-        curl_axis_vec = (0, 1, 0)   # Y
-        side_axis_vec = (1, 0, 0)   # X
+        length_axis_vec = (0, 0, 1) 
+        curl_axis_vec = (0, 1, 0)   
+        side_axis_vec = (1, 0, 0)   
         length_idx, curl_idx, side_idx = 2, 1, 0
-    else:  # Z
-        length_axis_vec = (0, 1, 0) # Y
-        curl_axis_vec = (0, 0, 1)   # Z
-        side_axis_vec = (1, 0, 0)   # X
+    else:  
+        length_axis_vec = (0, 1, 0) 
+        curl_axis_vec = (0, 0, 1)   
+        side_axis_vec = (1, 0, 0)   
         length_idx, curl_idx, side_idx = 1, 2, 0
 
-    # Find tip Z position using BBox
+    
     bounding_box = nail_group.nodes.new("GeometryNodeBoundBox")
     bounding_box.location = (-1200, 200)
     nail_group.links.new(input_node.outputs["Geometry"], bounding_box.inputs["Geometry"])
@@ -92,23 +93,23 @@ def create_fingernail_node_group(
     sep_bbox.location = (-1000, 200)
     nail_group.links.new(bounding_box.outputs["Max"], sep_bbox.inputs["Vector"])
     
-    # We want to raycast FROM OUTSIDE towards the surface to find the nail bed position.
-    # Or raycast from inside out.
-    # The "Curl Axis" is where the nail sits.
-    # Let's define a Ray Start Position:
-    # Z = Tip Z - (Radius * some_factor) -> Slightly back from tip
-    # X/Y = 0 (Center)
-    # Offset along Curl Axis by Radius * 2 (Start outside)
-    # Ray Direction = -Curl Axis
     
-    # 1. Calculate Tip Position on Length Axis
+    
+    
+    
+    
+    
+    
+    
+    
+    
     length_pos = nail_group.nodes.new("ShaderNodeMath")
-    length_pos.operation = "MULTIPLY" # Or just pass through if we take max
-    # Actually, we want to go slightly back from the tip.
-    # Back off = Radius * 1.0 maybe?
-    # Or use the nail height to determine center.
+    length_pos.operation = "MULTIPLY" 
     
-    # Calculate Nail Dimensions First
+    
+    
+    
+    
     width_calc = nail_group.nodes.new("ShaderNodeMath")
     width_calc.operation = "MULTIPLY"
     width_calc.location = (-1000, -200)
@@ -121,7 +122,7 @@ def create_fingernail_node_group(
     nail_group.links.new(width_calc.outputs["Value"], height_calc.inputs[0])
     nail_group.links.new(input_node.outputs["Nail Height Ratio"], height_calc.inputs[1])
     
-    # Tip Z - Nail Height * 0.5
+    
     tip_pos_val = sep_bbox.outputs["Z"] if length_idx == 2 else (sep_bbox.outputs["Y"] if length_idx == 1 else sep_bbox.outputs["X"])
     
     target_length_pos = nail_group.nodes.new("ShaderNodeMath")
@@ -137,17 +138,17 @@ def create_fingernail_node_group(
     
     nail_group.links.new(half_height.outputs["Value"], target_length_pos.inputs[1])
     
-    # Construct Source Position for Raycast
-    # Start at (0,0,Z_target) + CurlAxis * (Radius * 2)
     
-    # Base Pos (0,0,Z)
+    
+    
+    
     base_pos_combine = nail_group.nodes.new("ShaderNodeCombineXYZ")
     base_pos_combine.location = (-400, 100)
     if length_idx == 0: nail_group.links.new(target_length_pos.outputs["Value"], base_pos_combine.inputs["X"])
     elif length_idx == 1: nail_group.links.new(target_length_pos.outputs["Value"], base_pos_combine.inputs["Y"])
     elif length_idx == 2: nail_group.links.new(target_length_pos.outputs["Value"], base_pos_combine.inputs["Z"])
     
-    # Offset Vector
+    
     offset_dist = nail_group.nodes.new("ShaderNodeMath")
     offset_dist.operation = "MULTIPLY"
     offset_dist.inputs[1].default_value = 2.0
@@ -161,38 +162,38 @@ def create_fingernail_node_group(
     offset_scaled = nail_group.nodes.new("ShaderNodeVectorMath")
     offset_scaled.operation = "SCALE"
     nail_group.links.new(offset_vec.outputs["Vector"], offset_scaled.inputs[0])
-    nail_group.links.new(offset_dist.outputs["Value"], offset_scaled.inputs[3]) # Scale
+    nail_group.links.new(offset_dist.outputs["Value"], offset_scaled.inputs[3]) 
     
     ray_start = nail_group.nodes.new("ShaderNodeVectorMath")
     ray_start.operation = "ADD"
     nail_group.links.new(base_pos_combine.outputs["Vector"], ray_start.inputs[0])
     nail_group.links.new(offset_scaled.outputs["Vector"], ray_start.inputs[1])
     
-    # Ray Direction = -Curl Axis
+    
     ray_dir = nail_group.nodes.new("ShaderNodeVectorMath")
     ray_dir.operation = "SCALE"
     ray_dir.inputs[0].default_value = curl_axis_vec
     ray_dir.inputs[3].default_value = -1.0
     
-    # Raycast
+    
     raycast = nail_group.nodes.new("GeometryNodeRaycast")
     raycast.location = (0, 0)
     nail_group.links.new(input_node.outputs["Geometry"], raycast.inputs["Target Geometry"])
     nail_group.links.new(ray_start.outputs["Vector"], raycast.inputs["Source Position"])
     nail_group.links.new(ray_dir.outputs["Vector"], raycast.inputs["Ray Direction"])
     
-    # Hit Position is where we place the nail? 
-    # Maybe offset slightly out by thickness.
     
-    # Create Nail Geometry (Sphere)
+    
+    
+    
     nail_sphere = nail_group.nodes.new("GeometryNodeMeshUVSphere")
     nail_sphere.location = (-400, -500)
     nail_sphere.inputs["Radius"].default_value = 1.0
-    nail_sphere.inputs["Segments"].default_value = 16
+    nail_sphere.inputs["Segments"].default_value = NAIL_SAMPLE_COUNT
     
-    # Scale Nail
-    # X=SideAxis (Width), Y=LengthAxis (Height), Z=CurlAxis (Thickness)
-    # But sphere is uniform. We need to construct scale vector.
+    
+    
+    
     
     thickness_calc = nail_group.nodes.new("ShaderNodeMath")
     thickness_calc.operation = "MULTIPLY"
@@ -200,14 +201,14 @@ def create_fingernail_node_group(
     nail_group.links.new(width_calc.outputs["Value"], thickness_calc.inputs[0])
     
     scale_vec = nail_group.nodes.new("ShaderNodeCombineXYZ")
-    # Map dimensions to axes
-    # Scale inputs: X, Y, Z
-    # If length=Z, curl=X, side=Y
-    # X (Curl) = Thickness
-    # Y (Side) = Width
-    # Z (Length) = Height
     
-    # Generic mapping:
+    
+    
+    
+    
+    
+    
+    
     inputs = [None, None, None]
     inputs[curl_idx] = thickness_calc.outputs["Value"]
     inputs[side_idx] = width_calc.outputs["Value"]
@@ -222,22 +223,22 @@ def create_fingernail_node_group(
     nail_group.links.new(nail_sphere.outputs["Mesh"], transform_shape.inputs["Geometry"])
     nail_group.links.new(scale_vec.outputs["Vector"], transform_shape.inputs["Scale"])
     
-    # Move Nail to Hit Position
-    # Add slight offset so it doesn't clip inside
+    
+    
     final_pos = nail_group.nodes.new("GeometryNodeSetPosition")
     final_pos.location = (300, -300)
     nail_group.links.new(transform_shape.outputs["Geometry"], final_pos.inputs["Geometry"])
     
-    # Use Raycast Hit Position if Hit, else fallback?
-    # If not hit, fallback to old method (Radius + Offset)
     
-    # But for now let's trust Raycast hits since we start outside.
-    # We want position = Hit Position + Normal * SmallOffset? 
-    # Or just Hit Position + CurlAxis * SmallOffset
+    
+    
+    
+    
+    
     
     offset_out_val = nail_group.nodes.new("ShaderNodeMath")
     offset_out_val.operation = "MULTIPLY"
-    offset_out_val.inputs[1].default_value = OFFSET_RATIO * 0.1 # Small bit
+    offset_out_val.inputs[1].default_value = OFFSET_RATIO * 0.1 
     nail_group.links.new(input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value], offset_out_val.inputs[0])
     
     offset_out_vec = nail_group.nodes.new("ShaderNodeVectorMath")
@@ -250,14 +251,14 @@ def create_fingernail_node_group(
     nail_group.links.new(raycast.outputs["Hit Position"], final_loc.inputs[0])
     nail_group.links.new(offset_out_vec.outputs["Vector"], final_loc.inputs[1])
     
-    # Logic to switch if Is Hit
+    
     switch_loc = nail_group.nodes.new("ShaderNodeMix")
     switch_loc.data_type = "VECTOR"
     nail_group.links.new(raycast.outputs["Is Hit"], switch_loc.inputs["Factor"])
-    # False: Fallback (use ray start - radius * 2 + radius * 1.1? roughly)
-    # Just use ray start - offset (which is outside) - so ray start is radius*2 out.
-    # Let's effectively place it at radius*1.1 if no hit.
-    # Fallback location:
+    
+    
+    
+    
     fallback_loc = nail_group.nodes.new("ShaderNodeVectorMath")
     fallback_loc.operation = "ADD"
     nail_group.links.new(base_pos_combine.outputs["Vector"], fallback_loc.inputs[0])
@@ -265,7 +266,7 @@ def create_fingernail_node_group(
     fallback_offset = nail_group.nodes.new("ShaderNodeVectorMath")
     fallback_offset.operation = "SCALE"
     fallback_offset.inputs[0].default_value = curl_axis_vec
-    # radius * 1.1
+    
     rad_1_1 = nail_group.nodes.new("ShaderNodeMath")
     rad_1_1.operation = "MULTIPLY"
     rad_1_1.inputs[1].default_value = 1.1
@@ -274,12 +275,12 @@ def create_fingernail_node_group(
     
     nail_group.links.new(fallback_offset.outputs["Vector"], fallback_loc.inputs[1])
     
-    nail_group.links.new(fallback_loc.outputs["Vector"], switch_loc.inputs[4]) # A (False)
-    nail_group.links.new(final_loc.outputs["Vector"], switch_loc.inputs[5]) # B (True)
+    nail_group.links.new(fallback_loc.outputs["Vector"], switch_loc.inputs[4]) 
+    nail_group.links.new(final_loc.outputs["Vector"], switch_loc.inputs[5]) 
     
     nail_group.links.new(switch_loc.outputs["Result"], final_pos.inputs["Offset"])
     
-    # Join
+    
     join_geo = nail_group.nodes.new("GeometryNodeJoinGeometry")
     join_geo.location = (800, 0)
     nail_group.links.new(input_node.outputs["Geometry"], join_geo.inputs["Geometry"])
@@ -304,7 +305,7 @@ def attach_fingernail_to_distal_segment(
     finger_enum = ensure_finger_type(finger_type)
     nail_props = get_fingernail_proportions(finger_enum)
 
-    # Interpret nail_size as a proportional scale relative to the default value.
+    
     size_multiplier = 1.0
     if nail_size and nail_size > 0:
         size_multiplier = max(0.25, min(2.5, nail_size / DEFAULT_NAIL_SIZE))
@@ -328,7 +329,7 @@ def attach_fingernail_to_distal_segment(
         distal_transform_node.location[1],
     )
 
-    # Ensure exposed sockets reflect the proportions on this instance.
+    
     if FingerSegmentProperties.SEGMENT_RADIUS.value in nail_instance.inputs:
         nail_instance.inputs[
             FingerSegmentProperties.SEGMENT_RADIUS.value

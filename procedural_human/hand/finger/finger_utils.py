@@ -202,12 +202,12 @@ def create_finger_armature(finger: FingerData):
             bone = armature.pose.bones[bone_name]
             bone.rotation_euler = (0.0, 0.0, 0.0)
             
-            # Set IK Rotation Limits
+            
             bone.use_ik_limit_x = True
             bone.use_ik_limit_y = True
             bone.use_ik_limit_z = True
             
-            # Convert degrees to radians for limits
+            
             import math
             bone.ik_min_x = math.radians(-150)
             bone.ik_max_x = math.radians(10)

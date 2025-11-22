@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-# Cache the detected path to avoid repeated filesystem checks
+
 _cached_codebase_path: Optional[Path] = None
 
 
@@ -29,34 +29,34 @@ def detect_codebase_path() -> Optional[Path]:
     Returns:
         Path to the codebase root, or None if not found
     """
-    # Strategy 1: Walk up from current file looking for project markers
+    
     current_file = Path(__file__).resolve()
     current_dir = current_file.parent
     
-    # Project markers that indicate the root directory
+    
     markers = ['.git', 'pyproject.toml', 'uv.lock', 'TODO.md']
     
-    # Walk up the directory tree
+    
     check_dir = current_dir
-    while check_dir.parent != check_dir:  # Stop at filesystem root
-        # Check if any marker exists in this directory
+    while check_dir.parent != check_dir:  
+        
         for marker in markers:
             marker_path = check_dir / marker
             if marker_path.exists():
-                # Found a project root indicator
+                
                 return check_dir
         
-        # Move up one directory
+        
         check_dir = check_dir.parent
     
-    # Strategy 2: Check environment variable
+    
     env_path = os.environ.get('PROCEDURAL_HUMAN_CODEBASE')
     if env_path:
         env_path_obj = Path(env_path)
         if env_path_obj.exists() and env_path_obj.is_dir():
             return env_path_obj
     
-    # Strategy 3: Check addon preferences (imported dynamically to avoid circular import)
+    
     try:
         import bpy
         if hasattr(bpy.context, 'preferences'):
@@ -70,8 +70,8 @@ def detect_codebase_path() -> Optional[Path]:
     except (ImportError, AttributeError):
         pass
     
-    # Strategy 4: Fallback to addon installation directory
-    # Go up from current file to procedural_human directory
+    
+    
     addon_dir = current_file.parent
     while addon_dir.name != 'procedural_human' and addon_dir.parent != addon_dir:
         addon_dir = addon_dir.parent
@@ -127,12 +127,12 @@ def validate_codebase_path(path: Path) -> bool:
     if not path or not path.exists() or not path.is_dir():
         return False
     
-    # Check for expected structure
+    
     expected_subdir = path / 'procedural_human'
     if not expected_subdir.exists():
         return False
     
-    # Check for at least one project marker
+    
     markers = ['.git', 'pyproject.toml', 'uv.lock', 'TODO.md']
     return any((path / marker).exists() for marker in markers)
 

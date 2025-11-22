@@ -5,7 +5,7 @@ Operator classes for Procedural Human Generator
 import bpy
 from .operator_decorator import register_all_operators, unregister_all_operators
 
-# Import operator modules to trigger decorator registration
+
 from .hand.finger.finger_operator import (
     CreateFinger,
     RealizeFingerGeometry,

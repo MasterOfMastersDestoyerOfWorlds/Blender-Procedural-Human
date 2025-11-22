@@ -16,18 +16,18 @@ class FingerSegmentPanel(Panel):
         layout = self.layout
         scene = context.scene
         
-        # Collapsible header
+        
         box = layout.box()
         row = box.row()
         icon = 'TRIA_DOWN' if scene.procedural_finger_segment_expanded else 'TRIA_RIGHT'
         row.prop(scene, "procedural_finger_segment_expanded", icon=icon, emboss=False, text="")
         row.label(text="Segment Profile Curves")
         
-        # Only draw content if expanded
+        
         if scene.procedural_finger_segment_expanded:
             content_box = box.box()
             
-            # Sample Count
+            
             content_box.label(text="Sampling Settings:", icon='MODIFIER')
             row = content_box.row()
             row.prop(scene, "procedural_finger_segment_sample_count", text="Sample Count")
@@ -37,17 +37,17 @@ class FingerSegmentPanel(Panel):
             content_box.separator()
             
             
-            # Info text
+            
             content_box.separator()
             info_row = content_box.row()
             info_row.label(text="Select curve objects from the scene", icon='INFO')
             
-            # Export buttons
+            
             content_box.separator()
             export_box = content_box.box()
             export_box.label(text="Development Tools:", icon='TOOL_SETTINGS')
             
-            # Show codebase path status
+            
             from procedural_human.config import get_codebase_path, validate_codebase_path
             codebase = get_codebase_path()
             
@@ -62,7 +62,7 @@ class FingerSegmentPanel(Panel):
                     icon='EXPORT',
                 )
                 
-                # Float Curve Presets
+                
                 export_box.separator()
                 export_box.label(text="Float Curve Presets:", icon='GRAPH')
                 row = export_box.row(align=True)

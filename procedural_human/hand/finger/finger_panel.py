@@ -12,14 +12,14 @@ class FingerPanel(Panel):
         layout = self.layout
         scene = context.scene
         
-        # Collapsible header
+        
         box = layout.box()
         row = box.row()
         icon = 'TRIA_DOWN' if scene.procedural_finger_expanded else 'TRIA_RIGHT'
         row.prop(scene, "procedural_finger_expanded", icon=icon, emboss=False, text="")
         row.label(text="Finger Operations")
         
-        # Only draw content if expanded
+        
         if scene.procedural_finger_expanded:
             finger_box = box.box()
             operator_utils.create_geometry_nodes_modifier(finger_box, context, "Finger")

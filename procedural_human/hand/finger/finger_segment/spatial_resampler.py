@@ -36,7 +36,7 @@ def create_spatial_profile_offset_node_group(
     else:
         profile_group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
-    # --- Interface ---
+    
     profile_group.interface.new_socket(name="Length Clamp", in_out="INPUT", socket_type="NodeSocketFloat")
     profile_group.interface.new_socket(name="Sin Theta", in_out="INPUT", socket_type="NodeSocketFloat")
     profile_group.interface.new_socket(name=FingerSegmentProperties.SEGMENT_RADIUS.value, in_out="INPUT", socket_type="NodeSocketFloat")
@@ -46,14 +46,14 @@ def create_spatial_profile_offset_node_group(
     profile_group.interface.new_socket(name="Point Count", in_out="OUTPUT", socket_type="NodeSocketInt")
     profile_group.interface.new_socket(name="Y Profile", in_out="OUTPUT", socket_type="NodeSocketGeometry")
 
-    # --- Nodes ---
+    
     nodes = profile_group.nodes
     links = profile_group.links
     
     input_node = nodes.new("NodeGroupInput")
     input_node.location = (-1800, 0)
 
-    # 1. Load Profile Object
+    
     scene = bpy.context.scene
     p_type = ProfileType.Y_PROFILE if axis_name == "Y" else ProfileType.X_PROFILE
     
@@ -67,14 +67,14 @@ def create_spatial_profile_offset_node_group(
     y_profile_info.inputs["Object"].default_value = y_profile_obj
     y_profile_info.transform_space = 'RELATIVE' 
 
-    # 2. Resample for Resolution
+    
     resample = nodes.new("GeometryNodeResampleCurve")
     resample.location = (-1400, -200)
     resample.mode = 'COUNT'
     resample.inputs['Count'].default_value = 256
     links.new(y_profile_info.outputs["Geometry"], resample.inputs["Curve"])
 
-    # 3. Analyze Bounds
+    
     bound_box = nodes.new("GeometryNodeBoundBox")
     bound_box.location = (-1400, -500)
     links.new(y_profile_info.outputs["Geometry"], bound_box.inputs["Geometry"])
@@ -106,27 +106,27 @@ def create_spatial_profile_offset_node_group(
     links.new(sep_min.outputs["X"], add_pos.inputs[0])
     links.new(mul_pos.outputs["Value"], add_pos.inputs[1])
 
-    # 4. Prepare Lookup Data
     
-    # A. Capture Original Position
+    
+    
     capture_pos = nodes.new("GeometryNodeCaptureAttribute")
     capture_pos.label = "Store Orig Pos"
     capture_pos.location = (-1200, -50)
     capture_pos.domain = 'POINT'
-    # Input 0: Geometry
+    
     links.new(resample.outputs["Curve"], capture_pos.inputs[0])
     
     pos_input = nodes.new("GeometryNodeInputPosition")
     pos_input.location = (-1400, 0)
-    # Input 1: Value (The dynamic socket for the attribute)
-    # Using index 1 avoids "key not found" error
+    
+    
     links.new(pos_input.outputs["Position"], capture_pos.inputs[1])
 
-    # B. Flatten to X-Axis
+    
     set_pos = nodes.new("GeometryNodeSetPosition")
     set_pos.label = "Flatten to X"
     set_pos.location = (-1000, -50)
-    # Output 0: Geometry
+    
     links.new(capture_pos.outputs[0], set_pos.inputs["Geometry"])
     
     separate_orig = nodes.new("ShaderNodeSeparateXYZ")
@@ -139,42 +139,42 @@ def create_spatial_profile_offset_node_group(
     
     links.new(combine_flat.outputs["Vector"], set_pos.inputs["Position"])
 
-    # 5. Perform Lookup
     
-    # Search Vector
+    
+    
     target_vec = nodes.new("ShaderNodeCombineXYZ")
     target_vec.label = "Search Point"
     target_vec.location = (-400, -300)
     links.new(add_pos.outputs["Value"], target_vec.inputs["X"])
     
-    # Find Nearest
+    
     sample_nearest = nodes.new("GeometryNodeSampleNearest")
     sample_nearest.label = "Find Closest X"
     sample_nearest.location = (-200, -200)
     links.new(set_pos.outputs["Geometry"], sample_nearest.inputs["Geometry"])
     links.new(target_vec.outputs["Vector"], sample_nearest.inputs["Sample Position"])
     
-    # Retrieve Data
+    
     sample_index = nodes.new("GeometryNodeSampleIndex")
     sample_index.label = "Retrieve Radius"
     sample_index.location = (0, -200)
     
-    # Input 0: Geometry
+    
     links.new(set_pos.outputs["Geometry"], sample_index.inputs[0])
-    # Input 1: Index
+    
     links.new(sample_nearest.outputs["Index"], sample_index.inputs[1])
-    # Input 2: Value (The source attribute to sample)
-    # Using index 2 avoids naming errors
-    # capture_pos Output 1 is the 'Attribute' output
+    
+    
+    
     links.new(capture_pos.outputs[1], sample_index.inputs[2])
 
-    # 6. Extract Z (Radius)
+    
     sep_result = nodes.new("ShaderNodeSeparateXYZ")
     sep_result.location = (200, -200)
-    # Output 0: Value (The sampled result)
+    
     links.new(sample_index.outputs[0], sep_result.inputs["Vector"])
     
-    radius_val = sep_result.outputs["Z"] # Using Z as radius/height
+    radius_val = sep_result.outputs["Z"] 
 
     y_radius_abs = nodes.new("ShaderNodeMath")
     y_radius_abs.operation = "ABSOLUTE"
@@ -193,7 +193,7 @@ def create_spatial_profile_offset_node_group(
     links.new(y_radius_scale.outputs["Value"], y_offset.inputs[0])
     links.new(input_node.outputs["Sin Theta"], y_offset.inputs[1])
 
-    # 7. Output
+    
     domain_size = nodes.new("GeometryNodeAttributeDomainSize")
     domain_size.component = "CURVE"
     domain_size.location = (0, 0)
@@ -206,7 +206,7 @@ def create_spatial_profile_offset_node_group(
     links.new(domain_size.outputs["Point Count"], output_node.inputs["Point Count"])
     links.new(y_profile_info.outputs["Geometry"], output_node.inputs["Y Profile"])
 
-    # --- Instantiation ---
+    
     profile_instance = parent_node_group.nodes.new("GeometryNodeGroup")
     profile_instance.node_tree = profile_group
     profile_instance.label = f"{axis_name} Profile Lookup"

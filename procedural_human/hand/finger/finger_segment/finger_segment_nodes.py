@@ -1,5 +1,6 @@
 import bpy
 import math
+from procedural_human.hand.finger.finger_segment import SEGMENT_SAMPLE_COUNT
 from procedural_human.hand.finger.finger_segment.finger_segment_properties import (
     FingerSegmentProperties,
 )
@@ -60,7 +61,7 @@ def create_finger_segment_node_group(
         in_out="INPUT",
         socket_type="NodeSocketInt",
     )
-    sample_count_socket.default_value = 64
+    sample_count_socket.default_value = SEGMENT_SAMPLE_COUNT
 
     input_node = segment_group.nodes.new("NodeGroupInput")
     input_node.label = "Inputs"
@@ -107,8 +108,7 @@ def create_finger_segment_node_group(
     grid = segment_group.nodes.new("GeometryNodeMeshGrid")
     grid.label = "Parameter Grid"
     grid.location = (550, -100)
-    grid.inputs["Vertices X"].default_value = 64
-    # grid.inputs["Vertices Y"].default_value = 64 # Driven by logic
+    grid.inputs["Vertices X"].default_value = SEGMENT_SAMPLE_COUNT
     grid.inputs["Size X"].default_value = 1.0
     grid.inputs["Size Y"].default_value = 1.0
 
@@ -155,26 +155,42 @@ def create_finger_segment_node_group(
     theta_node.operation = "MULTIPLY"
     theta_node.inputs[1].default_value = 2 * math.pi
     segment_group.links.new(angle_clamp.outputs["Result"], theta_node.inputs[0])
+
     
-    # Radial Profile Lookup
-    # Create a unique radial group for this segment type so curves are distinct
-    radial_suffix = segment_type.value.title() if hasattr(segment_type, "value") else str(segment_type).title()
-    # The SegmentType enum values are like "PROXIMAL", so title() gives "Proximal"
     
+    radial_suffix = (
+        segment_type.value.title()
+        if hasattr(segment_type, "value")
+        else str(segment_type).title()
+    )
+    
+
     radial_group = create_dual_profile_radial_group(suffix=radial_suffix)
     radial_instance = segment_group.nodes.new("GeometryNodeGroup")
     radial_instance.node_tree = radial_group
     radial_instance.label = "Radial Profile (Dual)"
     radial_instance.location = (1400, -200)
-    
-    segment_group.links.new(length_clamp.outputs["Result"], radial_instance.inputs["Factor"])
-    segment_group.links.new(theta_node.outputs["Value"], radial_instance.inputs["Angle"])
-    segment_group.links.new(input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value], radial_instance.inputs["Radius"])
 
-    # Set Grid Resolution from Sample Count
-    sample_count_node = segment_group.nodes.new("FunctionNodeInputInt") # Not strictly needed if direct link
-    # Just link input directly
-    segment_group.links.new(input_node.outputs[FingerSegmentProperties.SAMPLE_COUNT.value], grid.inputs["Vertices Y"])
+    segment_group.links.new(
+        length_clamp.outputs["Result"], radial_instance.inputs["Factor"]
+    )
+    segment_group.links.new(
+        theta_node.outputs["Value"], radial_instance.inputs["Angle"]
+    )
+    segment_group.links.new(
+        input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
+        radial_instance.inputs["Radius"],
+    )
+
+    
+    sample_count_node = segment_group.nodes.new(
+        "FunctionNodeInputInt"
+    )  
+    
+    segment_group.links.new(
+        input_node.outputs[FingerSegmentProperties.SAMPLE_COUNT.value],
+        grid.inputs["Vertices Y"],
+    )
 
     z_offset = segment_group.nodes.new("ShaderNodeMath")
     z_offset.label = "Length Offset"
@@ -193,40 +209,40 @@ def create_finger_segment_node_group(
     segment_group.links.new(separate_xyz.outputs["Z"], z_position.inputs[0])
     segment_group.links.new(z_offset.outputs["Value"], z_position.inputs[1])
 
-    # The radial instance output is a single Offset value (radius offset)
-    # We need to convert this back to X/Y coordinates: X=Offset*cos, Y=Offset*sin
-    # BUT wait, the previous logic had separate X and Y offsets?
-    # Original Logic: 
-    # x_offset = X(t) * Radius * cos(theta)
-    # y_offset = Y(t) * Radius * sin(theta)
-    # Final Pos = (x_offset, y_offset, z)
     
-    # The NEW create_dual_profile_radial_group returns:
-    # Offset = Radius * sqrt((X(t)*cos)^2 + (Y(t)*sin)^2)
-    # This is the MAGNITUDE (radius) at that angle.
-    # So Final X = Offset * cos(theta)
-    # Final Y = Offset * sin(theta)
-    # Let's implement this reconstruction.
     
+    
+    
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+
     cos_theta = segment_group.nodes.new("ShaderNodeMath")
     cos_theta.label = "cos(θ)"
     cos_theta.location = (1600, -100)
     cos_theta.operation = "COSINE"
     segment_group.links.new(theta_node.outputs["Value"], cos_theta.inputs[0])
-    
+
     sin_theta = segment_group.nodes.new("ShaderNodeMath")
     sin_theta.label = "sin(θ)"
     sin_theta.location = (1600, -250)
     sin_theta.operation = "SINE"
     segment_group.links.new(theta_node.outputs["Value"], sin_theta.inputs[0])
-    
+
     final_x = segment_group.nodes.new("ShaderNodeMath")
     final_x.label = "Final X"
     final_x.location = (1800, -100)
     final_x.operation = "MULTIPLY"
     segment_group.links.new(radial_instance.outputs["Offset"], final_x.inputs[0])
     segment_group.links.new(cos_theta.outputs["Value"], final_x.inputs[1])
-    
+
     final_y = segment_group.nodes.new("ShaderNodeMath")
     final_y.label = "Final Y"
     final_y.location = (1800, -250)
@@ -240,7 +256,7 @@ def create_finger_segment_node_group(
     segment_group.links.new(final_x.outputs["Value"], final_pos.inputs["X"])
     segment_group.links.new(final_y.outputs["Value"], final_pos.inputs["Y"])
     segment_group.links.new(z_position.outputs["Value"], final_pos.inputs["Z"])
-    
+
     apply_shape = segment_group.nodes.new("GeometryNodeSetPosition")
     apply_shape.label = "Apply Shape"
     apply_shape.location = (2200, 0)

@@ -12,7 +12,7 @@ from bpy.types import Operator
 
 
 _operator_registry: List[Type[Operator]] = []
-_preset_registry: dict = {}  # Maps display_name -> preset_data
+_preset_registry: dict = {}  
 
 
 def procedural_operator(cls_or_kwargs=None, **kwargs):
@@ -28,17 +28,17 @@ def procedural_operator(cls_or_kwargs=None, **kwargs):
     - Sets default bl_options = {'REGISTER', 'UNDO'} if not provided
     """
     
-    # Case 1: Decorator used with arguments @procedural_operator(bl_idname="...")
+    
     if cls_or_kwargs is None or isinstance(cls_or_kwargs, str) or (kwargs and not isinstance(cls_or_kwargs, type)):
         def wrapper(cls):
             return _process_operator(cls, **kwargs)
         return wrapper
         
-    # Case 2: Decorator used without arguments @procedural_operator
+    
     if isinstance(cls_or_kwargs, type):
         return _process_operator(cls_or_kwargs)
         
-    # Fallback for mixed usage
+    
     def wrapper(cls):
         return _process_operator(cls, **kwargs)
     return wrapper
@@ -47,24 +47,24 @@ def procedural_operator(cls_or_kwargs=None, **kwargs):
 def _process_operator(cls, **kwargs):
     """Internal processing of the operator class"""
     
-    # Apply manually passed kwargs first (e.g. bl_idname from decorator args)
+    
     for key, value in kwargs.items():
         setattr(cls, key, value)
 
     class_name = cls.__name__
     name_without_prefix = re.sub(r"^PROCEDURAL_OT_", "", class_name)
     
-    # Auto-generate bl_idname if not set
+    
     if not hasattr(cls, "bl_idname"):
         snake_case = re.sub(r"(?<!^)(?=[A-Z])", "_", name_without_prefix).lower()
         cls.bl_idname = f"mesh.procedural_{snake_case}"
 
-    # Auto-generate bl_label if not set
+    
     if not hasattr(cls, "bl_label"):
         bl_label = re.sub(r"(?<!^)(?=[A-Z])", " ", name_without_prefix)
         cls.bl_label = bl_label
 
-    # Auto-generate bl_description if not set
+    
     if not hasattr(cls, "bl_description"):
         if cls.__doc__:
             description = cls.__doc__.strip().split("\n")[0].strip()
@@ -72,7 +72,7 @@ def _process_operator(cls, **kwargs):
         else:
             cls.bl_description = cls.bl_label
 
-    # Set default bl_options if not set
+    
     if not hasattr(cls, "bl_options"):
         cls.bl_options = {"REGISTER", "UNDO"}
 
@@ -124,23 +124,23 @@ def dynamic_enum_operator(enum_prop_name: str, items_getter: Callable[[], list],
             ...
     """
     def decorator(cls):
-        # Create a wrapper function that calls items_getter fresh each time
+        
         def enum_items_wrapper(self, context):
             return items_getter()
         
-        # Set up the enum property
-        # Don't set default during class definition - let Blender handle it
-        # The default will be set when the dialog is shown
+        
+        
+        
         enum_prop_kwargs = {
             "name": kwargs.get("name", enum_prop_name.replace("_", " ").title()),
             "items": enum_items_wrapper,
         }
         
-        # Only add default if explicitly provided
+        
         if "default" in kwargs:
             enum_prop_kwargs["default"] = kwargs["default"]
         
-        # Add any other kwargs
+        
         for k, v in kwargs.items():
             if k not in ("name", "default"):
                 enum_prop_kwargs[k] = v
@@ -148,7 +148,7 @@ def dynamic_enum_operator(enum_prop_name: str, items_getter: Callable[[], list],
         enum_prop = bpy.props.EnumProperty(**enum_prop_kwargs)
         setattr(cls, enum_prop_name, enum_prop)
         
-        # Add invoke method if it doesn't exist
+        
         if not hasattr(cls, "invoke") or cls.invoke == Operator.invoke:
             def invoke(self, context, event):
                 return context.window_manager.invoke_props_dialog(self)
@@ -190,46 +190,46 @@ def register_preset_class(name: str = None):
             def get_data(self):
                 return {"key": value, ...}
         
-        # Or with auto-naming:
+        
         @register_preset_class()
         class PresetNewFingerStyle(Preset):
             def get_data(self):
                 return {"key": value, ...}
     """
     def decorator(cls):
-        # Ensure the class inherits from Preset
+        
         if not issubclass(cls, Preset):
-            # Create a new class that inherits from both Preset and the original class
+            
             class PresetWrapper(Preset, cls):
                 pass
             PresetWrapper.__name__ = cls.__name__
             PresetWrapper.__module__ = cls.__module__
             cls = PresetWrapper
         
-        # Determine the display name
+        
         if name:
             display_name = name
         else:
-            # Derive from class name: PresetNewFingerStyle -> "New Finger Style"
+            
             class_name = cls.__name__
             if class_name.startswith("Preset"):
                 display_name = class_name[6:].replace("_", " ").title()
             else:
                 display_name = class_name.replace("_", " ").title()
         
-        # Create an instance and register it
+        
         preset_instance = cls()
         _preset_registry[display_name] = preset_instance
         return cls
     
-    # Handle both @register_preset_class and @register_preset_class("name")
+    
     if callable(name):
-        # Used as @register_preset_class without parentheses
+        
         cls = name
         name = None
         return decorator(cls)
     else:
-        # Used as @register_preset_class() or @register_preset_class("name")
+        
         return decorator
 
 
@@ -245,17 +245,17 @@ def register_preset(name: str = None):
         def get_my_preset():
             return {"key": value, ...}
         
-        # Or with auto-naming:
+        
         @register_preset()
         def preset_new_finger_style():
             return {"key": value, ...}
     """
     def decorator(func):
-        # Determine the display name
+        
         if name:
             display_name = name
         else:
-            # Derive from function name: preset_new_finger_style -> "New Finger Style"
+            
             func_name = func.__name__
             if func_name.startswith("preset_"):
                 display_name = func_name[7:].replace("_", " ").title()
@@ -264,18 +264,18 @@ def register_preset(name: str = None):
             else:
                 display_name = func_name.replace("_", " ").title()
         
-        # Register the preset
+        
         _preset_registry[display_name] = func
         return func
     
-    # Handle both @register_preset and @register_preset("name")
+    
     if callable(name):
-        # Used as @register_preset without parentheses
+        
         func = name
         name = None
         return decorator(func)
     else:
-        # Used as @register_preset() or @register_preset("name")
+        
         return decorator
 
 
@@ -297,7 +297,7 @@ def get_all_presets() -> dict:
     presets = {}
     for name, preset_func_or_instance in _preset_registry.items():
         try:
-            # Handle both callable functions and Preset instances
+            
             if isinstance(preset_func_or_instance, Preset):
                 presets[name] = preset_func_or_instance.get_data()
             elif callable(preset_func_or_instance):

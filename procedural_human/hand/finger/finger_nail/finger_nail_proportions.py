@@ -5,9 +5,9 @@ Fingernail proportion helpers.
 from procedural_human.hand.finger.finger_types import FingerType, ensure_finger_type
 
 
-# Ratios are relative to the distal segment radius (width) or to that width.
-# Defaults ensure the nail width stays near one third of the distal radius and
-# that its height extends slightly longer than it is wide.
+
+
+
 DEFAULT_NAIL_PROPORTIONS = {
     "width_ratio": 0.33,
     "height_ratio": 1.25,
