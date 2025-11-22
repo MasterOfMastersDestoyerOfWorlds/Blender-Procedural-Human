@@ -88,7 +88,7 @@ def create_finger_geometry(
         import traceback
 
         traceback.print_exc()
-        raise RuntimeError(f"Failed to create finger Geometry Nodes: {e}")
+        raise RuntimeError(f"Failed to create finger Geometry Nodes: {e}") 
 
     bpy.context.view_layer.objects.active = finger.blend_obj
     bpy.context.view_layer.update()
