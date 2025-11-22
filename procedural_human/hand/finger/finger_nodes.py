@@ -4,7 +4,9 @@ Finger Geometry Nodes setup for Procedural Human Generator
 
 import bpy
 from procedural_human.hand.finger.finger import FingerData
-from procedural_human.hand.finger.finger_segment import SEGMENT_SAMPLE_COUNT
+from procedural_human.hand.finger.finger_segment.finger_segment_const import (
+    SEGMENT_SAMPLE_COUNT,
+)
 from procedural_human.hand.finger.finger_segment.finger_segment_profiles import (
     SegmentType,
     ProfileType,
@@ -107,9 +109,10 @@ def create_finger_nodes(
         segment_instance.label = f"{seg_name} Segment"
         segment_instance.location = (-400, 200 - seg_idx * 300)
 
-        
         sample_count = SEGMENT_SAMPLE_COUNT
-        if hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "procedural_finger_segment_sample_count"):
+        if hasattr(bpy.context, "scene") and hasattr(
+            bpy.context.scene, "procedural_finger_segment_sample_count"
+        ):
             sample_count = bpy.context.scene.procedural_finger_segment_sample_count
 
         node_group.links.new(

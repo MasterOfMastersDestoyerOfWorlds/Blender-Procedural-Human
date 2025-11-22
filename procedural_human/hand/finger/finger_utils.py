@@ -4,7 +4,11 @@ Finger utility functions for Procedural Human Generator
 
 import bpy
 from mathutils import Vector
-from procedural_human.utils import get_numeric_value, create_geometry_nodes_modifier, get_property_value
+from procedural_human.utils import (
+    get_numeric_value,
+    create_geometry_nodes_modifier,
+    get_property_value,
+)
 from . import finger_nodes
 from . import finger_proportions as proportions
 from procedural_human.hand.finger.finger_types import (
@@ -62,7 +66,9 @@ def create_finger_geometry(
         finger: Finger data
     """
 
-    modifier, node_group = create_geometry_nodes_modifier(finger.blend_obj, "FingerShape")
+    modifier, node_group = create_geometry_nodes_modifier(
+        finger.blend_obj, "FingerShape"
+    )
 
     try:
         finger_nodes.create_finger_nodes(
@@ -88,7 +94,7 @@ def create_finger_geometry(
         import traceback
 
         traceback.print_exc()
-        raise RuntimeError(f"Failed to create finger Geometry Nodes: {e}") 
+        raise RuntimeError(f"Failed to create finger Geometry Nodes: {e}")
 
     bpy.context.view_layer.objects.active = finger.blend_obj
     bpy.context.view_layer.update()
@@ -201,20 +207,19 @@ def create_finger_armature(finger: FingerData):
         if bone_name in armature.pose.bones:
             bone = armature.pose.bones[bone_name]
             bone.rotation_euler = (0.0, 0.0, 0.0)
-            
-            
+
             bone.use_ik_limit_x = True
             bone.use_ik_limit_y = True
             bone.use_ik_limit_z = True
-            
-            
+
             import math
+
             bone.ik_min_x = math.radians(-150)
             bone.ik_max_x = math.radians(10)
-            
+
             bone.ik_min_y = math.radians(-10)
             bone.ik_max_y = math.radians(10)
-            
+
             bone.ik_min_z = math.radians(-5)
             bone.ik_max_z = math.radians(5)
 
@@ -301,6 +306,7 @@ def paint_finger_weights(finger: FingerData):
                 vertex_groups[seg_idx].add([vert_idx], weight, "REPLACE")
 
     finger.blend_obj.finger_data.has_weights = True
+
 
 def setup_finger_ik(armature, finger: FingerData):
     """

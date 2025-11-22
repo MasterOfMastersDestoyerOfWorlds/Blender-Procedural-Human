@@ -36,7 +36,6 @@ class ExportProfileCurve(Operator):
         """Gather curve objects to export based on selection or defaults."""
         curves = set()
 
-        
         selected_curves = [
             obj for obj in context.selected_objects if obj.type == "CURVE"
         ]
@@ -46,7 +45,7 @@ class ExportProfileCurve(Operator):
                 mapping = ExportProfileCurve._detect_profile_mapping(curve_obj.name)
                 if mapping:
                     segment_type, _ = mapping
-                    
+
                     for profile_type in ProfileType:
                         curve_name = f"{segment_type.value}_{profile_type.value}"
                         if curve_name in bpy.data.objects:
@@ -54,7 +53,7 @@ class ExportProfileCurve(Operator):
                 else:
                     curves.add(curve_obj)
         else:
-            
+
             for segment_type in SegmentType:
                 for profile_type in ProfileType:
                     curve_name = f"{segment_type.value}_{profile_type.value}"
@@ -175,4 +174,3 @@ def register():
 def unregister():
 
     pass
-

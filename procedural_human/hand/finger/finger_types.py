@@ -5,6 +5,7 @@ Finger type enumeration and helpers.
 from enum import Enum
 from typing import Iterable, Tuple
 
+
 class FingerType(Enum):
     THUMB = "THUMB"
     INDEX = "INDEX"
@@ -47,4 +48,3 @@ def enum_items() -> Iterable[Tuple[str, str, str]]:
     for finger in FingerType:
         description = f"{finger.label} finger ({finger.segment_count} segments)"
         yield (finger.value, finger.label, description)
-

@@ -5,9 +5,6 @@ Fingernail proportion helpers.
 from procedural_human.hand.finger.finger_types import FingerType, ensure_finger_type
 
 
-
-
-
 DEFAULT_NAIL_PROPORTIONS = {
     "width_ratio": 0.33,
     "height_ratio": 1.25,
@@ -37,4 +34,3 @@ def get_fingernail_proportions(finger_type):
         "width_ratio": width_ratio,
         "height_ratio": height_ratio,
     }
-

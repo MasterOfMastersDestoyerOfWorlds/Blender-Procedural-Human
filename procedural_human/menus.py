@@ -19,7 +19,6 @@ def menu_func(self, context):
     self.layout.menu("PROCEDURAL_MT_add_menu")
 
 
-
 def register():
     bpy.utils.register_class(PROCEDURAL_MT_add_menu)
     bpy.types.VIEW3D_MT_add.append(menu_func)

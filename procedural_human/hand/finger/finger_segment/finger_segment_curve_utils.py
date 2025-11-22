@@ -25,34 +25,28 @@ def create_profile_curve_from_data(
     Returns:
         Blender curve object
     """
-    
+
     curve_data = bpy.data.curves.new(name=name, type="CURVE")
     curve_data.dimensions = "3D"
 
-    
     spline = curve_data.splines.new("BEZIER")
     points = profile_data["points"]
-    spline.bezier_points.add(len(points) - 1)  
+    spline.bezier_points.add(len(points) - 1)
 
-    
     for i, point_data in enumerate(points):
         point = spline.bezier_points[i]
 
-        
         co = point_data["co"]
         point.co = Vector(co)
 
-        
         handle_left = point_data["handle_left"]
         handle_right = point_data["handle_right"]
         point.handle_left = point.co + Vector(handle_left)
         point.handle_right = point.co + Vector(handle_right)
 
-        
         point.handle_left_type = point_data.get("handle_left_type", "AUTO")
         point.handle_right_type = point_data.get("handle_right_type", "AUTO")
 
-    
     curve_obj = bpy.data.objects.new(name, curve_data)
 
     return curve_obj
@@ -75,7 +69,6 @@ def extract_profile_curve_data(curve_object):
 
     curve_data = curve_object.data
 
-    
     if len(curve_data.splines) == 0:
         raise ValueError("Curve has no splines")
 
@@ -84,7 +77,6 @@ def extract_profile_curve_data(curve_object):
     if spline.type != "BEZIER":
         raise ValueError("Spline must be BEZIER type")
 
-    
     points = []
     for point in spline.bezier_points:
         point_data = {
@@ -98,7 +90,6 @@ def extract_profile_curve_data(curve_object):
 
     profile_data = {"points": points}
 
-    
     python_code = format_profile_data_as_code(profile_data, curve_object.name)
 
     return profile_data, python_code
@@ -240,13 +231,11 @@ def normalize_profile_curve(curve_object, segment_length=1.0):
     """
     profile_data, _ = extract_profile_curve_data(curve_object)
 
-    
     for point in profile_data["points"]:
         co = list(point["co"])
         co[2] = co[2] / segment_length if segment_length > 0 else co[2]
         point["co"] = tuple(co)
 
-        
         handle_left = list(point["handle_left"])
         handle_left[2] = (
             handle_left[2] / segment_length if segment_length > 0 else handle_left[2]

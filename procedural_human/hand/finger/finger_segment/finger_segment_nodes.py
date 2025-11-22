@@ -1,6 +1,8 @@
 import bpy
 import math
-from procedural_human.hand.finger.finger_segment import SEGMENT_SAMPLE_COUNT
+from procedural_human.hand.finger.finger_segment.finger_segment_const import (
+    SEGMENT_SAMPLE_COUNT,
+)
 from procedural_human.hand.finger.finger_segment.finger_segment_properties import (
     FingerSegmentProperties,
 )
@@ -156,14 +158,11 @@ def create_finger_segment_node_group(
     theta_node.inputs[1].default_value = 2 * math.pi
     segment_group.links.new(angle_clamp.outputs["Result"], theta_node.inputs[0])
 
-    
-    
     radial_suffix = (
         segment_type.value.title()
         if hasattr(segment_type, "value")
         else str(segment_type).title()
     )
-    
 
     radial_group = create_dual_profile_radial_group(suffix=radial_suffix)
     radial_instance = segment_group.nodes.new("GeometryNodeGroup")
@@ -182,11 +181,8 @@ def create_finger_segment_node_group(
         radial_instance.inputs["Radius"],
     )
 
-    
-    sample_count_node = segment_group.nodes.new(
-        "FunctionNodeInputInt"
-    )  
-    
+    sample_count_node = segment_group.nodes.new("FunctionNodeInputInt")
+
     segment_group.links.new(
         input_node.outputs[FingerSegmentProperties.SAMPLE_COUNT.value],
         grid.inputs["Vertices Y"],
@@ -208,21 +204,6 @@ def create_finger_segment_node_group(
     z_position.operation = "ADD"
     segment_group.links.new(separate_xyz.outputs["Z"], z_position.inputs[0])
     segment_group.links.new(z_offset.outputs["Value"], z_position.inputs[1])
-
-    
-    
-    
-    
-    
-    
-    
-
-    
-    
-    
-    
-    
-    
 
     cos_theta = segment_group.nodes.new("ShaderNodeMath")
     cos_theta.label = "cos(θ)"
