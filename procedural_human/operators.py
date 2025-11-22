@@ -15,6 +15,7 @@ from .hand.finger.finger_operator import (
 from .hand.finger.finger_segment.export_profile_operator import (
     ExportProfileCurve,
 )
+from .utils import curve_serialization
 
 
 def register():

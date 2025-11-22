@@ -94,6 +94,12 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 - [x] Ensure neighboring finger segments inherit final radii for seamless joints
 - [x] Provide a Blender command palette script to reset the scene and create a procedural finger
 - [x] Remove radius attribute dependency - use curve geometry positions directly for thickness
+- [x] Refactor radial geometry generation into reusable node groups (1, 2, and 4 profiles)
+- [x] Update finger segments to use Float Curve procedural profile instead of sampled curve objects
+- [x] Implement curve serialization for storing Float Curve presets
+- [x] Increase default sample count to 64 for smoother profiles
+- [x] Attach fingernail using surface raycast for precise positioning
+- [x] Set default IK limits for finger bones
 
 ### 4.3 Feet and Toes
 - [ ] Create base foot mesh (main body of foot)
@@ -365,4 +371,3 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 8 an apple and its core, how do we define concavity in terms of simple curves.
 
 **Note**: This TODO list is based on the comprehensive plan in `PlanOfTheWork.md`. Items are organized by section to match the original document structure. Current implementation has basic functionality but lacks many of the advanced procedural techniques described in the plan.
-

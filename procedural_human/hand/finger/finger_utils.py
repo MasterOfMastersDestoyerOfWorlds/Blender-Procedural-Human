@@ -4,7 +4,7 @@ Finger utility functions for Procedural Human Generator
 
 import bpy
 from mathutils import Vector
-from procedural_human.utils import get_numeric_value, create_geometry_nodes_modifier
+from procedural_human.utils import get_numeric_value, create_geometry_nodes_modifier, get_property_value
 from . import finger_nodes
 from . import finger_proportions as proportions
 from procedural_human.hand.finger.finger_types import (
@@ -201,6 +201,22 @@ def create_finger_armature(finger: FingerData):
         if bone_name in armature.pose.bones:
             bone = armature.pose.bones[bone_name]
             bone.rotation_euler = (0.0, 0.0, 0.0)
+            
+            # Set IK Rotation Limits
+            bone.use_ik_limit_x = True
+            bone.use_ik_limit_y = True
+            bone.use_ik_limit_z = True
+            
+            # Convert degrees to radians for limits
+            import math
+            bone.ik_min_x = math.radians(-150)
+            bone.ik_max_x = math.radians(10)
+            
+            bone.ik_min_y = math.radians(-10)
+            bone.ik_max_y = math.radians(10)
+            
+            bone.ik_min_z = math.radians(-5)
+            bone.ik_max_z = math.radians(5)
 
     bpy.ops.object.mode_set(mode="OBJECT")
 

@@ -12,11 +12,6 @@ from procedural_human.hand.finger.finger_segment.finger_segment_properties impor
 class FingerSegmentPanel(Panel):
     """Panel for finger segment properties and profile curves"""
     
-    # The decorator will automatically set:
-    # bl_parent_id = "PROCEDURAL_PT_finger_panel" (inferred from folder hierarchy)
-    # bl_idname = "PROCEDURAL_PT_finger_segment_panel"
-    # bl_label = "Finger Segment"
-    
     def draw(self, context):
         layout = self.layout
         scene = context.scene
@@ -41,37 +36,13 @@ class FingerSegmentPanel(Panel):
             
             content_box.separator()
             
-            # Proximal segment
-            content_box.label(text="Proximal Segment:", icon='CURVE_DATA')
-            row = content_box.row()
-            row.prop(scene, "procedural_segment_proximal_x_profile", text="X Profile")
-            row = content_box.row()
-            row.prop(scene, "procedural_segment_proximal_y_profile", text="Y Profile")
-            
-            content_box.separator()
-            
-            # Middle segment
-            content_box.label(text="Middle Segment:", icon='CURVE_DATA')
-            row = content_box.row()
-            row.prop(scene, "procedural_segment_middle_x_profile", text="X Profile")
-            row = content_box.row()
-            row.prop(scene, "procedural_segment_middle_y_profile", text="Y Profile")
-            
-            content_box.separator()
-            
-            # Distal segment
-            content_box.label(text="Distal Segment:", icon='CURVE_DATA')
-            row = content_box.row()
-            row.prop(scene, "procedural_segment_distal_x_profile", text="X Profile")
-            row = content_box.row()
-            row.prop(scene, "procedural_segment_distal_y_profile", text="Y Profile")
             
             # Info text
             content_box.separator()
             info_row = content_box.row()
             info_row.label(text="Select curve objects from the scene", icon='INFO')
             
-            # Export button
+            # Export buttons
             content_box.separator()
             export_box = content_box.box()
             export_box.label(text="Development Tools:", icon='TOOL_SETTINGS')
@@ -87,9 +58,25 @@ class FingerSegmentPanel(Panel):
                 export_row = export_box.row()
                 export_row.operator(
                     "mesh.procedural_export_profile_curve",
-                    text="Export Curve Profiles",
+                    text="Export Curve Object Profiles",
                     icon='EXPORT',
                 )
+                
+                # Float Curve Presets
+                export_box.separator()
+                export_box.label(text="Float Curve Presets:", icon='GRAPH')
+                row = export_box.row(align=True)
+                row.operator(
+                    "node.procedural_save_float_curve_preset",
+                    text="Save All Curves to Preset",
+                    icon='IMPORT'
+                )
+                row.operator(
+                    "node.procedural_load_float_curve_preset",
+                    text="Load Preset",
+                    icon='EXPORT' 
+                )
+
             else:
                 status_row = export_box.row()
                 status_row.label(text="Codebase not configured", icon='ERROR')

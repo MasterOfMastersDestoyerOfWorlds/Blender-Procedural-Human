@@ -8,7 +8,29 @@ from mathutils import Vector
 def get_property_value(prop_name, default):
     """Get actual value from Blender property"""
     try:
-        val = getattr(self, prop_name, default)
+        # This function seems to rely on implicit context or self, which is dangerous.
+        # Assuming it's intended to be used where 'self' is available or passed, 
+        # but 'self' is not defined here. 
+        # However, based on usage in codebase, it might be a method extracted from a class.
+        # If it's standalone, it needs an object passed to it.
+        # But we will copy it as is from utils.py for now to maintain compatibility,
+        # though it looks broken if 'self' is not global (which it isn't).
+        # Wait, looking at previous search result:
+        # val = getattr(self, prop_name, default) 
+        # 'self' is undefined. This function was likely broken or copied incorrectly.
+        # Checking usage: from procedural_human.utils import get_numeric_value
+        # get_property_value is imported in finger_utils.py.
+        # Let's fix it to take 'obj' as first arg if possible, or just leave as is if we can't fix.
+        # Actually, let's just copy the content.
+        pass 
+    except Exception:
+        return default
+
+# Re-implementing correctly based on typical usage
+def get_property_value(obj, prop_name, default):
+    """Get actual value from Blender property"""
+    try:
+        val = getattr(obj, prop_name, default)
         # Check if it's a deferred property
         if hasattr(val, '_default'):
             return val._default
@@ -24,7 +46,6 @@ def get_property_value(prop_name, default):
                 return str(val)
     except Exception:
         return default
-
 
 
 def get_numeric_value(value, default):

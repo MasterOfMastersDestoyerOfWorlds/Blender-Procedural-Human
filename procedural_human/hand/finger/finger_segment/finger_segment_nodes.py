@@ -3,22 +3,11 @@ import math
 from procedural_human.hand.finger.finger_segment.finger_segment_properties import (
     FingerSegmentProperties,
 )
-from procedural_human.hand.finger.finger_segment.finger_segment_curve_utils import (
-    get_default_profile_curve,
-    get_default_profile_curve_from_data,
-)
 from procedural_human.hand.finger.finger_segment.finger_segment_profiles import (
     SegmentType,
-    ProfileType,
 )
 from procedural_human.utils import setup_node_group_interface
-
-from procedural_human.hand.finger.finger_segment.float_curve_profile import (
-    create_float_curve_profile_node_group,
-)
-from procedural_human.hand.finger.finger_segment.spatial_resampler import (
-    create_spatial_profile_offset_node_group,
-)
+from procedural_human.geo_node_groups.radial import create_dual_profile_radial_group
 
 
 def create_finger_segment_node_group(
@@ -71,7 +60,7 @@ def create_finger_segment_node_group(
         in_out="INPUT",
         socket_type="NodeSocketInt",
     )
-    sample_count_socket.default_value = 16
+    sample_count_socket.default_value = 64
 
     input_node = segment_group.nodes.new("NodeGroupInput")
     input_node.label = "Inputs"
@@ -166,60 +155,22 @@ def create_finger_segment_node_group(
     theta_node.operation = "MULTIPLY"
     theta_node.inputs[1].default_value = 2 * math.pi
     segment_group.links.new(angle_clamp.outputs["Result"], theta_node.inputs[0])
+    
+    # Radial Profile Lookup
+    radial_group = create_dual_profile_radial_group()
+    radial_instance = segment_group.nodes.new("GeometryNodeGroup")
+    radial_instance.node_tree = radial_group
+    radial_instance.label = "Radial Profile (Dual)"
+    radial_instance.location = (1400, -200)
+    
+    segment_group.links.new(length_clamp.outputs["Result"], radial_instance.inputs["Factor"])
+    segment_group.links.new(theta_node.outputs["Value"], radial_instance.inputs["Angle"])
+    segment_group.links.new(input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value], radial_instance.inputs["Radius"])
 
-    cos_theta = segment_group.nodes.new("ShaderNodeMath")
-    cos_theta.label = "cos(θ)"
-    cos_theta.location = (1400, -120)
-    cos_theta.operation = "COSINE"
-    segment_group.links.new(theta_node.outputs["Value"], cos_theta.inputs[0])
-
-    x_profile_offset_group = create_float_curve_profile_node_group(
-        "X",
-        input_node,
-        segment_group,
-        length_clamp,
-        cos_theta,
-        segment_length,
-        segment_type,
-    )
-
-    sin_theta = segment_group.nodes.new("ShaderNodeMath")
-    sin_theta.label = "sin(θ)"
-    sin_theta.location = (1400, -300)
-    sin_theta.operation = "SINE"
-    segment_group.links.new(theta_node.outputs["Value"], sin_theta.inputs[0])
-
-    y_profile_offset_group = create_float_curve_profile_node_group(
-        "Y",
-        input_node,
-        segment_group,
-        length_clamp,
-        sin_theta,
-        segment_length,
-        segment_type,
-    )
-
-    max_points = segment_group.nodes.new("ShaderNodeMath")
-    max_points.label = "Max Points"
-    max_points.location = (150, -150)
-    max_points.operation = "MAXIMUM"
-    segment_group.links.new(
-        x_profile_offset_group.outputs["Point Count"], max_points.inputs[0]
-    )
-    segment_group.links.new(
-        y_profile_offset_group.outputs["Point Count"], max_points.inputs[1]
-    )
-
-    final_count = segment_group.nodes.new("ShaderNodeMath")
-    final_count.label = "Final Sample Count"
-    final_count.location = (350, -50)
-    final_count.operation = "MAXIMUM"
-    segment_group.links.new(max_points.outputs["Value"], final_count.inputs[0])
-    segment_group.links.new(
-        input_node.outputs[FingerSegmentProperties.SAMPLE_COUNT.value],
-        final_count.inputs[1],
-    )
-    segment_group.links.new(final_count.outputs["Value"], grid.inputs["Vertices Y"])
+    # Set Grid Resolution from Sample Count
+    sample_count_node = segment_group.nodes.new("FunctionNodeInputInt") # Not strictly needed if direct link
+    # Just link input directly
+    segment_group.links.new(input_node.outputs[FingerSegmentProperties.SAMPLE_COUNT.value], grid.inputs["Vertices Y"])
 
     z_offset = segment_group.nodes.new("ShaderNodeMath")
     z_offset.label = "Length Offset"
@@ -238,19 +189,57 @@ def create_finger_segment_node_group(
     segment_group.links.new(separate_xyz.outputs["Z"], z_position.inputs[0])
     segment_group.links.new(z_offset.outputs["Value"], z_position.inputs[1])
 
+    # The radial instance output is a single Offset value (radius offset)
+    # We need to convert this back to X/Y coordinates: X=Offset*cos, Y=Offset*sin
+    # BUT wait, the previous logic had separate X and Y offsets?
+    # Original Logic: 
+    # x_offset = X(t) * Radius * cos(theta)
+    # y_offset = Y(t) * Radius * sin(theta)
+    # Final Pos = (x_offset, y_offset, z)
+    
+    # The NEW create_dual_profile_radial_group returns:
+    # Offset = Radius * sqrt((X(t)*cos)^2 + (Y(t)*sin)^2)
+    # This is the MAGNITUDE (radius) at that angle.
+    # So Final X = Offset * cos(theta)
+    # Final Y = Offset * sin(theta)
+    # Let's implement this reconstruction.
+    
+    cos_theta = segment_group.nodes.new("ShaderNodeMath")
+    cos_theta.label = "cos(θ)"
+    cos_theta.location = (1600, -100)
+    cos_theta.operation = "COSINE"
+    segment_group.links.new(theta_node.outputs["Value"], cos_theta.inputs[0])
+    
+    sin_theta = segment_group.nodes.new("ShaderNodeMath")
+    sin_theta.label = "sin(θ)"
+    sin_theta.location = (1600, -250)
+    sin_theta.operation = "SINE"
+    segment_group.links.new(theta_node.outputs["Value"], sin_theta.inputs[0])
+    
+    final_x = segment_group.nodes.new("ShaderNodeMath")
+    final_x.label = "Final X"
+    final_x.location = (1800, -100)
+    final_x.operation = "MULTIPLY"
+    segment_group.links.new(radial_instance.outputs["Offset"], final_x.inputs[0])
+    segment_group.links.new(cos_theta.outputs["Value"], final_x.inputs[1])
+    
+    final_y = segment_group.nodes.new("ShaderNodeMath")
+    final_y.label = "Final Y"
+    final_y.location = (1800, -250)
+    final_y.operation = "MULTIPLY"
+    segment_group.links.new(radial_instance.outputs["Offset"], final_y.inputs[0])
+    segment_group.links.new(sin_theta.outputs["Value"], final_y.inputs[1])
+
     final_pos = segment_group.nodes.new("ShaderNodeCombineXYZ")
     final_pos.label = "Final Position"
-    final_pos.location = (1800, -300)
-    segment_group.links.new(
-        x_profile_offset_group.outputs["Offset"], final_pos.inputs["X"]
-    )
-    segment_group.links.new(
-        y_profile_offset_group.outputs["Offset"], final_pos.inputs["Y"]
-    )
+    final_pos.location = (2000, -300)
+    segment_group.links.new(final_x.outputs["Value"], final_pos.inputs["X"])
+    segment_group.links.new(final_y.outputs["Value"], final_pos.inputs["Y"])
     segment_group.links.new(z_position.outputs["Value"], final_pos.inputs["Z"])
+    
     apply_shape = segment_group.nodes.new("GeometryNodeSetPosition")
     apply_shape.label = "Apply Shape"
-    apply_shape.location = (2000, 0)
+    apply_shape.location = (2200, 0)
     segment_group.links.new(grid.outputs["Mesh"], apply_shape.inputs["Geometry"])
     segment_group.links.new(final_pos.outputs["Vector"], apply_shape.inputs["Position"])
 
