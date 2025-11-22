@@ -107,7 +107,10 @@ def find_float_curve_nodes_in_finger(obj):
                                 print(f"      Found Radial Profile group in {seg_name}")
                                 radial_group = inner_node.node_tree
                                 for deep_node in radial_group.nodes:
-                                    if deep_node.type == 'FLOAT_CURVE':
+                                    # Debug print to identify node types
+                                    # print(f"        Node: {deep_node.name}, Type: {deep_node.type}, ID: {deep_node.bl_idname}")
+                                    
+                                    if deep_node.type == 'FLOAT_CURVE' or deep_node.bl_idname == 'ShaderNodeFloatCurve':
                                         # Label should be "X Profile" or "Y Profile"
                                         if "X" in deep_node.label:
                                             axis = "X"
