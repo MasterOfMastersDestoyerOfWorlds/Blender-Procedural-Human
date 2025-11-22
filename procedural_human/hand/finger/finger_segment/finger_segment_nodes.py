@@ -13,8 +13,8 @@ from procedural_human.hand.finger.finger_segment.finger_segment_profiles import 
 )
 from procedural_human.utils import setup_node_group_interface
 
-from procedural_human.hand.finger.finger_segment.profile_curve_group import (
-    create_profile_curve_offset_node_group,
+from procedural_human.hand.finger.finger_segment.float_curve_profile import (
+    create_float_curve_profile_node_group,
 )
 from procedural_human.hand.finger.finger_segment.spatial_resampler import (
     create_spatial_profile_offset_node_group,
@@ -173,7 +173,7 @@ def create_finger_segment_node_group(
     cos_theta.operation = "COSINE"
     segment_group.links.new(theta_node.outputs["Value"], cos_theta.inputs[0])
 
-    x_profile_offset_group = create_spatial_profile_offset_node_group(
+    x_profile_offset_group = create_float_curve_profile_node_group(
         "X",
         input_node,
         segment_group,
@@ -189,7 +189,7 @@ def create_finger_segment_node_group(
     sin_theta.operation = "SINE"
     segment_group.links.new(theta_node.outputs["Value"], sin_theta.inputs[0])
 
-    y_profile_offset_group = create_profile_curve_offset_node_group(
+    y_profile_offset_group = create_float_curve_profile_node_group(
         "Y",
         input_node,
         segment_group,

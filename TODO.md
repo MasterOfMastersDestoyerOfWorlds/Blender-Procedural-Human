@@ -362,5 +362,7 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 
 ---
 
+8 an apple and its core, how do we define concavity in terms of simple curves.
+
 **Note**: This TODO list is based on the comprehensive plan in `PlanOfTheWork.md`. Items are organized by section to match the original document structure. Current implementation has basic functionality but lacks many of the advanced procedural techniques described in the plan.
 
