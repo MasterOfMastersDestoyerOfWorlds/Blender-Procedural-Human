@@ -1,5 +1,6 @@
 import bpy
 import math
+from procedural_human.geo_node_groups.closures import create_float_curve_closure
 from procedural_human.hand.finger.finger_segment.finger_segment_const import (
     SEGMENT_SAMPLE_COUNT,
 )
@@ -10,7 +11,9 @@ from procedural_human.hand.finger.finger_segment.finger_segment_profiles import 
     SegmentType,
 )
 from procedural_human.utils import setup_node_group_interface
-from procedural_human.geo_node_groups.radial import create_dual_profile_radial_group
+from procedural_human.geo_node_groups.dual_radial import (
+    create_dual_profile_radial_group,
+)
 
 
 def create_finger_segment_node_group(
@@ -81,82 +84,12 @@ def create_finger_segment_node_group(
     separate_xyz.location = (-1000, 200)
     segment_group.links.new(bbox_node.outputs["Max"], separate_xyz.inputs["Vector"])
 
-    add_length = segment_group.nodes.new("ShaderNodeMath")
-    add_length.label = "End Z = Start Z + Length"
-    add_length.location = (-800, 200)
-    add_length.operation = "ADD"
-    segment_group.links.new(separate_xyz.outputs["Z"], add_length.inputs[0])
-    segment_group.links.new(
-        input_node.outputs[FingerSegmentProperties.SEGMENT_LENGTH.value],
-        add_length.inputs[1],
-    )
-
-    combine_end = segment_group.nodes.new("ShaderNodeCombineXYZ")
-    combine_end.label = "End Point"
-    combine_end.location = (-600, 200)
-    combine_end.inputs["X"].default_value = 0.0
-    combine_end.inputs["Y"].default_value = 0.0
-    segment_group.links.new(add_length.outputs["Value"], combine_end.inputs["Z"])
-
-    combine_start = segment_group.nodes.new("ShaderNodeCombineXYZ")
-    combine_start.label = "Start Point"
-    combine_start.location = (-600, 0)
-    combine_start.inputs["X"].default_value = 0.0
-    combine_start.inputs["Y"].default_value = 0.0
-    segment_group.links.new(separate_xyz.outputs["Z"], combine_start.inputs["Z"])
-
-    scene = bpy.context.scene
-
     grid = segment_group.nodes.new("GeometryNodeMeshGrid")
     grid.label = "Parameter Grid"
     grid.location = (550, -100)
     grid.inputs["Vertices X"].default_value = SEGMENT_SAMPLE_COUNT
     grid.inputs["Size X"].default_value = 1.0
     grid.inputs["Size Y"].default_value = 1.0
-
-    grid_pos = segment_group.nodes.new("GeometryNodeInputPosition")
-    grid_pos.label = "Grid Position"
-    grid_pos.location = (200, -250)
-
-    separate_grid = segment_group.nodes.new("ShaderNodeSeparateXYZ")
-    separate_grid.label = "Separate Grid Coords"
-    separate_grid.location = (400, -250)
-    segment_group.links.new(
-        grid_pos.outputs["Position"], separate_grid.inputs["Vector"]
-    )
-
-    angle_param = segment_group.nodes.new("ShaderNodeMath")
-    angle_param.label = "Angle Param"
-    angle_param.location = (600, -150)
-    angle_param.operation = "ADD"
-    angle_param.inputs[1].default_value = 0.5
-    segment_group.links.new(separate_grid.outputs["X"], angle_param.inputs[0])
-
-    length_param = segment_group.nodes.new("ShaderNodeMath")
-    length_param.label = "Length Param"
-    length_param.location = (600, -350)
-    length_param.operation = "ADD"
-    length_param.inputs[1].default_value = 0.5
-    segment_group.links.new(separate_grid.outputs["Y"], length_param.inputs[0])
-
-    angle_clamp = segment_group.nodes.new("ShaderNodeClamp")
-    angle_clamp.label = "Clamp Angle"
-    angle_clamp.location = (800, -150)
-    angle_clamp.inputs["Value"].default_value = 1.0
-    segment_group.links.new(angle_param.outputs["Value"], angle_clamp.inputs["Value"])
-
-    length_clamp = segment_group.nodes.new("ShaderNodeClamp")
-    length_clamp.label = "Clamp Length"
-    length_clamp.location = (800, -350)
-    length_clamp.inputs["Value"].default_value = 1.0
-    segment_group.links.new(length_param.outputs["Value"], length_clamp.inputs["Value"])
-
-    theta_node = segment_group.nodes.new("ShaderNodeMath")
-    theta_node.label = "Angle θ"
-    theta_node.location = (1200, -150)
-    theta_node.operation = "MULTIPLY"
-    theta_node.inputs[1].default_value = 2 * math.pi
-    segment_group.links.new(angle_clamp.outputs["Result"], theta_node.inputs[0])
 
     radial_suffix = (
         segment_type.value.title()
@@ -171,78 +104,48 @@ def create_finger_segment_node_group(
     radial_instance.location = (1400, -200)
 
     segment_group.links.new(
-        length_clamp.outputs["Result"], radial_instance.inputs["Factor"]
-    )
-    segment_group.links.new(
-        theta_node.outputs["Value"], radial_instance.inputs["Angle"]
-    )
-    segment_group.links.new(
         input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
         radial_instance.inputs["Radius"],
     )
+    segment_group.links.new(
+        separate_xyz.outputs["Z"],
+        radial_instance.inputs["Z Position"],
+    )
+    segment_group.links.new(
+        input_node.outputs[FingerSegmentProperties.SEGMENT_LENGTH.value],
+        radial_instance.inputs["Segment Length"],
+    )
 
-    sample_count_node = segment_group.nodes.new("FunctionNodeInputInt")
+    x_closure_socket = create_float_curve_closure(
+        segment_group.nodes,
+        segment_group.links,
+        label="X Profile",
+        location=(-500, 100),
+    )
+
+    y_closure_socket = create_float_curve_closure(
+        segment_group.nodes,
+        segment_group.links,
+        label="Y Profile",
+        location=(-500, -200),
+    )
+
+    segment_group.links.new(x_closure_socket, radial_instance.inputs["X Float Curve"])
+
+    segment_group.links.new(y_closure_socket, radial_instance.inputs["Y Float Curve"])
 
     segment_group.links.new(
         input_node.outputs[FingerSegmentProperties.SAMPLE_COUNT.value],
         grid.inputs["Vertices Y"],
     )
 
-    z_offset = segment_group.nodes.new("ShaderNodeMath")
-    z_offset.label = "Length Offset"
-    z_offset.location = (1400, -480)
-    z_offset.operation = "MULTIPLY"
-    segment_group.links.new(length_clamp.outputs["Result"], z_offset.inputs[0])
-    segment_group.links.new(
-        input_node.outputs[FingerSegmentProperties.SEGMENT_LENGTH.value],
-        z_offset.inputs[1],
-    )
-
-    z_position = segment_group.nodes.new("ShaderNodeMath")
-    z_position.label = "Z Position"
-    z_position.location = (1600, -480)
-    z_position.operation = "ADD"
-    segment_group.links.new(separate_xyz.outputs["Z"], z_position.inputs[0])
-    segment_group.links.new(z_offset.outputs["Value"], z_position.inputs[1])
-
-    cos_theta = segment_group.nodes.new("ShaderNodeMath")
-    cos_theta.label = "cos(θ)"
-    cos_theta.location = (1600, -100)
-    cos_theta.operation = "COSINE"
-    segment_group.links.new(theta_node.outputs["Value"], cos_theta.inputs[0])
-
-    sin_theta = segment_group.nodes.new("ShaderNodeMath")
-    sin_theta.label = "sin(θ)"
-    sin_theta.location = (1600, -250)
-    sin_theta.operation = "SINE"
-    segment_group.links.new(theta_node.outputs["Value"], sin_theta.inputs[0])
-
-    final_x = segment_group.nodes.new("ShaderNodeMath")
-    final_x.label = "Final X"
-    final_x.location = (1800, -100)
-    final_x.operation = "MULTIPLY"
-    segment_group.links.new(radial_instance.outputs["Offset"], final_x.inputs[0])
-    segment_group.links.new(cos_theta.outputs["Value"], final_x.inputs[1])
-
-    final_y = segment_group.nodes.new("ShaderNodeMath")
-    final_y.label = "Final Y"
-    final_y.location = (1800, -250)
-    final_y.operation = "MULTIPLY"
-    segment_group.links.new(radial_instance.outputs["Offset"], final_y.inputs[0])
-    segment_group.links.new(sin_theta.outputs["Value"], final_y.inputs[1])
-
-    final_pos = segment_group.nodes.new("ShaderNodeCombineXYZ")
-    final_pos.label = "Final Position"
-    final_pos.location = (2000, -300)
-    segment_group.links.new(final_x.outputs["Value"], final_pos.inputs["X"])
-    segment_group.links.new(final_y.outputs["Value"], final_pos.inputs["Y"])
-    segment_group.links.new(z_position.outputs["Value"], final_pos.inputs["Z"])
-
     apply_shape = segment_group.nodes.new("GeometryNodeSetPosition")
     apply_shape.label = "Apply Shape"
     apply_shape.location = (2200, 0)
     segment_group.links.new(grid.outputs["Mesh"], apply_shape.inputs["Geometry"])
-    segment_group.links.new(final_pos.outputs["Vector"], apply_shape.inputs["Position"])
+    segment_group.links.new(
+        radial_instance.outputs["Position"], apply_shape.inputs["Position"]
+    )
 
     join_geo = segment_group.nodes.new("GeometryNodeJoinGeometry")
     join_geo.label = "Join With Previous"

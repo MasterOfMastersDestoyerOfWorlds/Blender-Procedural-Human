@@ -11,7 +11,9 @@ from procedural_human.operator_decorator import (
     register_preset_data,
     Preset,
     register_preset_class,
+    get_preset_location,
 )
+from procedural_human.utils.tree_sitter_utils import replace_get_data_method
 from procedural_human.hand.finger.finger_segment import finger_segment_profiles
 
 
@@ -128,31 +130,21 @@ def find_float_curve_nodes_in_finger(obj):
                     )
 
                     for inner_node in node.node_tree.nodes:
-                        if inner_node.type == "GROUP" and inner_node.node_tree:
+                        if (
+                            inner_node.type == "FLOAT_CURVE"
+                            or inner_node.bl_idname == "ShaderNodeFloatCurve"
+                        ):
 
-                            if (
-                                "Radial Profile (Dual)" in inner_node.node_tree.name
-                                or "Radial Profile (Dual)" in inner_node.label
-                            ):
-                                print(f"      Found Radial Profile group in {seg_name}")
-                                radial_group = inner_node.node_tree
-                                for deep_node in radial_group.nodes:
+                            if "X" in inner_node.label:
+                                axis = "X"
+                            elif "Y" in inner_node.label:
+                                axis = "Y"
+                            else:
+                                axis = "Unknown"
 
-                                    if (
-                                        deep_node.type == "FLOAT_CURVE"
-                                        or deep_node.bl_idname == "ShaderNodeFloatCurve"
-                                    ):
-
-                                        if "X" in deep_node.label:
-                                            axis = "X"
-                                        elif "Y" in deep_node.label:
-                                            axis = "Y"
-                                        else:
-                                            axis = "Unknown"
-
-                                        key = f"{seg_name}_{axis}"
-                                        found_nodes[key] = deep_node
-                                        print(f"        Found Curve: {key}")
+                            key = f"{seg_name}_{axis}"
+                            found_nodes[key] = inner_node
+                            print(f"        Found Curve: {key}")
 
     return found_nodes
 
@@ -193,7 +185,21 @@ class SaveFloatCurvePreset(Operator):
         if preset_data:
             FLOAT_CURVE_PRESETS[self.preset_name] = preset_data
 
-            register_preset_data(self.preset_name, preset_data)
+            # Get current file path for location tracking
+            import inspect
+            import os
+
+            frame = inspect.currentframe()
+            try:
+                caller_file = frame.f_back.f_code.co_filename if frame.f_back else None
+                if caller_file and os.path.exists(caller_file):
+                    caller_file = os.path.abspath(caller_file)
+                else:
+                    caller_file = None
+            finally:
+                del frame
+
+            register_preset_data(self.preset_name, preset_data, caller_file)
             self.report(
                 {"INFO"},
                 f"Saved preset '{self.preset_name}' with {len(preset_data)} curves",
@@ -211,10 +217,28 @@ class SaveFloatCurvePreset(Operator):
 
 def update_profiles_file(preset_name, preset_data):
     """
-    Writes the new preset data to finger_segment_profiles.py.
+    Updates preset data in the codebase. If preset exists, replaces it;
+    otherwise appends to finger_segment_profiles.py.
     """
     import os
 
+    # Check if preset already exists in registry
+    location = get_preset_location(preset_name)
+
+    if location and location.get("file_path") and os.path.exists(location["file_path"]):
+        # Preset exists, replace it using tree-sitter
+        file_path = location["file_path"]
+        success = replace_get_data_method(file_path, preset_name, preset_data)
+
+        if success:
+            print(f"Updated preset '{preset_name}' in {file_path}")
+            return
+        else:
+            print(
+                f"Warning: Could not replace preset '{preset_name}' in {file_path}, appending instead"
+            )
+
+    # Preset doesn't exist or replacement failed, append to default location
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
     target_path = os.path.join(
@@ -235,13 +259,10 @@ def update_profiles_file(preset_name, preset_data):
         c.title() if c.isalnum() else "" for c in preset_name
     )
 
-    safe_name = (
-        "PRESET_" + "".join(c for c in preset_name if c.isalnum() or c == "_").upper()
-    )
-
     formatted_data = json.dumps(preset_data, indent=4)
 
     with open(target_path, "a") as f:
+        f.write(f"\n\n# User Preset: {preset_name}\n")
         f.write(f'@register_preset_class("{preset_name}")\n')
         f.write(f"class {safe_class_name}(Preset):\n")
         f.write(f'    """Preset for {preset_name}"""\n')
@@ -258,13 +279,22 @@ def get_preset_enum_items():
     This ensures the enum always shows all presets from the registry.
     """
 
+    # Ensure presets are loaded
     load_presets_from_file()
 
+    # Get all presets from registry
     all_presets = get_all_presets()
 
+    # Sync FLOAT_CURVE_PRESETS
     FLOAT_CURVE_PRESETS.update(all_presets)
 
-    return [(k, k, "") for k in sorted(all_presets.keys())]
+    # Return items in the format: (identifier, name, description)
+    # Must return a list, not empty if no presets
+    if not all_presets:
+        return [("", "No presets available", "")]
+
+    items = [(k, k, "") for k in sorted(all_presets.keys())]
+    return items
 
 
 @dynamic_enum_operator("preset_name", get_preset_enum_items, name="Preset")

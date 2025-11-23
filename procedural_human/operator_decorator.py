@@ -7,12 +7,12 @@ and manages operator registration.
 
 import bpy
 import re
-from typing import List, Type, Callable, Any
+from typing import List, Type, Callable, Any, Optional
 from bpy.types import Operator
 
 
 _operator_registry: List[Type[Operator]] = []
-_preset_registry: dict = {}
+_preset_registry: dict = {}  # Maps display_name -> {"instance": PresetInstance, "location": {...}}
 
 
 def procedural_operator(cls_or_kwargs=None, **kwargs):
@@ -128,14 +128,23 @@ def dynamic_enum_operator(
     def decorator(cls):
 
         def enum_items_wrapper(self, context):
-            return items_getter()
+            items = items_getter()
+            # Ensure we return a list
+            if not items:
+                return [("", "No presets available", "")]
+            return items
 
         enum_prop_kwargs = {
             "name": kwargs.get("name", enum_prop_name.replace("_", " ").title()),
             "items": enum_items_wrapper,
         }
 
-        if "default" in kwargs:
+        # Set default to first item if available and not explicitly provided
+        if "default" not in kwargs:
+            items = items_getter()
+            if items and len(items) > 0:
+                enum_prop_kwargs["default"] = items[0][0]
+        else:
             enum_prop_kwargs["default"] = kwargs["default"]
 
         for k, v in kwargs.items():
@@ -194,6 +203,8 @@ def register_preset_class(name: str = None):
             def get_data(self):
                 return {"key": value, ...}
     """
+    import inspect
+    import os
 
     def decorator(cls):
 
@@ -216,8 +227,37 @@ def register_preset_class(name: str = None):
             else:
                 display_name = class_name.replace("_", " ").title()
 
+        # Capture file location
+        frame = inspect.currentframe()
+        try:
+            # Go up the stack to find the file where the decorator is applied
+            caller_frame = frame.f_back
+            if caller_frame:
+                caller_frame = caller_frame.f_back
+                if caller_frame:
+                    file_path = caller_frame.f_code.co_filename
+                    if file_path and os.path.exists(file_path):
+                        file_path = os.path.abspath(file_path)
+                    else:
+                        file_path = None
+                else:
+                    file_path = None
+            else:
+                file_path = None
+        finally:
+            del frame
+
         preset_instance = cls()
-        _preset_registry[display_name] = preset_instance
+        
+        # Store with location metadata
+        _preset_registry[display_name] = {
+            "instance": preset_instance,
+            "location": {
+                "file_path": file_path,
+                "class_name": cls.__name__,
+                "preset_name": display_name,
+            },
+        }
         return cls
 
     if callable(name):
@@ -275,14 +315,26 @@ def register_preset(name: str = None):
         return decorator
 
 
-def register_preset_data(name: str, data: dict):
+def register_preset_data(name: str, data: dict, file_path: Optional[str] = None):
     """
     Directly register preset data without using a decorator.
 
     Usage:
         register_preset_data("My Preset", {"key": value, ...})
+        
+    Args:
+        name: Display name of the preset
+        data: Preset data dictionary
+        file_path: Optional file path where this preset is defined
     """
-    _preset_registry[name] = lambda: data
+    _preset_registry[name] = {
+        "instance": lambda: data,
+        "location": {
+            "file_path": file_path,
+            "class_name": None,
+            "preset_name": name,
+        },
+    }
 
 
 def get_all_presets() -> dict:
@@ -291,8 +343,14 @@ def get_all_presets() -> dict:
     Returns a dictionary mapping display_name -> preset_data.
     """
     presets = {}
-    for name, preset_func_or_instance in _preset_registry.items():
+    for name, preset_entry in _preset_registry.items():
         try:
+            # Handle new format with location metadata
+            if isinstance(preset_entry, dict) and "instance" in preset_entry:
+                preset_func_or_instance = preset_entry["instance"]
+            else:
+                # Backward compatibility with old format
+                preset_func_or_instance = preset_entry
 
             if isinstance(preset_func_or_instance, Preset):
                 presets[name] = preset_func_or_instance.get_data()
@@ -303,6 +361,26 @@ def get_all_presets() -> dict:
         except Exception as e:
             print(f"Warning: Failed to load preset '{name}': {e}")
     return presets
+
+
+def get_preset_location(preset_name: str) -> Optional[dict]:
+    """
+    Get the file location information for a preset.
+    
+    Args:
+        preset_name: Name of the preset
+        
+    Returns:
+        Dictionary with location information or None if not found
+    """
+    if preset_name not in _preset_registry:
+        return None
+    
+    preset_entry = _preset_registry[preset_name]
+    if isinstance(preset_entry, dict) and "location" in preset_entry:
+        return preset_entry["location"]
+    
+    return None
 
 
 def clear_preset_registry():
