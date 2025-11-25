@@ -214,8 +214,8 @@ def create_finger_armature(finger: FingerData):
 
             import math
 
-            bone.ik_min_x = math.radians(-150)
-            bone.ik_max_x = math.radians(10)
+            bone.ik_min_x = math.radians(-10)
+            bone.ik_max_x = math.radians(150)
 
             bone.ik_min_y = math.radians(-10)
             bone.ik_max_y = math.radians(10)

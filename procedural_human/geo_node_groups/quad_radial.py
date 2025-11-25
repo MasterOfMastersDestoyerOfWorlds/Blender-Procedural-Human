@@ -1,4 +1,4 @@
-
+import bpy
 
 
 def create_quad_profile_radial_group():

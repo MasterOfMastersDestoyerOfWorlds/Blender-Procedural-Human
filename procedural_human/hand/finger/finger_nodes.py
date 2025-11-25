@@ -2,7 +2,12 @@
 Finger Geometry Nodes setup for Procedural Human Generator
 """
 
+import sys
 import bpy
+from procedural_human.geo_node_groups.closures import (
+    FloatCurveClosure,
+    create_float_curve_closure,
+)
 from procedural_human.hand.finger.finger import FingerData
 from procedural_human.hand.finger.finger_segment.finger_segment_const import (
     SEGMENT_SAMPLE_COUNT,
@@ -80,6 +85,8 @@ def create_finger_nodes(
     previous_segment_output = starting_point.outputs["Curve"]
     next_segment_radius = None
 
+    segment_offset = 300
+
     for seg_idx in range(finger.num_segments):
         seg_length = finger.segment_lengths[seg_idx]
         base_radius = seg_length * 0.5
@@ -104,10 +111,47 @@ def create_finger_nodes(
             segment_type=segment_enum,
         )
 
+        x_closure: FloatCurveClosure = create_float_curve_closure(
+            node_group.nodes,
+            node_group.links,
+            label="X Profile",
+            location=(-500, segment_offset),
+        )
+
+        y_closure: FloatCurveClosure = create_float_curve_closure(
+            node_group.nodes,
+            node_group.links,
+            label="Y Profile",
+            location=(-500, x_closure.min_y() - 100),
+        )
+
         segment_instance = node_group.nodes.new("GeometryNodeGroup")
         segment_instance.node_tree = segment_group
         segment_instance.label = f"{seg_name} Segment"
-        segment_instance.location = (-400, 200 - seg_idx * 300)
+        segment_instance.location = (
+            x_closure.out_node.location[0] + x_closure.out_node.width + 100,
+            y_closure.out_node.location[1], 
+        )
+
+        node_frame = node_group.nodes.new("NodeFrame")
+        node_frame.location = (-500, segment_offset)
+        node_frame.label = f"{seg_name}"
+        node_frame.label_size = 30
+
+        list = [segment_instance]
+        list.extend(x_closure.nodes())
+        list.extend(y_closure.nodes())
+        for node in list:
+            node.parent = node_frame
+
+        segment_offset = y_closure.min_y() - 300
+
+        node_group.links.new(
+            x_closure.output_socket, segment_instance.inputs["X Float Curve"]
+        )
+        node_group.links.new(
+            y_closure.output_socket, segment_instance.inputs["Y Float Curve"]
+        )
 
         sample_count = SEGMENT_SAMPLE_COUNT
         if hasattr(bpy.context, "scene") and hasattr(

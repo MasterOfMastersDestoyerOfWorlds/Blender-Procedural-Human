@@ -22,6 +22,7 @@ class SegmentType(Enum):
     PROXIMAL = "proximal"
     MIDDLE = "middle"
     DISTAL = "distal"
+    JOINT = "joint"
 
 
 DEFAULT_X_PROFILE_PROXIMAL = {

@@ -256,14 +256,14 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
   - [x] Show success/error messages to user
 
 ### 7.2 Variable Profile Curve Sampling
-- [ ] Add dynamic sampling to finger segment node groups
-  - [ ] Add "Sample Count" input socket to segment node group (IntProperty)
-  - [ ] Get curve point count programmatically
-  - [ ] Set minimum samples to max(curve_point_count, user_input)
-  - [ ] Update grid resolution based on sample count
-  - [ ] Expose sample count in finger segment panel UI
-  - [ ] Add tooltip explaining performance implications
-  - [ ] Test with different sample counts (3-64)
+- [x] Add dynamic sampling to finger segment node groups
+  - [x] Add "Sample Count" input socket to segment node group (IntProperty)
+  - [x] Get curve point count programmatically
+  - [x] Set minimum samples to max(curve_point_count, user_input)
+  - [x] Update grid resolution based on sample count
+  - [x] Expose sample count in finger segment panel UI
+  - [x] Add tooltip explaining performance implications
+  - [x] Test with different sample counts (3-64)
 
 ### 7.3 Curve-Based Segment Height
 - [ ] Get segment height directly from profile curve geometry

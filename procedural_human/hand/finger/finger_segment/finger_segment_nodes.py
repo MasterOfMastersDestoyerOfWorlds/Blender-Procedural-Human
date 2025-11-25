@@ -68,6 +68,13 @@ def create_finger_segment_node_group(
     )
     sample_count_socket.default_value = SEGMENT_SAMPLE_COUNT
 
+    segment_group.interface.new_socket(
+        name="X Float Curve", in_out="INPUT", socket_type="NodeSocketClosure"
+    )
+    segment_group.interface.new_socket(
+        name="Y Float Curve", in_out="INPUT", socket_type="NodeSocketClosure"
+    )
+
     input_node = segment_group.nodes.new("NodeGroupInput")
     input_node.label = "Inputs"
     input_node.location = (-1400, 0)
@@ -116,23 +123,11 @@ def create_finger_segment_node_group(
         radial_instance.inputs["Segment Length"],
     )
 
-    x_closure_socket = create_float_curve_closure(
-        segment_group.nodes,
-        segment_group.links,
-        label="X Profile",
-        location=(-500, 100),
-    )
 
-    y_closure_socket = create_float_curve_closure(
-        segment_group.nodes,
-        segment_group.links,
-        label="Y Profile",
-        location=(-500, -200),
-    )
 
-    segment_group.links.new(x_closure_socket, radial_instance.inputs["X Float Curve"])
+    segment_group.links.new(input_node.outputs["X Float Curve"], radial_instance.inputs["X Float Curve"])
 
-    segment_group.links.new(y_closure_socket, radial_instance.inputs["Y Float Curve"])
+    segment_group.links.new(input_node.outputs["Y Float Curve"], radial_instance.inputs["Y Float Curve"])
 
     segment_group.links.new(
         input_node.outputs[FingerSegmentProperties.SAMPLE_COUNT.value],

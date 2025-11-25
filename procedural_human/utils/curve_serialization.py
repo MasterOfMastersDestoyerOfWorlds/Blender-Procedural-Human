@@ -118,33 +118,22 @@ def find_float_curve_nodes_in_finger(obj):
             print(f"  Checking modifier {mod.name} with group {main_group.name}")
 
             for node in main_group.nodes:
-                if node.type == "GROUP" and node.node_tree:
-
-                    seg_name = node.label
-                    if not seg_name:
-
-                        seg_name = node.node_tree.name
-
-                    print(
-                        f"    Found group node: {node.name} (Label: {node.label}, Tree: {node.node_tree.name})"
-                    )
-
-                    for inner_node in node.node_tree.nodes:
-                        if (
-                            inner_node.type == "FLOAT_CURVE"
-                            or inner_node.bl_idname == "ShaderNodeFloatCurve"
-                        ):
-
-                            if "X" in inner_node.label:
-                                axis = "X"
-                            elif "Y" in inner_node.label:
-                                axis = "Y"
-                            else:
-                                axis = "Unknown"
-
-                            key = f"{seg_name}_{axis}"
-                            found_nodes[key] = inner_node
-                            print(f"        Found Curve: {key}")
+                seg_name = node.label
+                if not seg_name:
+                    seg_name = node.node_tree.name
+                if (
+                    node.type == "FLOAT_CURVE"
+                    or node.bl_idname == "ShaderNodeFloatCurve"
+                ):
+                    if "X" in node.label:
+                        axis = "X"
+                    elif "Y" in node.label:
+                        axis = "Y"
+                    else:
+                        axis = "Unknown"
+                    key = f"{seg_name}_{axis}"
+                    found_nodes[key] = node
+                    print(f"        Found Curve: {key}")
 
     return found_nodes
 
