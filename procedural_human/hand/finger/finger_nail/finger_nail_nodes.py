@@ -4,6 +4,7 @@ Geometry Node helpers for fingernail creation and attachment.
 
 import bpy
 
+from procedural_human.blender_const import NODE_WIDTH
 from procedural_human.hand.finger.finger_nail import NAIL_SAMPLE_COUNT
 from procedural_human.utils import setup_node_group_interface
 from procedural_human.hand.finger.finger_nail.finger_nail_proportions import (
@@ -271,9 +272,19 @@ def attach_fingernail_to_distal_segment(
     distal_seg_radius,
     finger_type,
     nail_size=DEFAULT_NAIL_SIZE,
+    parent_frame=None,
 ):
     """
     Build and attach a fingernail node group for the distal segment.
+
+    Args:
+        node_group: The parent node group
+        distal_transform_node: The distal segment node to attach nail to
+        curl_direction: Direction of finger curl ("X", "Y", or "Z")
+        distal_seg_radius: Radius of the distal segment
+        finger_type: Type of finger (FingerType enum or string)
+        nail_size: Size of the fingernail
+        parent_frame: Optional NodeFrame to parent the nail node to
     """
     finger_enum = ensure_finger_type(finger_type)
     nail_props = get_fingernail_proportions(finger_enum)
@@ -296,8 +307,13 @@ def attach_fingernail_to_distal_segment(
     nail_instance = node_group.nodes.new("GeometryNodeGroup")
     nail_instance.node_tree = nail_group
     nail_instance.label = f"{finger_enum.label} Nail"
+
+    # Parent to frame if provided (must happen after setting location)
+    if parent_frame is not None:
+        nail_instance.parent = parent_frame
+
     nail_instance.location = (
-        distal_transform_node.location[0] + 200.0,
+        distal_transform_node.location[0] + NODE_WIDTH,
         distal_transform_node.location[1],
     )
 

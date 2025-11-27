@@ -142,19 +142,11 @@ def create_finger_segment_node_group(
         radial_instance.outputs["Position"], apply_shape.inputs["Position"]
     )
 
-    join_geo = segment_group.nodes.new("GeometryNodeJoinGeometry")
-    join_geo.label = "Join With Previous"
-    join_geo.location = (2400, 0)
-    segment_group.links.new(input_node.outputs["Geometry"], join_geo.inputs["Geometry"])
-    segment_group.links.new(
-        apply_shape.outputs["Geometry"], join_geo.inputs["Geometry"]
-    )
-
     output_node = segment_group.nodes.new("NodeGroupOutput")
     output_node.label = "Output"
     output_node.location = (2600, 0)
     segment_group.links.new(
-        join_geo.outputs["Geometry"], output_node.inputs["Geometry"]
+        apply_shape.outputs["Geometry"], output_node.inputs["Geometry"]
     )
     segment_group.links.new(
         input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
