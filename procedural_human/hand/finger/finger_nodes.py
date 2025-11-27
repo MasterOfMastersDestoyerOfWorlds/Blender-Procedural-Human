@@ -2,14 +2,13 @@
 Finger Geometry Nodes setup for Procedural Human Generator
 """
 
-import sys
 from dataclasses import dataclass
-from typing import Optional
 import bpy
 from procedural_human.blender_const import NODE_WIDTH
 from procedural_human.geo_node_groups.closures import (
     FloatCurveClosure,
     create_float_curve_closure,
+    create_flat_float_curve_closure,
 )
 from procedural_human.hand.finger.finger import FingerData
 from procedural_human.hand.finger.finger_segment.finger_segment_const import (
@@ -17,8 +16,6 @@ from procedural_human.hand.finger.finger_segment.finger_segment_const import (
 )
 from procedural_human.hand.finger.finger_segment.finger_segment_profiles import (
     SegmentType,
-    ProfileType,
-    get_profile_data,
 )
 from procedural_human.hand.finger.finger_segment.finger_segment_properties import (
     FingerSegmentProperties,
@@ -28,7 +25,6 @@ from procedural_human.hand.finger.finger_segment.joint_segment_nodes import (
     create_joint_between_segments,
 )
 from procedural_human.hand.finger.finger_types import (
-    FingerType,
     ensure_finger_type,
 )
 from procedural_human.hand.finger.finger_nail.finger_nail_nodes import (
@@ -42,35 +38,32 @@ from procedural_human.utils import setup_node_group_interface
 
 @dataclass
 class SegmentNodeData:
-    """Data for a finger segment node instance with its associated closures and frame."""
     name: str
-    node: object  # GeometryNodeGroup
+    node: object
     index: int
     radius: float
     length: float
-    frame: object  # NodeFrame
+    frame: object
     x_closure: FloatCurveClosure
     y_closure: FloatCurveClosure
-    abs_x: float  # Absolute X position before parenting
-    abs_y: float  # Absolute Y position before parenting
+    abs_x: float
+    abs_y: float
+
+
+@dataclass
+class JointNodeData:
+    name: str
+    node: object
+    index: int
+    closures: list
+    abs_x: float
+    abs_y: float
 
 
 def create_finger_nodes(
     node_group,
     finger: FingerData,
 ):
-    """
-    Create complete finger geometry with variable segments and fingernail
-
-    Args:
-        node_group: Geometry node group to populate
-        num_segments: Number of segments (2 or 3)
-        segment_lengths: List of segment lengths in blender units
-        radius: Base finger radius
-        nail_size: Fingernail size
-        taper_factor: How much radius decreases per segment
-        curl_direction: Curl direction axis ("X", "Y", or "Z")
-    """
     setup_node_group_interface(node_group)
     finger_type = ensure_finger_type(finger.finger_type)
 
@@ -97,25 +90,30 @@ def create_finger_nodes(
     segment_profile_meta = {}
 
     for seg_type in SegmentType:
-
         segment_profile_meta[seg_type] = {
             "start": 1.0,
             "end": 0.85,
         }
 
     segment_node_instances = []
-    joint_node_instances = []
     previous_segment_output = starting_point.outputs["Curve"]
     next_segment_radius = None
 
     segment_offset = 300
 
-    # Pre-calculate all segment radii for joint creation
     segment_radii = []
+    continuity_ratio = (
+        segment_profile_meta[SegmentType.PROXIMAL]["end"]
+        / segment_profile_meta[SegmentType.PROXIMAL]["start"]
+    )
+
     for seg_idx in range(finger.num_segments):
-        seg_length = finger.segment_lengths[seg_idx]
-        base_radius = seg_length * 0.5
-        seg_radius = base_radius * (1.0 - seg_idx * finger.taper_factor)
+        if seg_idx == 0:
+            seg_length = finger.segment_lengths[seg_idx]
+            seg_radius = seg_length * 0.5
+        else:
+            prev_radius = segment_radii[seg_idx - 1]
+            seg_radius = prev_radius * continuity_ratio
         segment_radii.append(seg_radius)
 
     for seg_idx in range(finger.num_segments):
@@ -213,74 +211,109 @@ def create_finger_nodes(
         )
         current_end_radius = segment_radius_scale * continuity_ratio
 
-        segment_node_instances.append(SegmentNodeData(
-            name=seg_name,
-            node=segment_instance,
-            index=seg_idx,
-            radius=segment_radius_scale,
-            length=seg_length,
-            frame=node_frame,
-            x_closure=x_closure,
-            y_closure=y_closure,
-            abs_x=segment_abs_x,
-            abs_y=segment_abs_y,
-        ))
+        segment_node_instances.append(
+            SegmentNodeData(
+                name=seg_name,
+                node=segment_instance,
+                index=seg_idx,
+                radius=segment_radius_scale,
+                length=seg_length,
+                frame=node_frame,
+                x_closure=x_closure,
+                y_closure=y_closure,
+                abs_x=segment_abs_x,
+                abs_y=segment_abs_y,
+            )
+        )
 
-        # Create joint segment between this segment and the next (except after last segment)
-        if seg_idx < finger.num_segments - 1:
-            next_seg_radius = segment_radii[seg_idx + 1]
-            
-            joint_group = create_joint_between_segments(
-                segment_before_radius=current_end_radius,
-                segment_after_radius=next_seg_radius,
-                joint_index=seg_idx,
+        previous_segment_output = segment_instance.outputs["Geometry"]
+        next_segment_radius = current_end_radius
+
+    joint_node_instances = []
+    joint_offset = segment_offset
+
+    for joint_idx in range(finger.num_segments - 1):
+        prev_segment = segment_node_instances[joint_idx]
+        next_segment = segment_node_instances[joint_idx + 1]
+
+        joint_group = create_joint_between_segments(joint_index=joint_idx)
+
+        joint_abs_x = (prev_segment.abs_x + next_segment.abs_x) / 2
+        joint_abs_y = (prev_segment.abs_y + next_segment.abs_y) / 2
+
+        curve_labels = ["0°", "90°", "180°", "270°"]
+        joint_closures = []
+
+        for i, angle_label in enumerate(curve_labels):
+            closure = create_flat_float_curve_closure(
+                node_group.nodes,
+                node_group.links,
+                label=f"Joint {joint_idx} {angle_label}",
+                location=(-500, joint_offset),
+                value=0.5,
             )
-            
-            joint_instance = node_group.nodes.new("GeometryNodeGroup")
-            joint_instance.node_tree = joint_group
-            joint_instance.label = f"Joint {seg_idx}"
-            joint_instance.location = (
-                segment_abs_x + NODE_WIDTH,
-                segment_abs_y,
+            joint_closures.append(closure)
+            joint_offset = closure.min_y() - 100
+
+        joint_instance = node_group.nodes.new("GeometryNodeGroup")
+        joint_instance.node_tree = joint_group
+        joint_instance.label = f"Joint {joint_idx}"
+        joint_instance.location = (joint_abs_x, joint_abs_y)
+
+        node_group.links.new(
+            prev_segment.node.outputs["Geometry"],
+            joint_instance.inputs[JointSegmentProperties.PREV_SEGMENT.value]
+        )
+        node_group.links.new(
+            next_segment.node.outputs["Geometry"],
+            joint_instance.inputs[JointSegmentProperties.NEXT_SEGMENT.value]
+        )
+
+        node_group.links.new(
+            joint_closures[0].output_socket,
+            joint_instance.inputs[JointSegmentProperties.CURVE_0.value]
+        )
+        node_group.links.new(
+            joint_closures[1].output_socket,
+            joint_instance.inputs[JointSegmentProperties.CURVE_90.value]
+        )
+        node_group.links.new(
+            joint_closures[2].output_socket,
+            joint_instance.inputs[JointSegmentProperties.CURVE_180.value]
+        )
+        node_group.links.new(
+            joint_closures[3].output_socket,
+            joint_instance.inputs[JointSegmentProperties.CURVE_270.value]
+        )
+
+        joint_node_instances.append(
+            JointNodeData(
+                name=f"Joint_{joint_idx}",
+                node=joint_instance,
+                index=joint_idx,
+                closures=joint_closures,
+                abs_x=joint_abs_x,
+                abs_y=joint_abs_y,
             )
-            joint_instance.parent = node_frame
-            
-            # Connect segment output to joint input
-            node_group.links.new(
-                segment_instance.outputs["Geometry"],
-                joint_instance.inputs["Geometry"]
-            )
-            
-            # Set joint properties
-            joint_instance.inputs[
-                JointSegmentProperties.START_RADIUS.value
-            ].default_value = current_end_radius
-            joint_instance.inputs[
-                JointSegmentProperties.END_RADIUS.value
-            ].default_value = next_seg_radius
-            
-            joint_node_instances.append(
-                (f"Joint_{seg_idx}", joint_instance, seg_idx, current_end_radius, next_seg_radius)
-            )
-            
-            # Joint output becomes input for next segment
-            previous_segment_output = joint_instance.outputs["Geometry"]
-            next_segment_radius = next_seg_radius
-        else:
-            # Last segment - no joint after it
-            previous_segment_output = segment_instance.outputs["Geometry"]
-            next_segment_radius = current_end_radius
+        )
+
+        joint_offset -= 200
 
     join_geo = node_group.nodes.new("GeometryNodeJoinGeometry")
-    join_geo.label = "Join With Previous"
+    join_geo.label = "Join All"
     join_geo.location = (1000, 0)
     node_group.links.new(input_node.outputs["Geometry"], join_geo.inputs["Geometry"])
 
     for segment in segment_node_instances:
-        node_group.links.new( 
+        node_group.links.new(
             segment.node.outputs["Geometry"], join_geo.inputs["Geometry"]
         )
-    
+
+    for joint in joint_node_instances:
+        node_group.links.new(
+            joint.node.outputs["Geometry"], join_geo.inputs["Geometry"]
+        )
+
     node_group.links.new(join_geo.outputs["Geometry"], output_node.inputs["Geometry"])
 
     distal_segment = segment_node_instances[-1]
@@ -294,8 +327,6 @@ def create_finger_nodes(
         parent_frame=distal_segment.frame,
     )
 
-    node_group.links.new(
-        nail_instance.outputs["Geometry"], join_geo.inputs["Geometry"]
-    )
+    node_group.links.new(nail_instance.outputs["Geometry"], join_geo.inputs["Geometry"])
 
     return node_group

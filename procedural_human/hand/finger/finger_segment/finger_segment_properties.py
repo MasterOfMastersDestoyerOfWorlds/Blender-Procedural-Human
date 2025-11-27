@@ -11,11 +11,12 @@ class FingerSegmentProperties(Enum):
 
 
 class JointSegmentProperties(Enum):
-    """Properties for joint segments that connect regular segments"""
-    
-    START_RADIUS = "StartRadius"
-    END_RADIUS = "EndRadius"
-    OVERLAP_AMOUNT = "OverlapAmount"
-    BLEND_FACTOR = "BlendFactor"
-    THICKNESS_RATIO = "ThicknessRatio"
+    PREV_SEGMENT = "Previous Segment"
+    NEXT_SEGMENT = "Next Segment"
+    PREV_SEGMENT_START = "Prev Segment Start"
+    NEXT_SEGMENT_START = "Next Segment Start"
+    CURVE_0 = "0° Float Curve"
+    CURVE_90 = "90° Float Curve"
+    CURVE_180 = "180° Float Curve"
+    CURVE_270 = "270° Float Curve"
     SAMPLE_COUNT = "Sample Count"

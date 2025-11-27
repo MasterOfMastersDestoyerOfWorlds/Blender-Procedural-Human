@@ -2,14 +2,14 @@
 Joint Segment Nodes for smooth transitions between finger segments.
 
 Joint segments create organic transitions at knuckle locations by:
-- Overlapping with neighboring segments
-- Blending radii smoothly between segments
-- Creating bulging geometry for realistic joint appearance
+- Receiving geometry from both adjacent segments
+- Sampling radius at specified positions on each segment using raycast
+- Creating smooth blended geometry using quad radial profiles
 """
 
 import bpy
 import math
-from procedural_human.geo_node_groups.closures import create_float_curve_closure
+from procedural_human.geo_node_groups.quad_radial import create_quad_profile_radial_group
 from procedural_human.hand.finger.finger_segment.finger_segment_const import (
     SEGMENT_SAMPLE_COUNT,
 )
@@ -19,82 +19,67 @@ from procedural_human.hand.finger.finger_segment.finger_segment_properties impor
 from procedural_human.utils import setup_node_group_interface
 
 
-# Default joint configuration
-DEFAULT_JOINT_OVERLAP = 0.15  # 15% overlap into each neighboring segment
-DEFAULT_JOINT_BLEND = 0.5  # Smoothness of transition (0=sharp, 1=very smooth)
-DEFAULT_JOINT_THICKNESS = 1.1  # Joint is 10% thicker than average of neighbors
-JOINT_SAMPLE_COUNT = 8  # Samples along joint length
+DEFAULT_PREV_START = 0.8
+DEFAULT_NEXT_START = 0.2
+JOINT_SAMPLE_COUNT = 8
 
 
 def create_joint_segment_node_group(
     name: str,
-    start_radius: float,
-    end_radius: float,
-    overlap_amount: float = DEFAULT_JOINT_OVERLAP,
-    blend_factor: float = DEFAULT_JOINT_BLEND,
-    thickness_ratio: float = DEFAULT_JOINT_THICKNESS,
+    prev_start: float = DEFAULT_PREV_START,
+    next_start: float = DEFAULT_NEXT_START,
 ):
-    """
-    Create a node group for a joint segment that smoothly connects two regular segments.
-
-    The joint creates a bulging transition between segments, simulating the appearance
-    of knuckles and joints in a finger.
-
-    Args:
-        name: Name for the node group
-        start_radius: Radius at the start (from previous segment's end)
-        end_radius: Radius at the end (to next segment's start)
-        overlap_amount: How much the joint extends into neighboring segments (0-0.5)
-        blend_factor: Smoothness of the radius blend (0=linear, 1=very smooth)
-        thickness_ratio: Multiplier for joint thickness (>1 for bulging joints)
-
-    Returns:
-        Node group for the joint segment
-    """
     joint_group = bpy.data.node_groups.new(name, "GeometryNodeTree")
-    setup_node_group_interface(joint_group)
 
-    # Input sockets
-    start_radius_socket = joint_group.interface.new_socket(
-        name=JointSegmentProperties.START_RADIUS.value,
+    joint_group.interface.new_socket(
+        name=JointSegmentProperties.PREV_SEGMENT.value,
+        in_out="INPUT",
+        socket_type="NodeSocketGeometry",
+    )
+    joint_group.interface.new_socket(
+        name=JointSegmentProperties.NEXT_SEGMENT.value,
+        in_out="INPUT",
+        socket_type="NodeSocketGeometry",
+    )
+
+    prev_start_socket = joint_group.interface.new_socket(
+        name=JointSegmentProperties.PREV_SEGMENT_START.value,
         in_out="INPUT",
         socket_type="NodeSocketFloat",
     )
-    start_radius_socket.default_value = start_radius
+    prev_start_socket.default_value = prev_start
+    prev_start_socket.min_value = 0.0
+    prev_start_socket.max_value = 1.0
 
-    end_radius_socket = joint_group.interface.new_socket(
-        name=JointSegmentProperties.END_RADIUS.value,
+    next_start_socket = joint_group.interface.new_socket(
+        name=JointSegmentProperties.NEXT_SEGMENT_START.value,
         in_out="INPUT",
         socket_type="NodeSocketFloat",
     )
-    end_radius_socket.default_value = end_radius
+    next_start_socket.default_value = next_start
+    next_start_socket.min_value = 0.0
+    next_start_socket.max_value = 1.0
 
-    overlap_socket = joint_group.interface.new_socket(
-        name=JointSegmentProperties.OVERLAP_AMOUNT.value,
+    joint_group.interface.new_socket(
+        name=JointSegmentProperties.CURVE_0.value,
         in_out="INPUT",
-        socket_type="NodeSocketFloat",
+        socket_type="NodeSocketClosure",
     )
-    overlap_socket.default_value = overlap_amount
-    overlap_socket.min_value = 0.0
-    overlap_socket.max_value = 0.5
-
-    blend_socket = joint_group.interface.new_socket(
-        name=JointSegmentProperties.BLEND_FACTOR.value,
+    joint_group.interface.new_socket(
+        name=JointSegmentProperties.CURVE_90.value,
         in_out="INPUT",
-        socket_type="NodeSocketFloat",
+        socket_type="NodeSocketClosure",
     )
-    blend_socket.default_value = blend_factor
-    blend_socket.min_value = 0.0
-    blend_socket.max_value = 1.0
-
-    thickness_socket = joint_group.interface.new_socket(
-        name=JointSegmentProperties.THICKNESS_RATIO.value,
+    joint_group.interface.new_socket(
+        name=JointSegmentProperties.CURVE_180.value,
         in_out="INPUT",
-        socket_type="NodeSocketFloat",
+        socket_type="NodeSocketClosure",
     )
-    thickness_socket.default_value = thickness_ratio
-    thickness_socket.min_value = 0.5
-    thickness_socket.max_value = 2.0
+    joint_group.interface.new_socket(
+        name=JointSegmentProperties.CURVE_270.value,
+        in_out="INPUT",
+        socket_type="NodeSocketClosure",
+    )
 
     sample_count_socket = joint_group.interface.new_socket(
         name=JointSegmentProperties.SAMPLE_COUNT.value,
@@ -103,339 +88,241 @@ def create_joint_segment_node_group(
     )
     sample_count_socket.default_value = JOINT_SAMPLE_COUNT
 
-    # Output sockets
-    end_radius_output = joint_group.interface.new_socket(
-        name=JointSegmentProperties.END_RADIUS.value,
+    joint_group.interface.new_socket(
+        name="Geometry",
         in_out="OUTPUT",
-        socket_type="NodeSocketFloat",
+        socket_type="NodeSocketGeometry",
     )
 
-    # Create nodes
     input_node = joint_group.nodes.new("NodeGroupInput")
     input_node.label = "Inputs"
-    input_node.location = (-1400, 0)
+    input_node.location = (-1800, 0)
 
-    # Get Z position from input geometry's bounding box
-    bbox_node = joint_group.nodes.new("GeometryNodeBoundBox")
-    bbox_node.label = "Find Endpoint"
-    bbox_node.location = (-1200, 200)
+    prev_bbox = joint_group.nodes.new("GeometryNodeBoundBox")
+    prev_bbox.label = "Prev Bounds"
+    prev_bbox.location = (-1600, 300)
     joint_group.links.new(
-        input_node.outputs["Geometry"], bbox_node.inputs["Geometry"]
+        input_node.outputs[JointSegmentProperties.PREV_SEGMENT.value],
+        prev_bbox.inputs["Geometry"]
     )
 
-    separate_xyz = joint_group.nodes.new("ShaderNodeSeparateXYZ")
-    separate_xyz.label = "Extract Z"
-    separate_xyz.location = (-1000, 200)
-    joint_group.links.new(bbox_node.outputs["Max"], separate_xyz.inputs["Vector"])
-
-    # Calculate joint length based on overlap
-    # Joint length = 2 * overlap_amount * average_radius
-    avg_radius = joint_group.nodes.new("ShaderNodeMath")
-    avg_radius.label = "Average Radius"
-    avg_radius.operation = "ADD"
-    avg_radius.location = (-1000, -100)
+    next_bbox = joint_group.nodes.new("GeometryNodeBoundBox")
+    next_bbox.label = "Next Bounds"
+    next_bbox.location = (-1600, -100)
     joint_group.links.new(
-        input_node.outputs[JointSegmentProperties.START_RADIUS.value],
-        avg_radius.inputs[0],
-    )
-    joint_group.links.new(
-        input_node.outputs[JointSegmentProperties.END_RADIUS.value],
-        avg_radius.inputs[1],
+        input_node.outputs[JointSegmentProperties.NEXT_SEGMENT.value],
+        next_bbox.inputs["Geometry"]
     )
 
-    avg_radius_div = joint_group.nodes.new("ShaderNodeMath")
-    avg_radius_div.label = "Avg Radius / 2"
-    avg_radius_div.operation = "DIVIDE"
-    avg_radius_div.inputs[1].default_value = 2.0
-    avg_radius_div.location = (-800, -100)
-    joint_group.links.new(avg_radius.outputs["Value"], avg_radius_div.inputs[0])
+    prev_max = joint_group.nodes.new("ShaderNodeSeparateXYZ")
+    prev_max.label = "Prev Max"
+    prev_max.location = (-1400, 350)
+    joint_group.links.new(prev_bbox.outputs["Max"], prev_max.inputs["Vector"])
 
-    # Joint length = overlap * 4 * avg_radius (spans 2x overlap on each side)
+    prev_min = joint_group.nodes.new("ShaderNodeSeparateXYZ")
+    prev_min.label = "Prev Min"
+    prev_min.location = (-1400, 250)
+    joint_group.links.new(prev_bbox.outputs["Min"], prev_min.inputs["Vector"])
+
+    next_max = joint_group.nodes.new("ShaderNodeSeparateXYZ")
+    next_max.label = "Next Max"
+    next_max.location = (-1400, -50)
+    joint_group.links.new(next_bbox.outputs["Max"], next_max.inputs["Vector"])
+
+    next_min = joint_group.nodes.new("ShaderNodeSeparateXYZ")
+    next_min.label = "Next Min"
+    next_min.location = (-1400, -150)
+    joint_group.links.new(next_bbox.outputs["Min"], next_min.inputs["Vector"])
+
+    prev_length = joint_group.nodes.new("ShaderNodeMath")
+    prev_length.label = "Prev Length"
+    prev_length.operation = "SUBTRACT"
+    prev_length.location = (-1200, 300)
+    joint_group.links.new(prev_max.outputs["Z"], prev_length.inputs[0])
+    joint_group.links.new(prev_min.outputs["Z"], prev_length.inputs[1])
+
+    next_length = joint_group.nodes.new("ShaderNodeMath")
+    next_length.label = "Next Length"
+    next_length.operation = "SUBTRACT"
+    next_length.location = (-1200, -100)
+    joint_group.links.new(next_max.outputs["Z"], next_length.inputs[0])
+    joint_group.links.new(next_min.outputs["Z"], next_length.inputs[1])
+
+    prev_sample_z = joint_group.nodes.new("ShaderNodeMath")
+    prev_sample_z.label = "Prev Sample Z"
+    prev_sample_z.operation = "MULTIPLY_ADD"
+    prev_sample_z.location = (-1000, 300)
+    joint_group.links.new(prev_length.outputs["Value"], prev_sample_z.inputs[0])
+    joint_group.links.new(
+        input_node.outputs[JointSegmentProperties.PREV_SEGMENT_START.value],
+        prev_sample_z.inputs[1]
+    )
+    joint_group.links.new(prev_min.outputs["Z"], prev_sample_z.inputs[2])
+
+    next_sample_z = joint_group.nodes.new("ShaderNodeMath")
+    next_sample_z.label = "Next Sample Z"
+    next_sample_z.operation = "MULTIPLY_ADD"
+    next_sample_z.location = (-1000, -100)
+    joint_group.links.new(next_length.outputs["Value"], next_sample_z.inputs[0])
+    joint_group.links.new(
+        input_node.outputs[JointSegmentProperties.NEXT_SEGMENT_START.value],
+        next_sample_z.inputs[1]
+    )
+    joint_group.links.new(next_min.outputs["Z"], next_sample_z.inputs[2])
+
+    prev_ray_origin = joint_group.nodes.new("ShaderNodeCombineXYZ")
+    prev_ray_origin.label = "Prev Ray Origin"
+    prev_ray_origin.location = (-800, 350)
+    prev_ray_origin.inputs["X"].default_value = 100.0
+    prev_ray_origin.inputs["Y"].default_value = 0.0
+    joint_group.links.new(prev_sample_z.outputs["Value"], prev_ray_origin.inputs["Z"])
+
+    prev_raycast = joint_group.nodes.new("GeometryNodeRaycast")
+    prev_raycast.label = "Prev Raycast"
+    prev_raycast.location = (-600, 350)
+    prev_raycast.inputs["Ray Direction"].default_value = (-1.0, 0.0, 0.0)
+    prev_raycast.inputs["Ray Length"].default_value = 200.0
+    joint_group.links.new(
+        input_node.outputs[JointSegmentProperties.PREV_SEGMENT.value],
+        prev_raycast.inputs["Target Geometry"]
+    )
+    joint_group.links.new(prev_ray_origin.outputs["Vector"], prev_raycast.inputs["Source Position"])
+
+    prev_hit_sep = joint_group.nodes.new("ShaderNodeSeparateXYZ")
+    prev_hit_sep.label = "Prev Hit X"
+    prev_hit_sep.location = (-400, 350)
+    joint_group.links.new(prev_raycast.outputs["Hit Position"], prev_hit_sep.inputs["Vector"])
+
+    prev_radius = joint_group.nodes.new("ShaderNodeMath")
+    prev_radius.label = "Prev Radius"
+    prev_radius.operation = "ABSOLUTE"
+    prev_radius.location = (-200, 350)
+    joint_group.links.new(prev_hit_sep.outputs["X"], prev_radius.inputs[0])
+
+    next_ray_origin = joint_group.nodes.new("ShaderNodeCombineXYZ")
+    next_ray_origin.label = "Next Ray Origin"
+    next_ray_origin.location = (-800, -50)
+    next_ray_origin.inputs["X"].default_value = 100.0
+    next_ray_origin.inputs["Y"].default_value = 0.0
+    joint_group.links.new(next_sample_z.outputs["Value"], next_ray_origin.inputs["Z"])
+
+    next_raycast = joint_group.nodes.new("GeometryNodeRaycast")
+    next_raycast.label = "Next Raycast"
+    next_raycast.location = (-600, -50)
+    next_raycast.inputs["Ray Direction"].default_value = (-1.0, 0.0, 0.0)
+    next_raycast.inputs["Ray Length"].default_value = 200.0
+    joint_group.links.new(
+        input_node.outputs[JointSegmentProperties.NEXT_SEGMENT.value],
+        next_raycast.inputs["Target Geometry"]
+    )
+    joint_group.links.new(next_ray_origin.outputs["Vector"], next_raycast.inputs["Source Position"])
+
+    next_hit_sep = joint_group.nodes.new("ShaderNodeSeparateXYZ")
+    next_hit_sep.label = "Next Hit X"
+    next_hit_sep.location = (-400, -50)
+    joint_group.links.new(next_raycast.outputs["Hit Position"], next_hit_sep.inputs["Vector"])
+
+    next_radius = joint_group.nodes.new("ShaderNodeMath")
+    next_radius.label = "Next Radius"
+    next_radius.operation = "ABSOLUTE"
+    next_radius.location = (-200, -50)
+    joint_group.links.new(next_hit_sep.outputs["X"], next_radius.inputs[0])
+
     joint_length = joint_group.nodes.new("ShaderNodeMath")
     joint_length.label = "Joint Length"
-    joint_length.operation = "MULTIPLY"
-    joint_length.location = (-600, -100)
-    joint_group.links.new(
-        input_node.outputs[JointSegmentProperties.OVERLAP_AMOUNT.value],
-        joint_length.inputs[0],
-    )
-    joint_group.links.new(avg_radius_div.outputs["Value"], joint_length.inputs[1])
+    joint_length.operation = "SUBTRACT"
+    joint_length.location = (0, 100)
+    joint_group.links.new(next_sample_z.outputs["Value"], joint_length.inputs[0])
+    joint_group.links.new(prev_sample_z.outputs["Value"], joint_length.inputs[1])
 
-    joint_length_scale = joint_group.nodes.new("ShaderNodeMath")
-    joint_length_scale.label = "Scale Joint Length"
-    joint_length_scale.operation = "MULTIPLY"
-    joint_length_scale.inputs[1].default_value = 4.0
-    joint_length_scale.location = (-400, -100)
-    joint_group.links.new(joint_length.outputs["Value"], joint_length_scale.inputs[0])
-
-    # Create parameter grid for the joint surface
     grid = joint_group.nodes.new("GeometryNodeMeshGrid")
-    grid.label = "Joint Parameter Grid"
-    grid.location = (0, -200)
+    grid.label = "Joint Grid"
+    grid.location = (200, -200)
     grid.inputs["Vertices X"].default_value = SEGMENT_SAMPLE_COUNT
     grid.inputs["Size X"].default_value = 1.0
     grid.inputs["Size Y"].default_value = 1.0
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.SAMPLE_COUNT.value],
-        grid.inputs["Vertices Y"],
+        grid.inputs["Vertices Y"]
     )
 
-    # Get grid position for parameter extraction
     grid_pos = joint_group.nodes.new("GeometryNodeInputPosition")
     grid_pos.label = "Grid Position"
-    grid_pos.location = (200, -300)
+    grid_pos.location = (400, -300)
 
-    separate_grid = joint_group.nodes.new("ShaderNodeSeparateXYZ")
-    separate_grid.label = "Separate Grid Coords"
-    separate_grid.location = (400, -300)
-    joint_group.links.new(grid_pos.outputs["Position"], separate_grid.inputs["Vector"])
+    sep_grid = joint_group.nodes.new("ShaderNodeSeparateXYZ")
+    sep_grid.label = "Grid XY"
+    sep_grid.location = (600, -300)
+    joint_group.links.new(grid_pos.outputs["Position"], sep_grid.inputs["Vector"])
 
-    # Normalize parameters to 0-1 range
-    angle_param = joint_group.nodes.new("ShaderNodeMath")
-    angle_param.label = "Angle Param"
-    angle_param.operation = "ADD"
-    angle_param.inputs[1].default_value = 0.5
-    angle_param.location = (600, -200)
-    joint_group.links.new(separate_grid.outputs["X"], angle_param.inputs[0])
+    t_param = joint_group.nodes.new("ShaderNodeMath")
+    t_param.label = "t (0-1)"
+    t_param.operation = "ADD"
+    t_param.inputs[1].default_value = 0.5
+    t_param.location = (800, -350)
+    joint_group.links.new(sep_grid.outputs["Y"], t_param.inputs[0])
 
-    length_param = joint_group.nodes.new("ShaderNodeMath")
-    length_param.label = "Length Param (t)"
-    length_param.operation = "ADD"
-    length_param.inputs[1].default_value = 0.5
-    length_param.location = (600, -400)
-    joint_group.links.new(separate_grid.outputs["Y"], length_param.inputs[0])
+    t_clamp = joint_group.nodes.new("ShaderNodeClamp")
+    t_clamp.label = "Clamp t"
+    t_clamp.location = (1000, -350)
+    joint_group.links.new(t_param.outputs["Value"], t_clamp.inputs["Value"])
 
-    # Clamp parameters
-    angle_clamp = joint_group.nodes.new("ShaderNodeClamp")
-    angle_clamp.label = "Clamp Angle"
-    angle_clamp.location = (800, -200)
-    joint_group.links.new(angle_param.outputs["Value"], angle_clamp.inputs["Value"])
-
-    length_clamp = joint_group.nodes.new("ShaderNodeClamp")
-    length_clamp.label = "Clamp Length"
-    length_clamp.location = (800, -400)
-    joint_group.links.new(length_param.outputs["Value"], length_clamp.inputs["Value"])
-
-    # Convert angle parameter to radians (0-1 -> 0-2π)
-    theta_node = joint_group.nodes.new("ShaderNodeMath")
-    theta_node.label = "Angle θ"
-    theta_node.operation = "MULTIPLY"
-    theta_node.inputs[1].default_value = 2 * math.pi
-    theta_node.location = (1000, -200)
-    joint_group.links.new(angle_clamp.outputs["Result"], theta_node.inputs[0])
-
-    # Smoothstep blend for the length parameter
-    # Creates smooth transition: smoothstep(t) = t² * (3 - 2t)
-    t_squared = joint_group.nodes.new("ShaderNodeMath")
-    t_squared.label = "t²"
-    t_squared.operation = "POWER"
-    t_squared.inputs[1].default_value = 2.0
-    t_squared.location = (1000, -500)
-    joint_group.links.new(length_clamp.outputs["Result"], t_squared.inputs[0])
-
-    three_minus_2t = joint_group.nodes.new("ShaderNodeMath")
-    three_minus_2t.label = "3 - 2t"
-    three_minus_2t.operation = "MULTIPLY"
-    three_minus_2t.inputs[1].default_value = -2.0
-    three_minus_2t.location = (1000, -650)
-    joint_group.links.new(length_clamp.outputs["Result"], three_minus_2t.inputs[0])
-
-    add_three = joint_group.nodes.new("ShaderNodeMath")
-    add_three.label = "+ 3"
-    add_three.operation = "ADD"
-    add_three.inputs[1].default_value = 3.0
-    add_three.location = (1200, -650)
-    joint_group.links.new(three_minus_2t.outputs["Value"], add_three.inputs[0])
-
-    smoothstep = joint_group.nodes.new("ShaderNodeMath")
-    smoothstep.label = "Smoothstep"
-    smoothstep.operation = "MULTIPLY"
-    smoothstep.location = (1400, -550)
-    joint_group.links.new(t_squared.outputs["Value"], smoothstep.inputs[0])
-    joint_group.links.new(add_three.outputs["Value"], smoothstep.inputs[1])
-
-    # Interpolate blend factor to control smoothness
-    blend_lerp = joint_group.nodes.new("ShaderNodeMix")
-    blend_lerp.data_type = "FLOAT"
-    blend_lerp.label = "Blend Linear/Smooth"
-    blend_lerp.location = (1600, -500)
-    joint_group.links.new(
-        input_node.outputs[JointSegmentProperties.BLEND_FACTOR.value],
-        blend_lerp.inputs["Factor"],
-    )
-    joint_group.links.new(length_clamp.outputs["Result"], blend_lerp.inputs[4])  # A (linear)
-    joint_group.links.new(smoothstep.outputs["Value"], blend_lerp.inputs[5])  # B (smooth)
-
-    # Interpolate radius between start and end
     radius_lerp = joint_group.nodes.new("ShaderNodeMix")
     radius_lerp.data_type = "FLOAT"
     radius_lerp.label = "Lerp Radius"
-    radius_lerp.location = (1800, -400)
-    joint_group.links.new(blend_lerp.outputs["Result"], radius_lerp.inputs["Factor"])
+    radius_lerp.location = (200, 200)
+    joint_group.links.new(t_clamp.outputs["Result"], radius_lerp.inputs["Factor"])
+    joint_group.links.new(prev_radius.outputs["Value"], radius_lerp.inputs["A"])
+    joint_group.links.new(next_radius.outputs["Value"], radius_lerp.inputs["B"])
+
+    quad_radial = create_quad_profile_radial_group("Joint")
+    quad_instance = joint_group.nodes.new("GeometryNodeGroup")
+    quad_instance.node_tree = quad_radial
+    quad_instance.label = "Quad Radial"
+    quad_instance.location = (600, 100)
+
+    joint_group.links.new(radius_lerp.outputs["Result"], quad_instance.inputs["Radius"])
+    joint_group.links.new(prev_sample_z.outputs["Value"], quad_instance.inputs["Z Position"])
+    joint_group.links.new(joint_length.outputs["Value"], quad_instance.inputs["Segment Length"])
     joint_group.links.new(
-        input_node.outputs[JointSegmentProperties.START_RADIUS.value],
-        radius_lerp.inputs[4],  # A
+        input_node.outputs[JointSegmentProperties.CURVE_0.value],
+        quad_instance.inputs["0° Float Curve"]
     )
     joint_group.links.new(
-        input_node.outputs[JointSegmentProperties.END_RADIUS.value],
-        radius_lerp.inputs[5],  # B
+        input_node.outputs[JointSegmentProperties.CURVE_90.value],
+        quad_instance.inputs["90° Float Curve"]
     )
-
-    # Create joint bulge profile using a sine wave centered at t=0.5
-    # bulge = sin(π * t) gives 0->1->0 bulge
-    pi_t = joint_group.nodes.new("ShaderNodeMath")
-    pi_t.label = "π * t"
-    pi_t.operation = "MULTIPLY"
-    pi_t.inputs[1].default_value = math.pi
-    pi_t.location = (1400, -750)
-    joint_group.links.new(length_clamp.outputs["Result"], pi_t.inputs[0])
-
-    sin_bulge = joint_group.nodes.new("ShaderNodeMath")
-    sin_bulge.label = "sin(π*t)"
-    sin_bulge.operation = "SINE"
-    sin_bulge.location = (1600, -750)
-    joint_group.links.new(pi_t.outputs["Value"], sin_bulge.inputs[0])
-
-    # Scale bulge by (thickness_ratio - 1) so thickness_ratio=1 means no bulge
-    thickness_minus_one = joint_group.nodes.new("ShaderNodeMath")
-    thickness_minus_one.label = "Thickness - 1"
-    thickness_minus_one.operation = "SUBTRACT"
-    thickness_minus_one.inputs[1].default_value = 1.0
-    thickness_minus_one.location = (1600, -900)
     joint_group.links.new(
-        input_node.outputs[JointSegmentProperties.THICKNESS_RATIO.value],
-        thickness_minus_one.inputs[0],
+        input_node.outputs[JointSegmentProperties.CURVE_180.value],
+        quad_instance.inputs["180° Float Curve"]
+    )
+    joint_group.links.new(
+        input_node.outputs[JointSegmentProperties.CURVE_270.value],
+        quad_instance.inputs["270° Float Curve"]
     )
 
-    bulge_scale = joint_group.nodes.new("ShaderNodeMath")
-    bulge_scale.label = "Bulge Scale"
-    bulge_scale.operation = "MULTIPLY"
-    bulge_scale.location = (1800, -800)
-    joint_group.links.new(sin_bulge.outputs["Value"], bulge_scale.inputs[0])
-    joint_group.links.new(thickness_minus_one.outputs["Value"], bulge_scale.inputs[1])
+    set_pos = joint_group.nodes.new("GeometryNodeSetPosition")
+    set_pos.label = "Apply Position"
+    set_pos.location = (800, 0)
+    joint_group.links.new(grid.outputs["Mesh"], set_pos.inputs["Geometry"])
+    joint_group.links.new(quad_instance.outputs["Position"], set_pos.inputs["Position"])
 
-    # Add 1 to get final radius multiplier
-    bulge_mult = joint_group.nodes.new("ShaderNodeMath")
-    bulge_mult.label = "1 + Bulge"
-    bulge_mult.operation = "ADD"
-    bulge_mult.inputs[1].default_value = 1.0
-    bulge_mult.location = (2000, -700)
-    joint_group.links.new(bulge_scale.outputs["Value"], bulge_mult.inputs[0])
-
-    # Apply bulge to interpolated radius
-    final_radius = joint_group.nodes.new("ShaderNodeMath")
-    final_radius.label = "Final Radius"
-    final_radius.operation = "MULTIPLY"
-    final_radius.location = (2200, -500)
-    joint_group.links.new(radius_lerp.outputs["Result"], final_radius.inputs[0])
-    joint_group.links.new(bulge_mult.outputs["Value"], final_radius.inputs[1])
-
-    # Calculate X, Y positions using radius and angle
-    cos_theta = joint_group.nodes.new("ShaderNodeMath")
-    cos_theta.label = "cos(θ)"
-    cos_theta.operation = "COSINE"
-    cos_theta.location = (2000, -200)
-    joint_group.links.new(theta_node.outputs["Value"], cos_theta.inputs[0])
-
-    sin_theta = joint_group.nodes.new("ShaderNodeMath")
-    sin_theta.label = "sin(θ)"
-    sin_theta.operation = "SINE"
-    sin_theta.location = (2000, -350)
-    joint_group.links.new(theta_node.outputs["Value"], sin_theta.inputs[0])
-
-    final_x = joint_group.nodes.new("ShaderNodeMath")
-    final_x.label = "X = r * cos(θ)"
-    final_x.operation = "MULTIPLY"
-    final_x.location = (2400, -200)
-    joint_group.links.new(final_radius.outputs["Value"], final_x.inputs[0])
-    joint_group.links.new(cos_theta.outputs["Value"], final_x.inputs[1])
-
-    final_y = joint_group.nodes.new("ShaderNodeMath")
-    final_y.label = "Y = r * sin(θ)"
-    final_y.operation = "MULTIPLY"
-    final_y.location = (2400, -350)
-    joint_group.links.new(final_radius.outputs["Value"], final_y.inputs[0])
-    joint_group.links.new(sin_theta.outputs["Value"], final_y.inputs[1])
-
-    # Calculate Z position: z_start + t * joint_length
-    z_offset = joint_group.nodes.new("ShaderNodeMath")
-    z_offset.label = "Z Offset"
-    z_offset.operation = "MULTIPLY"
-    z_offset.location = (2200, -100)
-    joint_group.links.new(length_clamp.outputs["Result"], z_offset.inputs[0])
-    joint_group.links.new(joint_length_scale.outputs["Value"], z_offset.inputs[1])
-
-    final_z = joint_group.nodes.new("ShaderNodeMath")
-    final_z.label = "Final Z"
-    final_z.operation = "ADD"
-    final_z.location = (2400, -100)
-    joint_group.links.new(separate_xyz.outputs["Z"], final_z.inputs[0])
-    joint_group.links.new(z_offset.outputs["Value"], final_z.inputs[1])
-
-    # Combine into final position vector
-    final_pos = joint_group.nodes.new("ShaderNodeCombineXYZ")
-    final_pos.label = "Final Position"
-    final_pos.location = (2600, -250)
-    joint_group.links.new(final_x.outputs["Value"], final_pos.inputs["X"])
-    joint_group.links.new(final_y.outputs["Value"], final_pos.inputs["Y"])
-    joint_group.links.new(final_z.outputs["Value"], final_pos.inputs["Z"])
-
-    # Apply position to grid
-    apply_shape = joint_group.nodes.new("GeometryNodeSetPosition")
-    apply_shape.label = "Apply Shape"
-    apply_shape.location = (2800, -200)
-    joint_group.links.new(grid.outputs["Mesh"], apply_shape.inputs["Geometry"])
-    joint_group.links.new(final_pos.outputs["Vector"], apply_shape.inputs["Position"])
-
-    # Join with input geometry
-    join_geo = joint_group.nodes.new("GeometryNodeJoinGeometry")
-    join_geo.label = "Join With Previous"
-    join_geo.location = (3000, 0)
-    joint_group.links.new(input_node.outputs["Geometry"], join_geo.inputs["Geometry"])
-    joint_group.links.new(apply_shape.outputs["Geometry"], join_geo.inputs["Geometry"])
-
-    # Output
     output_node = joint_group.nodes.new("NodeGroupOutput")
     output_node.label = "Output"
-    output_node.location = (3200, 0)
-    joint_group.links.new(join_geo.outputs["Geometry"], output_node.inputs["Geometry"])
-    joint_group.links.new(
-        input_node.outputs[JointSegmentProperties.END_RADIUS.value],
-        output_node.inputs[JointSegmentProperties.END_RADIUS.value],
-    )
+    output_node.location = (1000, 0)
+    joint_group.links.new(set_pos.outputs["Geometry"], output_node.inputs["Geometry"])
 
     return joint_group
 
 
 def create_joint_between_segments(
-    segment_before_radius: float,
-    segment_after_radius: float,
     joint_index: int,
-    overlap_amount: float = DEFAULT_JOINT_OVERLAP,
-    blend_factor: float = DEFAULT_JOINT_BLEND,
-    thickness_ratio: float = DEFAULT_JOINT_THICKNESS,
+    prev_start: float = DEFAULT_PREV_START,
+    next_start: float = DEFAULT_NEXT_START,
 ):
-    """
-    Create a joint node group configured for a specific location between segments.
-
-    Args:
-        segment_before_radius: End radius of the segment before this joint
-        segment_after_radius: Start radius of the segment after this joint
-        joint_index: Index of this joint (0 = between seg0 and seg1, etc.)
-        overlap_amount: How much joint overlaps with neighbors
-        blend_factor: Smoothness of transition
-        thickness_ratio: Thickness multiplier for joint bulge
-
-    Returns:
-        Configured joint segment node group
-    """
     joint_name = f"Joint_{joint_index}_Segment_Group"
     return create_joint_segment_node_group(
         name=joint_name,
-        start_radius=segment_before_radius,
-        end_radius=segment_after_radius,
-        overlap_amount=overlap_amount,
-        blend_factor=blend_factor,
-        thickness_ratio=thickness_ratio,
+        prev_start=prev_start,
+        next_start=next_start,
     )
-

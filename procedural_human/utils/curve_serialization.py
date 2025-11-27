@@ -74,7 +74,7 @@ def apply_data_to_float_curve_node(node, data):
     Applies serialized point data to a ShaderNodeFloatCurve.
     """
     if node.type != "FLOAT_CURVE" and node.bl_idname != "ShaderNodeFloatCurve":
-        return
+        return False
 
     curve = node.mapping.curves[0]
 
@@ -94,16 +94,20 @@ def apply_data_to_float_curve_node(node, data):
             p.handle_type = point_data["handle_type"]
 
     node.mapping.update()
+    node.update()
 
     if node.id_data:
         node.id_data.update_tag()
+    return True
 
 
 def find_float_curve_nodes_in_finger(obj):
     """
-    Walks the geometry node modifiers of the object to find the Radial Profile (Dual) groups
-    and extracts their internal Float Curve nodes (X Profile, Y Profile).
+    Walks the geometry node modifiers of the object to find Float Curve nodes.
     Returns a dict: { "SegmentName_X": node, "SegmentName_Y": node, ... }
+    
+    Key format: "{SegmentName}_X" or "{SegmentName}_Y"
+    Where SegmentName is extracted from the label by removing axis indicators.
     """
     found_nodes = {}
 
@@ -118,20 +122,24 @@ def find_float_curve_nodes_in_finger(obj):
             print(f"  Checking modifier {mod.name} with group {main_group.name}")
 
             for node in main_group.nodes:
-                seg_name = node.label
-                if not seg_name:
-                    seg_name = node.node_tree.name
                 if (
                     node.type == "FLOAT_CURVE"
                     or node.bl_idname == "ShaderNodeFloatCurve"
                 ):
-                    if "X" in node.label:
+                    label = node.label or ""
+                    
+                    if " X " in label or label.endswith(" X") or "_X" in label:
                         axis = "X"
-                    elif "Y" in node.label:
+                        seg_name = label.replace(" X Profile", "").replace(" X Segment", "").replace("_X", "").replace(" X", "").strip()
+                    elif " Y " in label or label.endswith(" Y") or "_Y" in label:
                         axis = "Y"
+                        seg_name = label.replace(" Y Profile", "").replace(" Y Segment", "").replace("_Y", "").replace(" Y", "").strip()
                     else:
                         axis = "Unknown"
-                    key = f"{seg_name}_{axis}"
+                        seg_name = label
+                    if not seg_name:
+                        seg_name = "Unknown"
+                    key = f"{seg_name}_X" if axis == "X" else f"{seg_name}_Y" if axis == "Y" else f"{seg_name}_{axis}"
                     found_nodes[key] = node
                     print(f"        Found Curve: {key}")
 
@@ -345,29 +353,43 @@ class LoadFloatCurvePreset(Operator):
 
         applied_count = 0
         updated_node_groups = set()
+        
+        print(f"Preset keys: {list(preset_data.keys())}")
+        print(f"Found curve keys: {list(nodes_dict.keys())}")
 
         for key, data in preset_data.items():
-
             target_node = nodes_dict.get(key)
+            if not target_node:
+                alt_key = key.replace(" Segment", "")
+                target_node = nodes_dict.get(alt_key)
+                if target_node:
+                    print(f"  Matched via alternate key: {key} -> {alt_key}")
 
             if target_node:
+                print(f"  Applying preset to: {key}")
                 apply_data_to_float_curve_node(target_node, data)
 
                 if target_node.id_data:
                     updated_node_groups.add(target_node.id_data)
                 applied_count += 1
+            else:
+                print(f"  No match found for preset key: {key}")
 
         if applied_count > 0:
-
             for node_group in updated_node_groups:
                 node_group.update_tag()
 
             for mod in obj.modifiers:
                 if mod.type == "NODES" and mod.node_group:
                     mod.node_group.update_tag()
-
+                    mod.show_viewport = not mod.show_viewport
+                    mod.show_viewport = not mod.show_viewport
+            obj.data.update()
+            depsgraph = context.evaluated_depsgraph_get()
+            depsgraph.update()
             context.view_layer.update()
-            bpy.context.evaluated_depsgraph_get().update()
+            for area in context.screen.areas:
+                area.tag_redraw()
 
             self.report(
                 {"INFO"},
