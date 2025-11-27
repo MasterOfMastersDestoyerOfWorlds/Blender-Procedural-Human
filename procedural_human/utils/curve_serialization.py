@@ -3,10 +3,12 @@ import json
 import importlib
 import os
 from bpy.types import Operator
-from procedural_human.operator_decorator import (
+from procedural_human.decorators.operator_decorator import (
     procedural_operator,
     dynamic_enum_operator,
     register_all_operators,
+)
+from procedural_human.decorators.curve_preset_decorator import (
     get_all_presets,
     register_preset_data,
     Preset,
@@ -105,7 +107,7 @@ def find_float_curve_nodes_in_finger(obj):
     """
     Walks the geometry node modifiers of the object to find Float Curve nodes.
     Returns a dict: { "SegmentName_X": node, "SegmentName_Y": node, ... }
-    
+
     Key format: "{SegmentName}_X" or "{SegmentName}_Y"
     Where SegmentName is extracted from the label by removing axis indicators.
     """
@@ -127,19 +129,35 @@ def find_float_curve_nodes_in_finger(obj):
                     or node.bl_idname == "ShaderNodeFloatCurve"
                 ):
                     label = node.label or ""
-                    
+
                     if " X " in label or label.endswith(" X") or "_X" in label:
                         axis = "X"
-                        seg_name = label.replace(" X Profile", "").replace(" X Segment", "").replace("_X", "").replace(" X", "").strip()
+                        seg_name = (
+                            label.replace(" X Profile", "")
+                            .replace(" X Segment", "")
+                            .replace("_X", "")
+                            .replace(" X", "")
+                            .strip()
+                        )
                     elif " Y " in label or label.endswith(" Y") or "_Y" in label:
                         axis = "Y"
-                        seg_name = label.replace(" Y Profile", "").replace(" Y Segment", "").replace("_Y", "").replace(" Y", "").strip()
+                        seg_name = (
+                            label.replace(" Y Profile", "")
+                            .replace(" Y Segment", "")
+                            .replace("_Y", "")
+                            .replace(" Y", "")
+                            .strip()
+                        )
                     else:
                         axis = "Unknown"
                         seg_name = label
                     if not seg_name:
                         seg_name = "Unknown"
-                    key = f"{seg_name}_X" if axis == "X" else f"{seg_name}_Y" if axis == "Y" else f"{seg_name}_{axis}"
+                    key = (
+                        f"{seg_name}_X"
+                        if axis == "X"
+                        else f"{seg_name}_Y" if axis == "Y" else f"{seg_name}_{axis}"
+                    )
                     found_nodes[key] = node
                     print(f"        Found Curve: {key}")
 
@@ -353,7 +371,7 @@ class LoadFloatCurvePreset(Operator):
 
         applied_count = 0
         updated_node_groups = set()
-        
+
         print(f"Preset keys: {list(preset_data.keys())}")
         print(f"Found curve keys: {list(nodes_dict.keys())}")
 

@@ -3,7 +3,7 @@ Finger nail panel for UI controls
 """
 
 from bpy.types import Panel
-from procedural_human.panel_decorator import procedural_panel
+from procedural_human.decorators.panel_decorator import procedural_panel
 
 
 @procedural_panel

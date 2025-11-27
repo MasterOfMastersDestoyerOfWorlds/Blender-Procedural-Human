@@ -3,7 +3,7 @@ Finger segment panel for UI controls
 """
 
 from bpy.types import Panel
-from procedural_human.panel_decorator import procedural_panel
+from procedural_human.decorators.panel_decorator import procedural_panel
 from procedural_human.hand.finger.finger_segment.finger_segment_profiles import (
     SegmentType,
 )

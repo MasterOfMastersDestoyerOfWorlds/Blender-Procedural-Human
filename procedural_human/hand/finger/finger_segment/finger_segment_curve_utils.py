@@ -4,7 +4,7 @@ Utilities for creating and managing profile curves for finger segments.
 
 import bpy
 from mathutils import Vector
-from .finger_segment_profiles import ProfileType, SegmentType, get_profile_data
+from procedural_human.hand.finger.finger_segment.finger_segment_profiles import ProfileType, SegmentType, get_profile_data
 
 
 def create_profile_curve_from_data(

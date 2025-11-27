@@ -16,7 +16,7 @@ from procedural_human.hand.finger.finger_types import (
     enum_items as finger_type_items,
 )
 from procedural_human.hand.finger import finger_animation as finger_animation
-from procedural_human.operator_decorator import procedural_operator
+from procedural_human.decorators.operator_decorator import procedural_operator
 
 
 @procedural_operator

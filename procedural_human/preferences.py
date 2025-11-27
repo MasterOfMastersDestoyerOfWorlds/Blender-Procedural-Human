@@ -29,7 +29,7 @@ class ProceduralHumanPreferences(AddonPreferences):
         box.label(text="Codebase Path Configuration:")
         box.prop(self, "codebase_path")
 
-        from .config import (
+        from procedural_human.config import (
             detect_codebase_path,
             get_codebase_path,
             validate_codebase_path,
@@ -89,7 +89,7 @@ class RefreshCodebasePath(bpy.types.Operator):
     bl_options = {"INTERNAL"}
 
     def execute(self, context):
-        from .config import clear_cache, get_codebase_path
+        from procedural_human.config import clear_cache, get_codebase_path
 
         clear_cache()
         new_path = get_codebase_path()

@@ -6,7 +6,7 @@ with radius values as multipliers of the base segment radius.
 """
 
 from enum import Enum
-from procedural_human.operator_decorator import Preset, register_preset_class
+from procedural_human.decorators.curve_preset_decorator import Preset, register_preset_class
 
 
 class ProfileType(Enum):

@@ -8,10 +8,10 @@ import bpy
 from procedural_human.hand.finger.finger_segment.finger_segment_const import (
     SEGMENT_SAMPLE_COUNT,
 )
-from . import operators
-from . import panels
-from . import menus
-from . import preferences
+from procedural_human import operators
+from procedural_human import panels
+from procedural_human import menus
+from procedural_human import preferences
 from procedural_human.hand.finger.finger_types import (
     FingerType,
     enum_items as finger_type_items,

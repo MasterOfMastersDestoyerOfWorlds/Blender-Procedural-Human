@@ -3,18 +3,18 @@ Finger module for Procedural Human Generator
 Contains finger generation code with Geometry Nodes
 """
 
-from . import finger_utils
-from . import finger_nodes
-from . import finger_operator
-from . import finger_proportions
-from . import finger_animation
-from . import finger_types
-from . import finger_segment
-from . import finger_nail
+from procedural_human.hand.finger import finger_utils
+from procedural_human.hand.finger import finger_nodes
+from procedural_human.hand.finger import finger_operator
+from procedural_human.hand.finger import finger_proportions
+from procedural_human.hand.finger import finger_animation
+from procedural_human.hand.finger import finger_types
+from procedural_human.hand.finger import finger_segment
+from procedural_human.hand.finger import finger_nail
 import bpy
 from bpy.props import PointerProperty
 
-from .finger import FingerDataProps
+from procedural_human.hand.fingerfinger import FingerDataProps
 
 classes = (FingerDataProps,)
 

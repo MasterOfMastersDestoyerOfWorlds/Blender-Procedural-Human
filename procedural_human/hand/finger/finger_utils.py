@@ -9,8 +9,8 @@ from procedural_human.utils import (
     create_geometry_nodes_modifier,
     get_property_value,
 )
-from . import finger_nodes
-from . import finger_proportions as proportions
+from procedural_human.hand.finger import finger_nodes
+from procedural_human.hand.finger import finger_proportions as proportions
 from procedural_human.hand.finger.finger_types import (
     FingerType,
     ensure_finger_type,

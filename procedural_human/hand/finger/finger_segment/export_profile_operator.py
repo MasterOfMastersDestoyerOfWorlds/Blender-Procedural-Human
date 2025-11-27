@@ -5,7 +5,7 @@ Export Profile Curve operator for saving edited curves back to codebase
 import bpy
 import re
 from bpy.types import Operator
-from procedural_human.operator_decorator import procedural_operator
+from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.config import get_codebase_path, validate_codebase_path
 from procedural_human.hand.finger.finger_segment.finger_segment_profiles import (
     SegmentType,
