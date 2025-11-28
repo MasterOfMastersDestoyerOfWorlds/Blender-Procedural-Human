@@ -181,8 +181,8 @@ class PresetIndexSegment2Curves(Preset):
                     "handle_type": "AUTO"
                 },
                 {
-                    "x": 0.5181819796562195,
-                    "y": 0.28124967217445374,
+                    "x": 0.4681820273399353,
+                    "y": 0.2937496602535248,
                     "handle_type": "AUTO"
                 },
                 {
