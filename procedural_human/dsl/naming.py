@@ -4,28 +4,11 @@ Naming environment builder for DSL procedural generation.
 
 from typing import Dict, List, Optional, Any
 
-try:
-    from procedural_human.utils.tree_sitter_utils import (
-        extract_class_definitions,
-        extract_instance_assignments,
-        DSL_PRIMITIVE_TYPES,
-    )
-    TREE_SITTER_AVAILABLE = True
-except ImportError:
-    TREE_SITTER_AVAILABLE = False
-    DSL_PRIMITIVE_TYPES = {
-        "DualRadial": {"profile_type": "dual", "profiles": ["X", "Y"]},
-        "QuadRadial": {"profile_type": "quad", "profiles": ["0", "90", "180", "270"]},
-        "Joint": {"profile_type": "quad", "profiles": ["0", "90", "180", "270"]},
-        "RadialAttachment": {"profile_type": "dual", "profiles": ["X", "Y"]},
-        "IKLimits": {"profile_type": None, "profiles": []},
-    }
-    
-    def extract_class_definitions(file_path: str) -> List[Dict]:
-        return []
-    
-    def extract_instance_assignments(file_path: str) -> List[Dict]:
-        return []
+from procedural_human.utils.tree_sitter_utils import (
+    extract_class_definitions,
+    extract_instance_assignments,
+    DSL_PRIMITIVE_TYPES,
+)
 
 
 class NamingEnvironment:

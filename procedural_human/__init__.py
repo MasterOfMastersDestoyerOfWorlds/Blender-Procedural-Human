@@ -4,6 +4,149 @@ A Blender add-on for creating procedural human characters using Geometry Nodes
 """
 
 import bpy
+import subprocess
+import sys
+from pathlib import Path
+
+REQUIRED_PACKAGES = [
+    ("tree_sitter", "tree-sitter"),
+    ("tree_sitter_python", "tree-sitter-python"),
+]
+
+
+def check_dependencies() -> list[tuple[str, str]]:
+    """
+    Check which required packages are missing.
+    Returns list of (import_name, pip_name) tuples for missing packages.
+    """
+    missing = []
+    for import_name, pip_name in REQUIRED_PACKAGES:
+        try:
+            __import__(import_name)
+        except ImportError:
+            missing.append((import_name, pip_name))
+    return missing
+
+
+def get_blender_python_executable() -> str:
+    """Get the path to Blender's Python executable."""
+    return sys.executable
+
+
+def ensure_pip() -> bool:
+    """Ensure pip is available in Blender's Python."""
+    python_exe = get_blender_python_executable()
+    try:
+        result = subprocess.run(
+            [python_exe, "-m", "pip", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return True
+        
+        print("[Procedural Human] pip not found, running ensurepip...")
+        result = subprocess.run(
+            [python_exe, "-m", "ensurepip", "--upgrade"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        return result.returncode == 0
+    except Exception as e:
+        print(f"[Procedural Human] Error ensuring pip: {e}")
+        return False
+
+
+def install_package(pip_name: str) -> tuple[bool, str]:
+    """
+    Install a package into Blender's Python.
+    Returns (success, message).
+    """
+    python_exe = get_blender_python_executable()
+    try:
+        result = subprocess.run(
+            [python_exe, "-m", "pip", "install", pip_name],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            return True, f"Successfully installed {pip_name}"
+        else:
+            return False, f"Failed to install {pip_name}: {result.stderr}"
+    except subprocess.TimeoutExpired:
+        return False, f"Installation timed out for {pip_name}"
+    except Exception as e:
+        return False, f"Error installing {pip_name}: {e}"
+
+
+_DEPENDENCIES_CHECKED = False
+_DEPENDENCIES_INSTALLED = False
+_MISSING_DEPENDENCIES: list[tuple[str, str]] = []
+
+
+def ensure_dependencies() -> bool:
+    """
+    Check for missing dependencies and install them automatically.
+    Called at registration.
+    """
+    global _DEPENDENCIES_CHECKED, _DEPENDENCIES_INSTALLED, _MISSING_DEPENDENCIES
+    
+    if _DEPENDENCIES_INSTALLED:
+        return True
+    
+    missing = check_dependencies()
+    
+    if not missing:
+        _DEPENDENCIES_CHECKED = True
+        _DEPENDENCIES_INSTALLED = True
+        _MISSING_DEPENDENCIES = []
+        return True
+    
+    print(f"\n{'='*60}")
+    print("PROCEDURAL HUMAN: Installing required dependencies...")
+    print(f"{'='*60}")
+    
+    if not ensure_pip():
+        print("ERROR: Could not ensure pip is available.")
+        print("Please install pip manually or run Blender as administrator.")
+        print(f"{'='*60}\n")
+        _DEPENDENCIES_CHECKED = True
+        _MISSING_DEPENDENCIES = missing
+        return False
+    
+    all_installed = True
+    for import_name, pip_name in missing:
+        print(f"  Installing {pip_name}...")
+        success, message = install_package(pip_name)
+        if success:
+            print(f"    ✓ {message}")
+        else:
+            print(f"    ✗ {message}")
+            all_installed = False
+    
+    final_missing = check_dependencies()
+    
+    if not final_missing:
+        print(f"\n✓ All dependencies installed successfully!")
+        print(f"{'='*60}\n")
+        _DEPENDENCIES_CHECKED = True
+        _DEPENDENCIES_INSTALLED = True
+        _MISSING_DEPENDENCIES = []
+        return True
+    else:
+        print(f"\n✗ Some dependencies could not be installed:")
+        for import_name, pip_name in final_missing:
+            print(f"    - {pip_name}")
+        print(f"\nTry running Blender as administrator, or install manually:")
+        print(f"  {get_blender_python_executable()} -m pip install {' '.join(pip for _, pip in final_missing)}")
+        print(f"{'='*60}\n")
+        _DEPENDENCIES_CHECKED = True
+        _MISSING_DEPENDENCIES = final_missing
+        return False
+
 
 from procedural_human.hand.finger.finger_segment.finger_segment_const import (
     SEGMENT_SAMPLE_COUNT,
@@ -173,6 +316,12 @@ def unregister_scene_properties():
 
 def register():
     preferences.register()
+    
+    deps_ok = ensure_dependencies()
+    if not deps_ok:
+        print("Procedural Human: Some features disabled due to missing dependencies.")
+        print("Install dependencies via addon preferences to enable all features.")
+    
     register_scene_properties()
     operators.register()
     panels.register()

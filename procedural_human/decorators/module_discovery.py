@@ -84,6 +84,10 @@ def import_all_modules() -> Set[str]:
             
             imported.add(module_name)
             _discovered_modules.add(module_name)
+        except ModuleNotFoundError as e:
+            missing_module = str(e).split("'")[1] if "'" in str(e) else str(e)
+            print(f"[Module Discovery] SKIPPED {module_name}: missing dependency '{missing_module}'")
+            print(f"    -> Install via addon preferences or run: pip install {missing_module}")
         except Exception as e:
             import traceback
             print(f"[Module Discovery] ERROR importing {module_name}:")

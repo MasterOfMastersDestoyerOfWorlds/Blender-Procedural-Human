@@ -18,7 +18,7 @@ DSL_PRIMITIVE_TYPES = {
     "RadialAttachment": {"profile_type": "dual", "profiles": ["X", "Y"]},
     "IKLimits": {"profile_type": None, "profiles": []},
 }
-
+ 
 
 def get_caller_file_path() -> Optional[str]:
     """
@@ -118,8 +118,8 @@ def parse_python_file(file_path: str) -> Tuple[Parser, bytes]:
     with open(file_path, "rb") as f:
         source_bytes = f.read()
     
-    parser = Parser()
-    parser.set_language(get_python_language())
+    language = get_python_language()
+    parser = Parser(language)
     
     return parser, source_bytes
 

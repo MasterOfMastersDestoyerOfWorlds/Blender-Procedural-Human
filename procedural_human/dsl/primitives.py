@@ -7,11 +7,22 @@ These classes map to geometry node groups in the codebase:
 - Joint -> joint_segment_nodes.py (uses QuadRadial)
 - RadialAttachment -> finger_nail_nodes.py (terminal attachments)
 - IKLimits -> finger_utils.py IK constraint setup
+
+Each primitive has a generate() method that creates its own geometry nodes.
+All primitives are registered via @dsl_primitive decorator for automatic namespace building.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Any, Dict
+from typing import List, Optional, Tuple, Any, Dict, TYPE_CHECKING
 from enum import Enum
+
+from procedural_human.decorators.dsl_primitive_decorator import (
+    dsl_primitive,
+    dsl_helper,
+)
+
+if TYPE_CHECKING:
+    import bpy
 
 
 class ProfileType(Enum):
@@ -24,6 +35,25 @@ class ProfileType(Enum):
     QUAD_270 = "270"
 
 
+@dataclass
+class GenerationContext:
+    """Context passed between generate() calls to share state."""
+    node_group: Any
+    naming_env: Any
+    instance_name: str
+    definition_name: str
+    segment_results: Dict[int, Dict] = field(default_factory=dict)
+    current_y_offset: float = 0
+    node_spacing: float = 300
+    
+    def get_next_y_offset(self) -> float:
+        """Get next Y position and decrement for next call."""
+        y = self.current_y_offset
+        self.current_y_offset -= self.node_spacing
+        return y
+
+
+@dsl_primitive
 @dataclass
 class IKLimits:
     """
@@ -45,6 +75,7 @@ class IKLimits:
         }
 
 
+@dsl_primitive
 @dataclass
 class DualRadial:
     """
@@ -78,8 +109,179 @@ class DualRadial:
     def get_profile_names(self) -> List[str]:
         """Return the profile curve names this type uses."""
         return [ProfileType.DUAL_X.value, ProfileType.DUAL_Y.value]
+    
+    def generate(self, context: GenerationContext, index: int) -> Dict:
+        """
+        Generate dual radial profile geometry nodes.
+        
+        Returns dict with:
+        - node_group: The created segment node group
+        - instance: The node group instance in the parent
+        - closures: Dict of profile closures (X, Y)
+        - frame: NodeFrame containing the nodes
+        """
+        import bpy
+        from procedural_human.geo_node_groups.dual_radial import create_dual_profile_radial_group
+        from procedural_human.geo_node_groups.closures import create_float_curve_closure
+        from procedural_human.hand.finger.finger_segment.finger_segment_const import SEGMENT_SAMPLE_COUNT
+        from procedural_human.utils import setup_node_group_interface
+        
+        node_group = context.node_group
+        y_offset = context.get_next_y_offset()
+        
+        seg_name = f"Segment_{index}"
+        
+        frame = node_group.nodes.new("NodeFrame")
+        frame.label = seg_name
+        frame.label_size = 30
+        
+        x_closure = create_float_curve_closure(
+            node_group.nodes,
+            node_group.links,
+            label=f"{seg_name} X Profile",
+            location=(-500, y_offset),
+        )
+        
+        y_closure = create_float_curve_closure(
+            node_group.nodes,
+            node_group.links,
+            label=f"{seg_name} Y Profile",
+            location=(-500, x_closure.min_y() - 100),
+        )
+        
+        segment_group = self._create_segment_node_group(
+            name=f"{context.instance_name}_{seg_name}_Group",
+            segment_length=self.length,
+            seg_radius=self.radius,
+            index=index,
+        )
+        
+        segment_instance = node_group.nodes.new("GeometryNodeGroup")
+        segment_instance.node_tree = segment_group
+        segment_instance.label = seg_name
+        segment_instance.location = (
+            x_closure.out_node.location[0] + x_closure.out_node.width + 100,
+            y_closure.out_node.location[1],
+        )
+        
+        node_group.links.new(x_closure.output_socket, segment_instance.inputs["X Float Curve"])
+        node_group.links.new(y_closure.output_socket, segment_instance.inputs["Y Float Curve"])
+        
+        segment_instance.inputs["Segment Length"].default_value = self.length
+        segment_instance.inputs["Segment Radius"].default_value = self.radius
+        segment_instance.inputs["Sample Count"].default_value = SEGMENT_SAMPLE_COUNT
+        
+        for node in [segment_instance] + x_closure.nodes() + y_closure.nodes():
+            node.parent = frame
+        
+        context.current_y_offset = y_closure.min_y() - 300
+        
+        result = {
+            "index": index,
+            "node_group": segment_group,
+            "instance": segment_instance,
+            "closures": {"X": x_closure, "Y": y_closure},
+            "frame": frame,
+            "segment": self,
+            "abs_x": segment_instance.location[0],
+            "abs_y": segment_instance.location[1],
+        }
+        
+        context.segment_results[index] = result
+        return result
+    
+    def _create_segment_node_group(
+        self,
+        name: str,
+        segment_length: float,
+        seg_radius: float,
+        index: int,
+    ) -> Any:
+        """Create the internal segment node group structure."""
+        import bpy
+        from procedural_human.geo_node_groups.dual_radial import create_dual_profile_radial_group
+        from procedural_human.hand.finger.finger_segment.finger_segment_const import SEGMENT_SAMPLE_COUNT
+        from procedural_human.utils import setup_node_group_interface
+        
+        segment_group = bpy.data.node_groups.new(name, "GeometryNodeTree")
+        setup_node_group_interface(segment_group)
+        
+        length_socket = segment_group.interface.new_socket(
+            name="Segment Length", in_out="INPUT", socket_type="NodeSocketFloat"
+        )
+        length_socket.default_value = segment_length
+        
+        radius_socket = segment_group.interface.new_socket(
+            name="Segment Radius", in_out="INPUT", socket_type="NodeSocketFloat"
+        )
+        radius_socket.default_value = seg_radius
+        
+        segment_group.interface.new_socket(
+            name="Segment Radius", in_out="OUTPUT", socket_type="NodeSocketFloat"
+        )
+        
+        sample_count_socket = segment_group.interface.new_socket(
+            name="Sample Count", in_out="INPUT", socket_type="NodeSocketInt"
+        )
+        sample_count_socket.default_value = SEGMENT_SAMPLE_COUNT
+        
+        segment_group.interface.new_socket(
+            name="X Float Curve", in_out="INPUT", socket_type="NodeSocketClosure"
+        )
+        segment_group.interface.new_socket(
+            name="Y Float Curve", in_out="INPUT", socket_type="NodeSocketClosure"
+        )
+        
+        input_node = segment_group.nodes.new("NodeGroupInput")
+        input_node.label = "Inputs"
+        input_node.location = (-1400, 0)
+        
+        bbox_node = segment_group.nodes.new("GeometryNodeBoundBox")
+        bbox_node.label = "Find Endpoint"
+        bbox_node.location = (-1200, 200)
+        segment_group.links.new(input_node.outputs["Geometry"], bbox_node.inputs["Geometry"])
+        
+        separate_xyz = segment_group.nodes.new("ShaderNodeSeparateXYZ")
+        separate_xyz.label = "Extract Z"
+        separate_xyz.location = (-1000, 200)
+        segment_group.links.new(bbox_node.outputs["Max"], separate_xyz.inputs["Vector"])
+        
+        grid = segment_group.nodes.new("GeometryNodeMeshGrid")
+        grid.label = "Parameter Grid"
+        grid.location = (550, -100)
+        grid.inputs["Vertices X"].default_value = SEGMENT_SAMPLE_COUNT
+        grid.inputs["Size X"].default_value = 1.0
+        grid.inputs["Size Y"].default_value = 1.0
+        
+        radial_group = create_dual_profile_radial_group(suffix=f"Segment_{index}")
+        radial_instance = segment_group.nodes.new("GeometryNodeGroup")
+        radial_instance.node_tree = radial_group
+        radial_instance.label = "Radial Profile (Dual)"
+        radial_instance.location = (1400, -200)
+        
+        segment_group.links.new(input_node.outputs["Segment Radius"], radial_instance.inputs["Radius"])
+        segment_group.links.new(separate_xyz.outputs["Z"], radial_instance.inputs["Z Position"])
+        segment_group.links.new(input_node.outputs["Segment Length"], radial_instance.inputs["Segment Length"])
+        segment_group.links.new(input_node.outputs["X Float Curve"], radial_instance.inputs["X Float Curve"])
+        segment_group.links.new(input_node.outputs["Y Float Curve"], radial_instance.inputs["Y Float Curve"])
+        segment_group.links.new(input_node.outputs["Sample Count"], grid.inputs["Vertices Y"])
+        
+        apply_shape = segment_group.nodes.new("GeometryNodeSetPosition")
+        apply_shape.label = "Apply Shape"
+        apply_shape.location = (2200, 0)
+        segment_group.links.new(grid.outputs["Mesh"], apply_shape.inputs["Geometry"])
+        segment_group.links.new(radial_instance.outputs["Position"], apply_shape.inputs["Position"])
+        
+        output_node = segment_group.nodes.new("NodeGroupOutput")
+        output_node.label = "Output"
+        output_node.location = (2600, 0)
+        segment_group.links.new(apply_shape.outputs["Geometry"], output_node.inputs["Geometry"])
+        segment_group.links.new(input_node.outputs["Segment Radius"], output_node.inputs["Segment Radius"])
+        
+        return segment_group
 
 
+@dsl_primitive
 @dataclass
 class QuadRadial:
     """
@@ -99,8 +301,14 @@ class QuadRadial:
             ProfileType.QUAD_180.value,
             ProfileType.QUAD_270.value,
         ]
+    
+    def generate(self, context: GenerationContext, index: int, suffix: str = "") -> Any:
+        """Generate quad radial profile node group."""
+        from procedural_human.geo_node_groups.quad_radial import create_quad_profile_radial_group
+        return create_quad_profile_radial_group(suffix=suffix or f"Joint_{index}")
 
 
+@dsl_primitive
 @dataclass
 class Joint:
     """
@@ -120,8 +328,84 @@ class Joint:
         if self.type == QuadRadial or isinstance(self.type, QuadRadial):
             return QuadRadial().get_profile_names()
         return []
+    
+    def generate(
+        self,
+        context: GenerationContext,
+        index: int,
+        prev_segment_result: Dict,
+        next_segment_result: Dict,
+    ) -> Dict:
+        """
+        Generate joint geometry nodes between two segments.
+        
+        Takes geometry from adjacent segments and creates smooth transition.
+        """
+        import bpy
+        from procedural_human.geo_node_groups.closures import create_flat_float_curve_closure
+        from procedural_human.hand.finger.finger_segment.joint_segment_nodes import (
+            create_joint_segment_node_group,
+        )
+        
+        node_group = context.node_group
+        y_offset = context.get_next_y_offset()
+        
+        joint_name = f"Joint_{index}"
+        
+        joint_group = create_joint_segment_node_group(
+            name=f"{context.instance_name}_{joint_name}_Group",
+            prev_start=1.0 - self.overlap,
+            next_start=self.overlap,
+        )
+        
+        curve_labels = ["0°", "90°", "180°", "270°"]
+        closures = []
+        
+        for i, angle_label in enumerate(curve_labels):
+            closure = create_flat_float_curve_closure(
+                node_group.nodes,
+                node_group.links,
+                label=f"{joint_name} {angle_label}",
+                location=(-500, y_offset - i * 100),
+                value=0.5,
+            )
+            closures.append(closure)
+        
+        joint_instance = node_group.nodes.new("GeometryNodeGroup")
+        joint_instance.node_tree = joint_group
+        joint_instance.label = joint_name
+        joint_instance.location = (
+            (prev_segment_result["abs_x"] + next_segment_result["abs_x"]) / 2,
+            (prev_segment_result["abs_y"] + next_segment_result["abs_y"]) / 2,
+        )
+        
+        node_group.links.new(
+            prev_segment_result["instance"].outputs["Geometry"],
+            joint_instance.inputs["Previous Segment"]
+        )
+        node_group.links.new(
+            next_segment_result["instance"].outputs["Geometry"],
+            joint_instance.inputs["Next Segment"]
+        )
+        
+        closure_inputs = ["0° Float Curve", "90° Float Curve", "180° Float Curve", "270° Float Curve"]
+        for closure, input_name in zip(closures, closure_inputs):
+            node_group.links.new(closure.output_socket, joint_instance.inputs[input_name])
+        
+        context.current_y_offset = closures[-1].min_y() - 200
+        
+        return {
+            "index": index,
+            "node_group": joint_group,
+            "instance": joint_instance,
+            "closures": closures,
+            "joint": self,
+            "abs_x": joint_instance.location[0],
+            "abs_y": joint_instance.location[1],
+        }
 
 
+@dsl_primitive
 @dataclass
 class RadialAttachment:
     """
@@ -139,8 +423,57 @@ class RadialAttachment:
         if self.type == DualRadial or isinstance(self.type, DualRadial):
             return DualRadial().get_profile_names()
         return []
+    
+    def generate(
+        self,
+        context: GenerationContext,
+        segment_result: Dict,
+    ) -> Dict:
+        """Generate attachment geometry using raycast positioning."""
+        import bpy
+        from procedural_human.hand.finger.finger_nail.finger_nail_nodes import (
+            create_fingernail_node_group,
+        )
+        
+        node_group = context.node_group
+        segment = segment_result["segment"]
+        
+        nail_group = create_fingernail_node_group(
+            name=f"{context.instance_name}_Attachment",
+            curl_direction=self.rotation,
+            distal_seg_radius=segment.radius,
+            nail_width_ratio=self.size_ratio,
+            nail_height_ratio=0.7,
+        )
+        
+        attachment_instance = node_group.nodes.new("GeometryNodeGroup")
+        attachment_instance.node_tree = nail_group
+        attachment_instance.label = "Attachment"
+        attachment_instance.location = (
+            segment_result["abs_x"] + 200,
+            segment_result["abs_y"],
+        )
+        
+        if segment_result.get("frame"):
+            attachment_instance.parent = segment_result["frame"]
+        
+        node_group.links.new(
+            segment_result["instance"].outputs["Geometry"],
+            attachment_instance.inputs["Geometry"]
+        )
+        
+        attachment_instance.inputs["SegmentRadius"].default_value = segment.radius
+        attachment_instance.inputs["Nail Width Ratio"].default_value = self.size_ratio
+        attachment_instance.inputs["Nail Height Ratio"].default_value = 0.7
+        
+        return {
+            "node_group": nail_group,
+            "instance": attachment_instance,
+            "attachment": self,
+        }
 
 
+@dsl_primitive
 @dataclass
 class SegmentChain:
     """Result of Extend() - a chain of segments along an axis."""
@@ -155,8 +488,36 @@ class SegmentChain:
     
     def __getitem__(self, index):
         return self.segments[index]
+    
+    def generate(self, context: GenerationContext) -> Dict:
+        """
+        Generate chained segment geometry nodes.
+        
+        Creates each segment and chains geometry: prev_output -> next_input
+        """
+        results = []
+        prev_geometry_output = None
+        
+        for idx, segment in enumerate(self.segments):
+            if hasattr(segment, 'generate'):
+                result = segment.generate(context, idx)
+                results.append(result)
+                
+                if prev_geometry_output is not None:
+                    context.node_group.links.new(
+                        prev_geometry_output,
+                        result["instance"].inputs["Geometry"]
+                    )
+                
+                prev_geometry_output = result["instance"].outputs["Geometry"]
+        
+        return {
+            "segments": results,
+            "output": prev_geometry_output,
+        }
 
 
+@dsl_primitive
 @dataclass
 class JoinedStructure:
     """Result of Join() - segments with joints between them."""
@@ -172,15 +533,44 @@ class JoinedStructure:
             if i < len(self.joints):
                 result.append(self.joints[i])
         return result
+    
+    def generate(self, context: GenerationContext, segment_results: List[Dict]) -> Dict:
+        """
+        Generate joints between segments.
+        
+        Uses segment geometry from segment_results to create smooth transitions.
+        """
+        joint_results = []
+        
+        for idx, joint in enumerate(self.joints):
+            if idx < len(segment_results) - 1:
+                prev_result = segment_results[idx]
+                next_result = segment_results[idx + 1]
+                
+                if hasattr(joint, 'generate'):
+                    result = joint.generate(context, idx, prev_result, next_result)
+                    joint_results.append(result)
+        
+        return {
+            "joints": joint_results,
+        }
 
 
+@dsl_primitive
 @dataclass 
 class AttachedStructure:
     """Result of AttachRaycast() - segment with terminal attachment."""
     segment: Any
     attachment: RadialAttachment
+    
+    def generate(self, context: GenerationContext, segment_result: Dict) -> Dict:
+        """Generate attachment on segment end."""
+        if hasattr(self.attachment, 'generate'):
+            return self.attachment.generate(context, segment_result)
+        return {}
 
 
+@dsl_helper
 def normalize(lengths: List[float]) -> List[float]:
     """Normalize a list of lengths to ratios that sum to 1.0."""
     if not lengths:
@@ -191,6 +581,7 @@ def normalize(lengths: List[float]) -> List[float]:
     return [length / total for length in lengths]
 
 
+@dsl_helper
 def last(items: List[Any]) -> Any:
     """Get the last item from a list."""
     if not items:
@@ -198,11 +589,13 @@ def last(items: List[Any]) -> Any:
     return items[-1]
 
 
+@dsl_helper
 def Extend(segments: List[Any], axis: str = 'Z') -> SegmentChain:
     """Chain segments along an axis."""
     return SegmentChain(segments=segments, axis=axis)
 
 
+@dsl_helper
 def Join(segments: List[Any], joint: Joint) -> JoinedStructure:
     """Insert joints between segments."""
     if isinstance(segments, SegmentChain):
@@ -228,10 +621,10 @@ def Join(segments: List[Any], joint: Joint) -> JoinedStructure:
     )
 
 
+@dsl_helper
 def AttachRaycast(segment: Any, attachment: RadialAttachment) -> AttachedStructure:
     """Attach a terminal to the end of a segment using raycast positioning."""
     return AttachedStructure(segment=segment, attachment=attachment)
 
 
 Segment = DualRadial
-

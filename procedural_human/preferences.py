@@ -24,6 +24,22 @@ class ProceduralHumanPreferences(AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
+        
+        from procedural_human import _MISSING_DEPENDENCIES, check_dependencies
+        
+        missing = check_dependencies()
+        if missing:
+            dep_box = layout.box()
+            dep_box.label(text="Missing Dependencies:", icon="ERROR")
+            dep_box.label(text="(Auto-install failed - try as admin)", icon="INFO")
+            for import_name, pip_name in missing:
+                dep_box.label(text=f"  • {pip_name}", icon="DOT")
+            dep_box.operator(
+                "wm.procedural_install_dependencies",
+                text="Retry Install",
+                icon="FILE_REFRESH",
+            )
+            layout.separator()
 
         layout.label(text="Development Settings:", icon="SETTINGS")
 
@@ -101,6 +117,52 @@ class RefreshCodebasePath(Operator):
                 {"WARNING"}, "Could not auto-detect codebase path. Please set manually."
             )
 
+        return {"FINISHED"}
+
+
+@procedural_operator(bl_idname="wm.procedural_install_dependencies")
+class InstallDependencies(Operator):
+    """Retry installing required Python packages into Blender's Python"""
+
+    bl_options = {"INTERNAL"}
+
+    def execute(self, context):
+        from procedural_human import (
+            check_dependencies,
+            install_package,
+            ensure_pip,
+        )
+        import procedural_human
+        
+        missing = check_dependencies()
+        if not missing:
+            self.report({"INFO"}, "All dependencies are already installed!")
+            return {"FINISHED"}
+        
+        if not ensure_pip():
+            self.report({"ERROR"}, "Could not ensure pip is available. Run Blender as admin.")
+            return {"CANCELLED"}
+        
+        all_success = True
+        for import_name, pip_name in missing:
+            self.report({"INFO"}, f"Installing {pip_name}...")
+            success, message = install_package(pip_name)
+            if success:
+                self.report({"INFO"}, message)
+            else:
+                self.report({"ERROR"}, message)
+                all_success = False
+        
+        procedural_human._DEPENDENCIES_CHECKED = False
+        procedural_human._DEPENDENCIES_INSTALLED = False
+        procedural_human._MISSING_DEPENDENCIES = []
+        
+        final_missing = check_dependencies()
+        if not final_missing:
+            self.report({"INFO"}, "All dependencies installed! Please restart Blender.")
+        else:
+            self.report({"WARNING"}, "Some dependencies failed. Try running Blender as administrator.")
+        
         return {"FINISHED"}
 
 

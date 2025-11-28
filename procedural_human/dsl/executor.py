@@ -5,13 +5,11 @@ DSL Executor for procedural generation.
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
-from procedural_human.dsl.primitives import (
-    DualRadial, QuadRadial, IKLimits, RadialAttachment, Joint,
-    SegmentChain, JoinedStructure, AttachedStructure,
-    normalize, last, Extend, Join, AttachRaycast,
-)
 from procedural_human.dsl.naming import NamingEnvironment, build_naming_environment
-from procedural_human.decorators.curve_preset_decorator import resolve_profile_chain
+from procedural_human.decorators.dsl_primitive_decorator import (
+    get_dsl_namespace,
+    get_all_dsl_names,
+)
 
 
 @dataclass
@@ -50,12 +48,18 @@ class DSLExecutor:
     
     def execute_file(self, file_path: str) -> DSLExecutionResult:
         """Execute a DSL file and extract definitions and instances."""
+        import traceback
         errors = []
         
         try:
             self.naming_env = build_naming_environment(file_path)
         except Exception as e:
-            errors.append(f"Failed to parse DSL file: {e}")
+            tb = traceback.extract_tb(e.__traceback__)
+            error_lines = [f"Failed to parse DSL file: {type(e).__name__}: {e}"]
+            for frame in tb:
+                if "procedural_human" in frame.filename or file_path in frame.filename:
+                    error_lines.append(f"  at {frame.filename}:{frame.lineno} in {frame.name}()")
+            errors.append("\n".join(error_lines))
             return DSLExecutionResult(
                 file_path=file_path,
                 naming_env=NamingEnvironment(),
@@ -99,55 +103,30 @@ class DSLExecutor:
         )
     
     def _create_namespace(self) -> Dict[str, Any]:
-        """Create the sandboxed namespace with DSL primitives."""
-        return {
-            'DualRadial': DualRadial,
-            'QuadRadial': QuadRadial,
-            'IKLimits': IKLimits,
-            'RadialAttachment': RadialAttachment,
-            'Joint': Joint,
-            'normalize': normalize,
-            'last': last,
-            'Extend': Extend,
-            'Join': Join,
-            'AttachRaycast': AttachRaycast,
-            'range': range,
-            'len': len,
-            'sum': sum,
-            'min': min,
-            'max': max,
-            'abs': abs,
-            'print': print,
-            '__naming_env__': self.naming_env,
-        }
+        """Create the sandboxed namespace with DSL primitives from registry."""
+        return get_dsl_namespace({'__naming_env__': self.naming_env})
     
     def _extract_results(self, namespace: Dict[str, Any]) -> None:
         """Extract definitions and instances from executed namespace."""
         self._definitions.clear()
         self._instances.clear()
         
-        dsl_primitives = {'DualRadial', 'QuadRadial', 'IKLimits', 'RadialAttachment', 'Joint'}
-        builtin_names = {'range', 'len', 'sum', 'min', 'max', 'abs', 'print', 
-                         'normalize', 'last', 'Extend', 'Join', 'AttachRaycast'}
-        skip_names = dsl_primitives | builtin_names
+        skip_names = get_all_dsl_names()
         
-        # First pass: extract all class definitions
         for name, value in namespace.items():
             if name.startswith('_'):
                 continue
             if isinstance(value, type) and name not in skip_names:
                 self._definitions[name] = value
         
-        # Second pass: extract instances of those classes
         for name, value in namespace.items():
             if name.startswith('_'):
                 continue
             if name in skip_names:
                 continue
             if isinstance(value, type):
-                continue  # Skip classes
+                continue
             if not callable(value):
-                # Check if it's an instance of one of our defined classes
                 class_name = value.__class__.__name__
                 if class_name in self._definitions:
                     self._instances[name] = value
