@@ -259,8 +259,7 @@ class DSLGenerator:
             }
             debug_data["links"].append(link_data)
         
-        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        debug_folder = os.path.join(repo_root, ".temp", "debug")
+        debug_folder = self._get_debug_folder(source_file)
         os.makedirs(debug_folder, exist_ok=True)
         
         safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in instance_name)
@@ -271,6 +270,22 @@ class DSLGenerator:
             json.dump(debug_data, f, indent=2)
         
         print(f"[DSL Debug] Exported node structure to: {debug_file}")
+    
+    def _get_debug_folder(self, source_file: str) -> str:
+        """Get debug folder path, preferring repo location over addon folder."""
+        if source_file and os.path.exists(source_file):
+            source_dir = os.path.dirname(source_file)
+            while source_dir:
+                if os.path.exists(os.path.join(source_dir, ".git")):
+                    return os.path.join(source_dir, ".temp", "debug")
+                if os.path.exists(os.path.join(source_dir, "procedural_human")):
+                    return os.path.join(source_dir, ".temp", "debug")
+                parent = os.path.dirname(source_dir)
+                if parent == source_dir:
+                    break
+                source_dir = parent
+        
+        return os.path.join(tempfile.gettempdir(), "procedural_human_debug")
     
     def _generate_recursive(
         self,
@@ -451,6 +466,9 @@ class DSLGenerator:
         2. JoinedStructure instances (skip raw 'joints' lists if present)
         3. AttachedStructure instances
         4. Other generatable attributes
+        
+        Note: 'bones' lists are skipped - they're metadata for armature creation,
+        not geometry generation.
         """
         from procedural_human.dsl.primitives import (
             SegmentChain, JoinedStructure, AttachedStructure, Bone
@@ -460,7 +478,7 @@ class DSLGenerator:
         joined_structure_attr = None
         attached_structure_attrs = []
         other_generatable = []
-        raw_lists_to_skip = set()
+        raw_lists_to_skip = set(['bones'])
         
         for attr_name in dir(obj):
             if attr_name.startswith('__'):
@@ -484,10 +502,14 @@ class DSLGenerator:
                 raw_lists_to_skip.add('joints')
             elif isinstance(attr_value, AttachedStructure):
                 attached_structure_attrs.append(attr_name)
+            elif isinstance(attr_value, Bone):
+                continue
             elif hasattr(attr_value, 'generate'):
                 other_generatable.append(attr_name)
             elif isinstance(attr_value, (list, tuple)):
-                if attr_value and (hasattr(attr_value[0], 'generate') or isinstance(attr_value[0], Bone)):
+                if attr_value and isinstance(attr_value[0], Bone):
+                    continue
+                if attr_value and hasattr(attr_value[0], 'generate'):
                     other_generatable.append(attr_name)
             elif self._is_dsl_instance(attr_value):
                 other_generatable.append(attr_name)

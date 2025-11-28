@@ -260,7 +260,10 @@ def realize_dsl_geometry(obj: Any) -> bool:
 
 def get_bone_info_from_object(obj: Any) -> List[Dict]:
     """
-    Extract bone info from a DSL-generated object's generation result.
+    Extract bone info from a DSL-generated object's bones list.
+    
+    Looks for a 'bones' attribute containing Bone objects with
+    geometry references and IK limits.
     
     Args:
         obj: The mesh object with DSL custom properties
@@ -271,57 +274,47 @@ def get_bone_info_from_object(obj: Any) -> List[Dict]:
     source_file = obj.get("dsl_source_file", "")
     instance_name = obj.get("dsl_instance_name", "")
     
+    print(f"[Bone Debug] Getting bone info for: source={source_file}, instance={instance_name}")
+    
     if not source_file or not instance_name:
+        print("[Bone Debug] Missing source_file or instance_name")
         return []
     
     from procedural_human.dsl.executor import execute_dsl_file
     
     result = execute_dsl_file(source_file)
     if instance_name not in result.instances:
+        print(f"[Bone Debug] Instance '{instance_name}' not in result.instances: {list(result.instances.keys())}")
         return []
     
     instance = result.instances[instance_name]
+    print(f"[Bone Debug] Found instance: {type(instance).__name__}")
     
-    bones = []
+    bones_list = getattr(instance, 'bones', None)
     
-    def extract_bones(obj_to_scan, depth=0):
-        """Recursively extract bone info from DSL objects."""
-        from procedural_human.dsl.primitives import Bone, SegmentChain
+    if bones_list is None:
+        print(f"[Bone Debug] No 'bones' attribute found on instance")
+        print(f"[Bone Debug] Available attributes: {[a for a in dir(instance) if not a.startswith('__') and not callable(getattr(instance, a, None))]}")
+        return []
+    
+    if not isinstance(bones_list, (list, tuple)):
+        print(f"[Bone Debug] 'bones' is not a list: {type(bones_list)}")
+        return []
+    
+    print(f"[Bone Debug] Found bones list with {len(bones_list)} items")
+    
+    from procedural_human.dsl.primitives import Bone
+    
+    bone_info_list = []
+    for idx, bone in enumerate(bones_list):
+        if not isinstance(bone, Bone):
+            print(f"[Bone Debug] Item {idx} is not a Bone: {type(bone)}")
+            continue
         
-        if isinstance(obj_to_scan, Bone):
-            geometry = obj_to_scan.geometry
-            bone_dict = {
-                "index": depth,
-                "ik_limits": obj_to_scan.ik,
-                "length": getattr(geometry, 'length', 1.0) if geometry else 1.0,
-                "radius": getattr(geometry, 'radius', 1.0) if geometry else 1.0,
-                "parent_index": depth - 1 if depth > 0 else None,
-                "axis": "Z",
-            }
-            bones.append(bone_dict)
-            return
-        
-        if isinstance(obj_to_scan, SegmentChain):
-            for idx, seg in enumerate(obj_to_scan.segments):
-                extract_bones(seg, idx)
-            return
-        
-        if hasattr(obj_to_scan, '__dict__'):
-            for attr_name in dir(obj_to_scan):
-                if attr_name.startswith('_'):
-                    attr_value = getattr(obj_to_scan, attr_name, None)
-                    if attr_value is not None:
-                        if isinstance(attr_value, SegmentChain):
-                            extract_bones(attr_value, 0)
-                        elif isinstance(attr_value, (list, tuple)):
-                            for idx, item in enumerate(attr_value):
-                                extract_bones(item, idx)
+        info = bone.get_bone_info(idx)
+        print(f"[Bone Debug] Bone {idx}: length={info['length']}, ik={info['ik_limits']}")
+        bone_info_list.append(info)
     
-    extract_bones(instance)
-    
-    bones.sort(key=lambda x: x.get("index", 0))
-    for i, bone in enumerate(bones):
-        bone["parent_index"] = i - 1 if i > 0 else None
-    
-    return bones
+    print(f"[Bone Debug] Total bones extracted: {len(bone_info_list)}")
+    return bone_info_list
 

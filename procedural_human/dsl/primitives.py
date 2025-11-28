@@ -81,45 +81,34 @@ class IKLimits:
 @dataclass
 class Bone:
     """
-    Wrapper that marks geometry for armature bone creation.
+    Metadata container for armature bone creation.
     
-    Wraps any geometry-generating primitive (DualRadial, QuadRadial, etc.)
-    and specifies that a bone should be created for this geometry segment.
-    The IK limits are applied to the bone, not the geometry.
+    References a geometry-generating primitive (DualRadial, QuadRadial, etc.)
+    and specifies IK limits. Does NOT generate geometry nodes - that's done
+    by the segments list. This is purely metadata for armature creation.
     
     Usage:
-        Bone(
-            geometry=DualRadial(length=10, radius=1.0, profile_lookup=0),
-            ik=IKLimits(x=(-10, 150), y=(-10, 10), z=(-5, 5))
-        )
+        seg = DualRadial(length=10, radius=1.0, profile_lookup=0)
+        segments.append(seg)  # This generates geometry
+        bones.append(Bone(geometry=seg, ik=IKLimits(...)))  # This is metadata
     """
     geometry: Any = None
     ik: Optional[IKLimits] = None
     _index: Optional[int] = field(default=None, repr=False)
     
-    def generate(self, context: GenerationContext, index: int) -> Dict:
+    def get_bone_info(self, index: int) -> Dict:
         """
-        Generate geometry nodes by delegating to wrapped geometry,
-        then record bone information in context for armature creation.
+        Get bone metadata for armature creation.
+        Does NOT generate any geometry nodes.
         """
-        if self.geometry is None:
-            return {}
-        
-        if hasattr(self.geometry, 'generate'):
-            result = self.geometry.generate(context, index)
-        else:
-            result = {}
-        
-        result["bone"] = True
-        result["bone_index"] = index
-        result["ik_limits"] = self.ik
-        
-        if hasattr(self.geometry, 'length'):
-            result["bone_length"] = self.geometry.length
-        if hasattr(self.geometry, 'radius'):
-            result["bone_radius"] = self.geometry.radius
-        
-        return result
+        return {
+            "index": index,
+            "ik_limits": self.ik,
+            "length": getattr(self.geometry, 'length', 1.0) if self.geometry else 1.0,
+            "radius": getattr(self.geometry, 'radius', 1.0) if self.geometry else 1.0,
+            "parent_index": index - 1 if index > 0 else None,
+            "axis": "Z",
+        }
 
 
 @dsl_primitive
@@ -342,14 +331,24 @@ class DualRadial:
         Looks up preset by: {instance_name}_Segment_{index}
         Preset data keys: Segment_{index}_X, Segment_{index}_Y
         """
-        from procedural_human.decorators.curve_preset_decorator import get_preset
+        from procedural_human.decorators.curve_preset_decorator import (
+            get_preset, get_registry_names
+        )
         from procedural_human.utils.curve_serialization import apply_data_to_float_curve_node
         
         preset_name = f"{context.instance_name}_Segment_{index}"
+        
+        all_names = get_registry_names()
+        print(f"[Preset Debug] Looking for preset: '{preset_name}'")
+        print(f"[Preset Debug] Available presets in registry: {all_names}")
+        
         preset_data = get_preset(preset_name)
         
         if preset_data is None:
+            print(f"[Preset Debug] No preset found for '{preset_name}'")
             return False
+        
+        print(f"[Preset Debug] Found preset '{preset_name}' with keys: {list(preset_data.keys())}")
         
         x_key = f"Segment_{index}_X"
         y_key = f"Segment_{index}_Y"
@@ -357,12 +356,20 @@ class DualRadial:
         applied = False
         
         if x_key in preset_data and x_closure.curve_node:
+            print(f"[Preset Debug] Applying {x_key} to X closure")
             if apply_data_to_float_curve_node(x_closure.curve_node, preset_data[x_key]):
                 applied = True
+                print(f"[Preset Debug] Successfully applied {x_key}")
+        else:
+            print(f"[Preset Debug] Key '{x_key}' not in preset or closure missing")
         
         if y_key in preset_data and y_closure.curve_node:
+            print(f"[Preset Debug] Applying {y_key} to Y closure")
             if apply_data_to_float_curve_node(y_closure.curve_node, preset_data[y_key]):
                 applied = True
+                print(f"[Preset Debug] Successfully applied {y_key}")
+        else:
+            print(f"[Preset Debug] Key '{y_key}' not in preset or closure missing")
         
         return applied
 
@@ -631,43 +638,23 @@ class SegmentChain:
         Creates each segment and chains geometry: prev_output -> next_input
         Uses normalized lengths if available.
         
-        When segments are wrapped in Bone, also tracks bone chain info
-        for armature creation (tip-to-tail connections).
+        Note: Bone metadata is stored separately in the bones list,
+        not processed here. This only handles geometry generation.
         """
         results = []
-        bones = []
         prev_geometry_output = None
         
         if self.norm_lengths and len(self.norm_lengths) == len(self.segments):
             context.normalized_lengths = self.norm_lengths
         
         for idx, segment in enumerate(self.segments):
-            actual_segment = segment
-            is_bone = isinstance(segment, Bone)
-            
-            if is_bone:
-                actual_segment = segment.geometry
-            
             if self.norm_lengths and idx < len(self.norm_lengths):
-                if is_bone and hasattr(segment.geometry, 'length'):
-                    segment.geometry.length = self.norm_lengths[idx]
-                elif hasattr(segment, 'length'):
+                if hasattr(segment, 'length'):
                     segment.length = self.norm_lengths[idx]
             
             if hasattr(segment, 'generate'):
                 result = segment.generate(context, idx)
                 results.append(result)
-                
-                if is_bone or result.get("bone"):
-                    bone_info = {
-                        "index": idx,
-                        "ik_limits": segment.ik if is_bone else result.get("ik_limits"),
-                        "length": result.get("bone_length", getattr(actual_segment, 'length', 1.0)),
-                        "radius": result.get("bone_radius", getattr(actual_segment, 'radius', 1.0)),
-                        "parent_index": idx - 1 if idx > 0 else None,
-                        "axis": self.axis,
-                    }
-                    bones.append(bone_info)
                 
                 if prev_geometry_output is not None and "instance" in result:
                     context.node_group.links.new(
@@ -680,7 +667,6 @@ class SegmentChain:
         
         return {
             "segments": results,
-            "bones": bones,
             "output": prev_geometry_output,
         }
 

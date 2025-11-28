@@ -37,7 +37,7 @@ class Finger:
     def __init__(self, segment_lengths: List[float], radius_taper=0.85, curl_axis='Y'):
         Segment = DualRadial()
         
-        self.norm_lengths = norm_lengths = normalize(segment_lengths)
+        self.norm_lengths = normalize(segment_lengths)
         self.segments = []
         self.bones = []
         self.segment_lengths = segment_lengths
