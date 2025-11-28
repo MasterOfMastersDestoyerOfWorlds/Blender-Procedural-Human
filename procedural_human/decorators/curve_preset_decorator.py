@@ -222,3 +222,96 @@ def get_preset_location(preset_name: str) -> Optional[dict]:
 def clear_preset_registry():
     """Clear the preset registry (useful for reloading)."""
     _preset_registry.clear()
+
+
+def get_preset(name: str) -> Optional[dict]:
+    """Get a preset by name."""
+    if name not in _preset_registry:
+        return None
+    
+    preset_entry = _preset_registry[name]
+    try:
+        if isinstance(preset_entry, dict) and "instance" in preset_entry:
+            preset_func_or_instance = preset_entry["instance"]
+        else:
+            preset_func_or_instance = preset_entry
+
+        if isinstance(preset_func_or_instance, Preset):
+            return preset_func_or_instance.get_data()
+        elif callable(preset_func_or_instance):
+            return preset_func_or_instance()
+        else:
+            return preset_func_or_instance
+    except Exception as e:
+        print(f"Warning: Failed to load preset '{name}': {e}")
+        return None
+
+
+def create_default_profile(profile_type: str = "X") -> list:
+    """Create a default flat profile curve."""
+    return [
+        {"x": 0.0, "y": 0.5, "handle_type": "AUTO"},
+        {"x": 0.5, "y": 0.5, "handle_type": "AUTO"},
+        {"x": 1.0, "y": 0.5, "handle_type": "AUTO"},
+    ]
+
+
+def get_or_create_preset(name: str, profile_type: str = "X") -> dict:
+    """Get a preset by name, or create a default one if it doesn't exist."""
+    existing = get_preset(name)
+    if existing is not None:
+        return existing
+    
+    default_data = {f"{name}": create_default_profile(profile_type)}
+    register_preset_data(name, default_data)
+    return default_data
+
+
+def resolve_profile_chain(name_chain: list, profile_type: str = "X"):
+    """
+    Resolve a profile by trying a chain of names with progressive fallback.
+    
+    Returns tuple of (preset_data, resolved_name).
+    """
+    if not name_chain:
+        raise ValueError("name_chain cannot be empty")
+    
+    for name in name_chain:
+        existing = get_preset(name)
+        if existing is not None:
+            return existing, name
+    
+    primary_name = name_chain[0]
+    default_data = {primary_name: create_default_profile(profile_type)}
+    register_preset_data(primary_name, default_data)
+    return default_data, primary_name
+
+
+def build_profile_name_chain(
+    context_chain: list,
+    component: str,
+    index: Optional[int] = None,
+    axis: str = "X"
+) -> list:
+    """Build a chain of profile names for fallback resolution."""
+    names = []
+    
+    index_suffix = f"_{index}" if index is not None else ""
+    axis_suffix = f"_{axis}"
+    
+    for i in range(len(context_chain) + 1):
+        prefix_parts = context_chain[i:]
+        if prefix_parts:
+            prefix = "_".join(prefix_parts) + "_"
+        else:
+            prefix = ""
+        
+        name = f"{prefix}{component}{index_suffix}{axis_suffix}"
+        names.append(name)
+    
+    return names
+
+
+def get_registry_names() -> list:
+    """Get all registered preset names."""
+    return list(_preset_registry.keys())

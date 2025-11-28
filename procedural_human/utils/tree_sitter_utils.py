@@ -1,19 +1,31 @@
 """
 Tree-sitter utilities for parsing and modifying Python files.
+Extended with DSL parsing capabilities.
 """
 
 import os
-from typing import Optional, Dict, List, Tuple
+import inspect
+from typing import Optional, Dict, List, Tuple, Any
 
 try:
     import tree_sitter_python as tspython
-    from tree_sitter import Language, Parser
+    from tree_sitter import Language, Parser, Node
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
     tspython = None
     Language = None
     Parser = None
+    Node = None
+
+
+DSL_PRIMITIVE_TYPES = {
+    "DualRadial": {"profile_type": "dual", "profiles": ["X", "Y"]},
+    "QuadRadial": {"profile_type": "quad", "profiles": ["0", "90", "180", "270"]},
+    "Joint": {"profile_type": "quad", "profiles": ["0", "90", "180", "270"]},
+    "RadialAttachment": {"profile_type": "dual", "profiles": ["X", "Y"]},
+    "IKLimits": {"profile_type": None, "profiles": []},
+}
 
 
 def get_caller_file_path() -> Optional[str]:
@@ -323,3 +335,306 @@ def replace_get_data_method(
     
     return True
 
+
+def parse_dsl_file(file_path: str) -> Tuple[Any, bytes, Any]:
+    """Parse a DSL file using tree-sitter."""
+    parser, source_bytes = parse_python_file(file_path)
+    tree = parser.parse(source_bytes)
+    return tree, source_bytes, tree.root_node
+
+
+def _get_node_text(node: Any, source_bytes: bytes) -> str:
+    """Extract text from a tree-sitter node."""
+    return source_bytes[node.start_byte:node.end_byte].decode("utf-8")
+
+
+def _parse_argument_list(node: Any, source_bytes: bytes) -> Dict:
+    """Parse function call arguments into a dictionary."""
+    args = {"positional": [], "keyword": {}}
+    
+    for child in node.children:
+        if child.type == "keyword_argument":
+            key_node = None
+            value_node = None
+            for arg_child in child.children:
+                if arg_child.type == "identifier":
+                    key_node = arg_child
+                elif arg_child.type not in ("=",):
+                    value_node = arg_child
+            if key_node and value_node:
+                key = _get_node_text(key_node, source_bytes)
+                value = _get_node_text(value_node, source_bytes)
+                args["keyword"][key] = value
+        elif child.type == "list":
+            args["positional"].append(_get_node_text(child, source_bytes))
+        elif child.type not in ("(", ")", ","):
+            args["positional"].append(_get_node_text(child, source_bytes))
+    
+    return args
+
+
+def extract_class_definitions(file_path: str) -> List[Dict]:
+    """Extract all class definitions from a DSL file."""
+    if not TREE_SITTER_AVAILABLE:
+        raise ImportError("tree-sitter-python is not available")
+    
+    tree, source_bytes, root_node = parse_dsl_file(file_path)
+    class_defs = []
+    
+    for child in root_node.children:
+        if child.type == "class_definition":
+            class_info = _extract_class_info(child, source_bytes)
+            if class_info:
+                class_defs.append(class_info)
+    
+    return class_defs
+
+
+def _extract_class_info(class_node: Any, source_bytes: bytes) -> Optional[Dict]:
+    """Extract information from a class definition node."""
+    class_name = None
+    class_body = None
+    
+    for child in class_node.children:
+        if child.type == "identifier":
+            class_name = _get_node_text(child, source_bytes)
+        elif child.type == "block":
+            class_body = child
+    
+    if not class_name or not class_body:
+        return None
+    
+    class_info = {
+        "name": class_name,
+        "components": {},
+        "init_params": [],
+        "line_start": class_node.start_point[0] + 1,
+        "line_end": class_node.end_point[0] + 1,
+    }
+    
+    for body_child in class_body.children:
+        if body_child.type == "function_definition":
+            func_name = None
+            func_params = None
+            func_body = None
+            
+            for func_child in body_child.children:
+                if func_child.type == "identifier":
+                    func_name = _get_node_text(func_child, source_bytes)
+                elif func_child.type == "parameters":
+                    func_params = func_child
+                elif func_child.type == "block":
+                    func_body = func_child
+            
+            if func_name == "__init__":
+                if func_params:
+                    class_info["init_params"] = _extract_params(func_params, source_bytes)
+                if func_body:
+                    class_info["components"] = _extract_components(func_body, source_bytes)
+                break
+    
+    return class_info
+
+
+def _extract_params(params_node: Any, source_bytes: bytes) -> List[Dict]:
+    """Extract function parameters."""
+    params = []
+    
+    for child in params_node.children:
+        if child.type == "identifier":
+            name = _get_node_text(child, source_bytes)
+            if name != "self":
+                params.append({"name": name, "default": None})
+        elif child.type == "default_parameter":
+            name = None
+            default = None
+            for param_child in child.children:
+                if param_child.type == "identifier":
+                    name = _get_node_text(param_child, source_bytes)
+                elif param_child.type not in ("=",):
+                    default = _get_node_text(param_child, source_bytes)
+            if name:
+                params.append({"name": name, "default": default})
+    
+    return params
+
+
+def _extract_components(body_node: Any, source_bytes: bytes) -> Dict:
+    """Extract component assignments from a function body."""
+    components = {}
+    
+    for child in body_node.children:
+        if child.type == "expression_statement":
+            expr = child.children[0] if child.children else None
+            if expr and expr.type == "assignment":
+                component_info = _parse_component_assignment(expr, source_bytes)
+                if component_info:
+                    components[component_info["name"]] = component_info
+        elif child.type == "for_statement":
+            loop_info = _parse_loop_for_indexed_components(child, source_bytes)
+            if loop_info:
+                for name, info in loop_info.items():
+                    components[name] = info
+    
+    return components
+
+
+def _parse_component_assignment(assign_node: Any, source_bytes: bytes) -> Optional[Dict]:
+    """Parse a component assignment like Segment = DualRadial(...)"""
+    left = None
+    right = None
+    
+    for child in assign_node.children:
+        if child.type == "identifier" and left is None:
+            left = _get_node_text(child, source_bytes)
+        elif child.type == "call":
+            right = child
+        elif child.type not in ("=",) and right is None and child.type != "identifier":
+            return None
+    
+    if not left or not right:
+        return None
+    
+    func_name = None
+    args = {}
+    
+    for call_child in right.children:
+        if call_child.type == "identifier":
+            func_name = _get_node_text(call_child, source_bytes)
+        elif call_child.type == "argument_list":
+            args = _parse_argument_list(call_child, source_bytes)
+    
+    if func_name not in DSL_PRIMITIVE_TYPES:
+        return None
+    
+    primitive_info = DSL_PRIMITIVE_TYPES[func_name]
+    
+    return {
+        "name": left,
+        "type": func_name,
+        "profile_type": primitive_info["profile_type"],
+        "profiles": primitive_info["profiles"],
+        "indexed": False,
+        "args": args,
+    }
+
+
+def _parse_loop_for_indexed_components(for_node: Any, source_bytes: bytes) -> Dict:
+    """Parse a for loop to detect indexed component creation."""
+    components = {}
+    loop_var = None
+    
+    for child in for_node.children:
+        if child.type == "identifier":
+            loop_var = _get_node_text(child, source_bytes)
+            break
+    
+    for child in for_node.children:
+        if child.type == "block":
+            for body_child in child.children:
+                if body_child.type == "expression_statement":
+                    expr = body_child.children[0] if body_child.children else None
+                    if expr and expr.type == "assignment":
+                        component_info = _parse_indexed_component(expr, source_bytes, loop_var)
+                        if component_info:
+                            component_info["indexed"] = True
+                            components[component_info["name"]] = component_info
+    
+    return components
+
+
+def _parse_indexed_component(assign_node: Any, source_bytes: bytes, loop_var: str) -> Optional[Dict]:
+    """Parse an indexed component assignment inside a loop."""
+    left = None
+    right = None
+    
+    for child in assign_node.children:
+        if child.type == "identifier" and left is None:
+            left = _get_node_text(child, source_bytes)
+        elif child.type == "call":
+            right = child
+    
+    if not left or not right:
+        return None
+    
+    func_name = None
+    args = {}
+    
+    for call_child in right.children:
+        if call_child.type == "identifier":
+            func_name = _get_node_text(call_child, source_bytes)
+        elif call_child.type == "argument_list":
+            args = _parse_argument_list(call_child, source_bytes)
+    
+    if not func_name or not func_name[0].isupper():
+        return None
+    
+    return {
+        "name": func_name,
+        "type": func_name,
+        "profile_type": "dual",
+        "profiles": ["X", "Y"],
+        "indexed": True,
+        "args": args,
+    }
+
+
+def extract_instance_assignments(file_path: str) -> List[Dict]:
+    """Extract instance assignments from a DSL file."""
+    if not TREE_SITTER_AVAILABLE:
+        raise ImportError("tree-sitter-python is not available")
+    
+    tree, source_bytes, root_node = parse_dsl_file(file_path)
+    instances = []
+    
+    class_names = set()
+    for child in root_node.children:
+        if child.type == "class_definition":
+            for class_child in child.children:
+                if class_child.type == "identifier":
+                    class_names.add(_get_node_text(class_child, source_bytes))
+                    break
+    
+    for child in root_node.children:
+        if child.type == "expression_statement":
+            expr = child.children[0] if child.children else None
+            if expr and expr.type == "assignment":
+                instance_info = _parse_instance_assignment(expr, source_bytes, class_names)
+                if instance_info:
+                    instances.append(instance_info)
+    
+    return instances
+
+
+def _parse_instance_assignment(assign_node: Any, source_bytes: bytes, class_names: set) -> Optional[Dict]:
+    """Parse an instance assignment like Index = Finger([...])"""
+    left = None
+    right = None
+    
+    for child in assign_node.children:
+        if child.type == "identifier" and left is None:
+            left = _get_node_text(child, source_bytes)
+        elif child.type == "call":
+            right = child
+    
+    if not left or not right:
+        return None
+    
+    class_name = None
+    args = {}
+    
+    for call_child in right.children:
+        if call_child.type == "identifier":
+            class_name = _get_node_text(call_child, source_bytes)
+        elif call_child.type == "argument_list":
+            args = _parse_argument_list(call_child, source_bytes)
+    
+    if class_name not in class_names:
+        return None
+    
+    return {
+        "name": left,
+        "definition": class_name,
+        "args": args,
+        "line": assign_node.start_point[0] + 1,
+    }

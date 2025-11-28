@@ -310,61 +310,38 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
   - [ ] Add outliner integration for easy navigation
 
 ### 7.6 DSL for Segment and Growth Plans
-- [ ] Design and implement procedural growth DSL
-  - [ ] Design DSL syntax specification:
-    - [ ] `SEGMENT(placement, count, ratio, behavior)` pattern
-    - [ ] `SYMMETRICAL(axis, count, pattern)` for mirroring
-    - [ ] `GOLDEN` ratio constant
-    - [ ] `CURL`, `ZIG_ZAG` behavior patterns
-    - [ ] `TIP_TAIL` placement mode
-  - [ ] Create DSL parser:
-    - [ ] Tokenize DSL strings
-    - [ ] Build abstract syntax tree (AST)
-    - [ ] Validate syntax and semantics
-    - [ ] Handle nested patterns
-  - [ ] Implement DSL interpreter:
-    - [ ] Translate AST to Blender operations
-    - [ ] Generate geometry node trees from DSL
-    - [ ] Apply ratio calculations (golden ratio, fibonacci)
-    - [ ] Set up symmetry and mirroring
-    - [ ] Configure behavior patterns (curl direction, alternating)
-  - [ ] Create DSL examples:
-    - [ ] `FINGER = SEGMENT(TIP_TAIL, 3, GOLDEN, CURL)`
-    - [ ] `LEGS = SYMMETRICAL(Y, 2, SEGMENT(TIP_TAIL, 3, GOLDEN, ZIG_ZAG))`
-    - [ ] `ARM = SEGMENT(TIP_TAIL, 2, [2,1], CURL)`
-  - [ ] Add DSL property to objects:
-    - [ ] Store DSL string in custom property
-    - [ ] Regenerate from DSL on demand
-    - [ ] UI text field for DSL input
-  - [ ] Create DSL documentation and examples
+- [x] Design and implement procedural growth DSL
+  - [x] DSL syntax (Python class-based):
+    - [x] `DualRadial` - segment with X/Y profile curves
+    - [x] `QuadRadial` - joint with 4 quadrant profiles
+    - [x] `IKLimits(x, y, z)` - IK constraint ranges
+    - [x] `Joint(type, overlap)` - joint between segments
+    - [x] `RadialAttachment` - terminal attachments
+    - [x] Helpers: `normalize()`, `last()`, `Extend()`, `Join()`, `AttachRaycast()`
+  - [x] DSL parser (tree-sitter):
+    - [x] `parse_dsl_file()`, `extract_class_definitions()`, `extract_instance_assignments()`
+  - [x] Naming environment:
+    - [x] Hierarchical naming: `Index_Finger_Segment_0_X`
+    - [x] Progressive fallback resolution
+    - [x] Auto-create default profiles
+  - [x] DSL executor with sandboxed `exec()`
+  - [x] DSL generator for Blender geometry nodes
+  - [x] File watcher for auto-update
+  - [x] Dynamic operators from DSL files
+  - [x] DSL browser panel UI
+  - [x] Example: `procedural_human/dsl/finger.py`
+  - [x] Object metadata: `dsl_source_file`, `dsl_instance_name`
+  - [ ] Future: SYMMETRICAL, GOLDEN ratio, animation keyframes
 
 ### 7.7 Joint Segments Between Segments
-- [ ] Implement joint segment concept
-  - [ ] Define joint segment as special segment type
-  - [ ] Joint properties:
-    - [ ] Overlap amount (how much it extends into neighboring segments)
-    - [ ] Blend factor (smoothness of transition)
-    - [ ] Joint thickness ratio
-  - [ ] Create joint segment node group:
-    - [ ] Takes two segment endpoints as input
-    - [ ] Generates overlapping geometry
-    - [ ] Smooth blending using SDF or volume merge
-  - [ ] Implement joint insertion logic:
-    - [ ] Insert joints between regular segments
-    - [ ] Update segment list: `[seg1, joint1, seg2, joint2, seg3]`
-    - [ ] Like `join()` with separator: `join(segments, joint_segment)`
-  - [ ] Update finger generation to include joints:
-    - [ ] Add joint insertion step after segment creation
-    - [ ] Apply smooth transitions at joint locations
-    - [ ] Ensure seamless mesh topology
-  - [ ] Add joint customization:
-    - [ ] Configurable joint profiles
-    - [ ] Per-joint overlap amounts
-    - [ ] Joint-specific materials (e.g., skin wrinkles)
-  - [ ] UI controls for joints:
-    - [ ] Toggle joints on/off
-    - [ ] Adjust joint overlap
-    - [ ] Preview joint locations
+- [x] Implement joint segment concept
+  - [x] Joint segment as special segment type (`JointSegmentProperties`)
+  - [x] Joint properties: `PREV_SEGMENT`, `NEXT_SEGMENT`, 4 quadrant profiles
+  - [x] Joint node group with QuadRadial and raycast radius sampling
+  - [x] Joint insertion: N-1 joints for N segments
+  - [x] DSL integration: `Joint(type=QuadRadial, overlap=0.2)`
+  - [x] Profile lookups: `Joint_0_90`, `Joint_0_180`, etc.
+  - [ ] Future UI controls for joints
 
 ---
 

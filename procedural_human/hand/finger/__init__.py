@@ -14,7 +14,7 @@ from procedural_human.hand.finger import finger_nail
 import bpy
 from bpy.props import PointerProperty
 
-from procedural_human.hand.fingerfinger import FingerDataProps
+from procedural_human.hand.finger.finger import FingerDataProps
 
 classes = (FingerDataProps,)
 

@@ -6,4 +6,3 @@ Contains finger segment specific code with Geometry Nodes
 from procedural_human.hand.finger.finger_segment import finger_segment_nodes
 from procedural_human.hand.finger.finger_segment import finger_segment_properties
 from procedural_human.hand.finger.finger_segment import finger_segment_profiles
-from procedural_human.hand.finger.finger_segment import finger_segment_curve_utils

@@ -20,11 +20,11 @@ class ProfileType(Enum):
 
 
 class SegmentType(Enum):
-    """Types of finger segments"""
+    """Types of finger segments""" 
 
     PROXIMAL = "proximal"
     MIDDLE = "middle"
-    DISTAL = "distal"
+    DISTAL = "distal" 
     JOINT = "joint"
 
 
