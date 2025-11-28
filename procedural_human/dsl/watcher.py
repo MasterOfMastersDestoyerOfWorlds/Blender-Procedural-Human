@@ -6,13 +6,7 @@ import os
 import hashlib
 from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass, field
-
-try:
-    import bpy
-    BLENDER_AVAILABLE = True
-except ImportError:
-    BLENDER_AVAILABLE = False
-    bpy = None
+import bpy
 
 
 @dataclass
@@ -115,7 +109,7 @@ class DSLFileWatcher:
     
     def start_timer(self, interval: float = 1.0) -> None:
         """Start periodic file checking using Blender's timer."""
-        if not BLENDER_AVAILABLE or self._timer_running:
+        if self._timer_running:
             return
         
         self._check_interval = interval
@@ -124,9 +118,6 @@ class DSLFileWatcher:
     
     def stop_timer(self) -> None:
         """Stop the periodic file checking timer."""
-        if not BLENDER_AVAILABLE:
-            return
-        
         self._timer_running = False
         try:
             bpy.app.timers.unregister(self._timer_callback)
@@ -147,8 +138,6 @@ class DSLFileWatcher:
 
 def on_dsl_file_changed(file_path: str, linked_objects: List[str]) -> None:
     """Default callback for DSL file changes."""
-    if not BLENDER_AVAILABLE:
-        return
     
     from procedural_human.dsl.generator import regenerate_dsl_object
     
@@ -177,9 +166,7 @@ def start_watching(dsl_directory: Optional[str] = None) -> DSLFileWatcher:
             watcher.watch_file(file_path)
     
     watcher.add_callback(on_dsl_file_changed)
-    
-    if BLENDER_AVAILABLE:
-        watcher.start_timer()
+    watcher.start_timer()
     
     return watcher
 

@@ -3,9 +3,11 @@ Addon preferences for Procedural Human Generator
 """
 
 import bpy
-from bpy.types import AddonPreferences
+from bpy.types import AddonPreferences, Operator
 from bpy.props import StringProperty
 from pathlib import Path
+
+from procedural_human.decorators.operator_decorator import procedural_operator
 
 
 class ProceduralHumanPreferences(AddonPreferences):
@@ -17,7 +19,7 @@ class ProceduralHumanPreferences(AddonPreferences):
         name="Codebase Path",
         description="Path to the Procedural Human development codebase (for exporting modifications)",
         default="",
-        subtype="DIR_PATH",
+        subtype="DIR_PATH", 
     )
 
     def draw(self, context):
@@ -80,12 +82,10 @@ class ProceduralHumanPreferences(AddonPreferences):
         )
 
 
-class RefreshCodebasePath(bpy.types.Operator):
+@procedural_operator(bl_idname="wm.procedural_refresh_codebase_path")
+class RefreshCodebasePath(Operator):
     """Refresh codebase path detection"""
 
-    bl_idname = "wm.procedural_refresh_codebase_path"
-    bl_label = "Refresh Codebase Path"
-    bl_description = "Re-detect the codebase path"
     bl_options = {"INTERNAL"}
 
     def execute(self, context):
@@ -106,9 +106,7 @@ class RefreshCodebasePath(bpy.types.Operator):
 
 def register():
     bpy.utils.register_class(ProceduralHumanPreferences)
-    bpy.utils.register_class(RefreshCodebasePath)
 
 
 def unregister():
-    bpy.utils.unregister_class(RefreshCodebasePath)
     bpy.utils.unregister_class(ProceduralHumanPreferences)

@@ -47,6 +47,22 @@ def procedural_operator(cls_or_kwargs=None, **kwargs):
     return wrapper
 
 
+def _to_snake_case(name: str) -> str:
+    """Convert CamelCase to snake_case, handling acronyms properly.
+    
+    Examples:
+        DSLCreateInstance -> dsl_create_instance
+        CreateFinger -> create_finger
+        HTTPServer -> http_server
+    """
+    # Handle transitions: lowercase->uppercase OR uppercase->uppercase+lowercase
+    # e.g., "DSLCreate" -> "DSL_Create", "createFinger" -> "create_Finger"
+    result = re.sub(r'([a-z])([A-Z])', r'\1_\2', name)
+    # Handle acronym followed by word: "DSLCreate" is now "DSL_Create"
+    result = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1_\2', result)
+    return result.lower()
+
+
 def _process_operator(cls, **kwargs):
     """Internal processing of the operator class"""
 
@@ -57,7 +73,7 @@ def _process_operator(cls, **kwargs):
     name_without_prefix = re.sub(r"^PROCEDURAL_OT_", "", class_name)
 
     if not hasattr(cls, "bl_idname"):
-        snake_case = re.sub(r"(?<!^)(?=[A-Z])", "_", name_without_prefix).lower()
+        snake_case = _to_snake_case(name_without_prefix)
         cls.bl_idname = f"mesh.procedural_{snake_case}"
 
     if not hasattr(cls, "bl_label"):
@@ -78,11 +94,20 @@ def _process_operator(cls, **kwargs):
     return cls
 
 
+def discover_and_register_all_operators():
+    """Discover all modules and register all decorated operator classes."""
+    from procedural_human.decorators.module_discovery import import_all_modules
+    import_all_modules()
+    register_all_operators()
+
+
 def register_all_operators():
     """Register all decorated operator classes."""
+    print(f"[Operator Registry] Registering {len(_operator_registry)} operators")
     for op_cls in _operator_registry:
         try:
             bpy.utils.register_class(op_cls)
+            print(f"[Operator Registry] Registered: {op_cls.bl_idname}")
         except Exception as e:
             print(f"Warning: Failed to register operator {op_cls.__name__}: {e}")
 

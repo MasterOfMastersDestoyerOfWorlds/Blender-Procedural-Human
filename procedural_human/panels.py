@@ -1,17 +1,16 @@
 """
 UI Panel classes for Procedural Human Generator
+
+Panels are automatically discovered from the entire procedural_human directory.
+Simply decorate your panel class with @procedural_panel and it will be registered.
 """
 
 import bpy
 from bpy.types import Panel
 
-
-from procedural_human.hand.finger.finger_panel import FingerPanel
-from procedural_human.hand.finger.finger_nail.finger_nail_panel import FingerNailPanel
-from procedural_human.hand.finger.finger_segment.finger_segment_panel import FingerSegmentPanel
 from procedural_human.decorators.panel_decorator import (
     procedural_panel,
-    register_all_panels,
+    discover_and_register_all_panels,
     unregister_all_panels,
 )
 
@@ -29,8 +28,8 @@ class MainPanel(Panel):
 
 
 def register():
-    """Register all panels using the decorator system"""
-    register_all_panels()
+    """Discover and register all panels using the decorator system"""
+    discover_and_register_all_panels()
 
 
 def unregister():

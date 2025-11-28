@@ -5,12 +5,7 @@ DSL-to-Geometry-Nodes generator.
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 
-try:
-    import bpy
-    BLENDER_AVAILABLE = True
-except ImportError:
-    BLENDER_AVAILABLE = False
-    bpy = None
+import bpy
 
 from procedural_human.dsl.primitives import DualRadial, Joint, SegmentChain, JoinedStructure
 from procedural_human.dsl.naming import NamingEnvironment
@@ -43,9 +38,6 @@ class DSLGenerator:
         instance_filter: Optional[List[str]] = None
     ) -> List[GeneratedObject]:
         """Generate Blender objects from DSL execution result."""
-        if not BLENDER_AVAILABLE:
-            raise RuntimeError("Blender is not available")
-        
         generated = []
         
         for instance_name, instance in result.instances.items():
@@ -81,9 +73,6 @@ class DSLGenerator:
         source_file: str,
     ) -> Optional[GeneratedObject]:
         """Generate a single Blender object from a DSL instance."""
-        if not BLENDER_AVAILABLE:
-            return None
-        
         mesh = bpy.data.meshes.new(f"{instance_name}Mesh")
         mesh.from_pydata([(0, 0, 0)], [], [])
         obj = bpy.data.objects.new(instance_name, mesh)
@@ -222,9 +211,6 @@ def generate_from_dsl_file(
 
 def regenerate_dsl_object(obj: Any) -> Optional[GeneratedObject]:
     """Regenerate a Blender object from its DSL source."""
-    if not BLENDER_AVAILABLE:
-        return None
-    
     source_file = obj.get("dsl_source_file", "")
     instance_name = obj.get("dsl_instance_name", "")
     
@@ -247,4 +233,3 @@ def regenerate_dsl_object(obj: Any) -> Optional[GeneratedObject]:
     )
     
     return generator._generated_objects.get(instance_name)
-

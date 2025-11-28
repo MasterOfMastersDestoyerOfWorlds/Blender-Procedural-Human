@@ -1,16 +1,19 @@
 """
 Operator classes for Procedural Human Generator
+
+Operators are automatically discovered from the entire procedural_human directory.
+Simply decorate your operator class with @procedural_operator and it will be registered.
 """
 
-import bpy
-from procedural_human.decorators.operator_decorator import register_all_operators, unregister_all_operators
-
-from procedural_human.utils import curve_serialization
+from procedural_human.decorators.operator_decorator import (
+    discover_and_register_all_operators,
+    unregister_all_operators,
+)
 
 
 def register():
-    """Register all operators using the decorator system"""
-    register_all_operators()
+    """Discover and register all operators using the decorator system"""
+    discover_and_register_all_operators()
 
 
 def unregister():

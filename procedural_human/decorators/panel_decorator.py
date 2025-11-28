@@ -16,6 +16,31 @@ from bpy.types import Panel
 _panel_registry: List[Type[Panel]] = []
 
 
+def _to_snake_case(name: str) -> str:
+    """Convert CamelCase to snake_case, handling acronyms properly.
+    
+    Examples:
+        DSLBrowser -> dsl_browser
+        FingerNail -> finger_nail
+        HTTPServer -> http_server
+    """
+    result = re.sub(r'([a-z])([A-Z])', r'\1_\2', name)
+    result = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1_\2', result)
+    return result.lower()
+
+
+def _to_title_with_spaces(name: str) -> str:
+    """Convert CamelCase to Title With Spaces, handling acronyms properly.
+    
+    Examples:
+        DSLBrowser -> DSL Browser
+        FingerNail -> Finger Nail
+    """
+    result = re.sub(r'([a-z])([A-Z])', r'\1 \2', name)
+    result = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', result)
+    return result
+
+
 def procedural_panel(cls):
     """
     Decorator for panel classes that automatically sets Blender panel attributes.
@@ -40,10 +65,10 @@ def procedural_panel(cls):
 
     name_without_panel = re.sub(r"Panel$", "", class_name)
 
-    snake_case_name = re.sub(r"(?<!^)(?=[A-Z])", "_", name_without_panel).lower()
+    snake_case_name = _to_snake_case(name_without_panel)
     bl_idname = f"PROCEDURAL_PT_{snake_case_name}_panel"
 
-    label_with_spaces = re.sub(r"(?<!^)(?=[A-Z])", " ", name_without_panel)
+    label_with_spaces = _to_title_with_spaces(name_without_panel)
     bl_label = label_with_spaces
 
     if not hasattr(cls, "bl_idname"):
@@ -81,6 +106,13 @@ def procedural_panel(cls):
     _panel_registry.append(cls)
 
     return cls
+
+
+def discover_and_register_all_panels():
+    """Discover all modules and register all decorated panel classes."""
+    from procedural_human.decorators.module_discovery import import_all_modules
+    import_all_modules()
+    register_all_panels()
 
 
 def register_all_panels():
