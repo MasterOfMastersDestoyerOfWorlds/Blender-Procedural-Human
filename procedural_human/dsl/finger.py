@@ -46,7 +46,7 @@ class Finger:
         radius = 0.5
         for i in range(len(segment_lengths)):
             seg = Segment(
-                    length=segment_lengths[i],
+                    length=self.norm_lengths[i],
                     radius=radius,
                     profile_lookup=i,
                 )
