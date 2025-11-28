@@ -7,16 +7,8 @@ import os
 import inspect
 from typing import Optional, Dict, List, Tuple, Any
 
-try:
-    import tree_sitter_python as tspython
-    from tree_sitter import Language, Parser, Node
-    TREE_SITTER_AVAILABLE = True
-except ImportError:
-    TREE_SITTER_AVAILABLE = False
-    tspython = None
-    Language = None
-    Parser = None
-    Node = None
+import tree_sitter_python as tspython
+from tree_sitter import Language, Parser, Node
 
 
 DSL_PRIMITIVE_TYPES = {
@@ -106,10 +98,6 @@ def scan_directory_for_presets(directory: str) -> List[Dict]:
 
 def get_python_language() -> Language:
     """Get the Python language parser."""
-    if not TREE_SITTER_AVAILABLE:
-        raise ImportError(
-            "tree-sitter-python is not available. Install it with: pip install tree-sitter-python"
-        )
     return Language(tspython.language())
 
 
@@ -123,10 +111,6 @@ def parse_python_file(file_path: str) -> Tuple[Parser, bytes]:
     Returns:
         Tuple of (parser, source_bytes)
     """
-    if not TREE_SITTER_AVAILABLE:
-        raise ImportError(
-            "tree-sitter-python is not available. Install it with: pip install tree-sitter-python"
-        )
     
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
@@ -375,8 +359,6 @@ def _parse_argument_list(node: Any, source_bytes: bytes) -> Dict:
 
 def extract_class_definitions(file_path: str) -> List[Dict]:
     """Extract all class definitions from a DSL file."""
-    if not TREE_SITTER_AVAILABLE:
-        raise ImportError("tree-sitter-python is not available")
     
     tree, source_bytes, root_node = parse_dsl_file(file_path)
     class_defs = []
@@ -581,8 +563,6 @@ def _parse_indexed_component(assign_node: Any, source_bytes: bytes, loop_var: st
 
 def extract_instance_assignments(file_path: str) -> List[Dict]:
     """Extract instance assignments from a DSL file."""
-    if not TREE_SITTER_AVAILABLE:
-        raise ImportError("tree-sitter-python is not available")
     
     tree, source_bytes, root_node = parse_dsl_file(file_path)
     instances = []

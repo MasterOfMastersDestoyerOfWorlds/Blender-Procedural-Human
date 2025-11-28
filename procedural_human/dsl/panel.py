@@ -11,7 +11,9 @@ from procedural_human.decorators.panel_decorator import procedural_panel
 
 def _get_dsl_instances_cache():
     """Lazy import to avoid circular dependencies."""
-    from procedural_human.dsl.operators import _dsl_instances_cache
+    from procedural_human.dsl.operators import _dsl_instances_cache, scan_dsl_files
+    if not _dsl_instances_cache:
+        scan_dsl_files()
     return _dsl_instances_cache
 
 
@@ -34,18 +36,12 @@ class DSLBrowserPanel(Panel):
         watcher = _get_watcher()
         watched_count = len(watcher.get_watched_files())
         
-        box = layout.box()
-        row = box.row()
-        row.label(text="File Watcher", icon='FILE_REFRESH')
-        
+        row = layout.row(align=True)
+        row.operator("mesh.procedural_dsl_scan_files", text="Refresh", icon='FILE_REFRESH')
         if watched_count > 0:
-            row.label(text=f"Watching {watched_count} files")
-            row.operator("mesh.procedural_dsl_stop_watcher", text="", icon='PAUSE')
+            row.operator("mesh.procedural_dsl_stop_watcher", text="Stop Watch", icon='PAUSE')
         else:
-            row.label(text="Not active")
-            row.operator("mesh.procedural_dsl_start_watcher", text="", icon='PLAY')
-        
-        layout.operator("mesh.procedural_dsl_scan_files", icon='FILE_FOLDER')
+            row.operator("mesh.procedural_dsl_start_watcher", text="Auto-Update", icon='PLAY')
         
         layout.separator()
         
@@ -53,17 +49,27 @@ class DSLBrowserPanel(Panel):
         if cache:
             for file_path, instance_names in cache.items():
                 file_name = os.path.basename(file_path).replace('.py', '').title()
+                
                 box = layout.box()
                 box.label(text=file_name, icon='FILE_SCRIPT')
                 
-                col = box.column(align=True)
-                for name in instance_names:
-                    col.label(text=f"  • {name}", icon='OBJECT_DATA')
+                if instance_names:
+                    for name in instance_names:
+                        row = box.row(align=True)
+                        row.label(text=name, icon='OBJECT_DATA')  
+                        
+                        op = row.operator(
+                            "mesh.procedural_dsl_create_instance",
+                            text="Create",
+                            icon='ADD'
+                        )
+                        op.file_path = file_path
+                        op.instance_name = name
+                else:
+                    box.label(text="(No instances found)", icon='ERROR')
         else:
-            layout.label(text="No DSL files scanned yet", icon='INFO')
-        
-        layout.separator()
-        layout.operator("mesh.procedural_dsl_create_instance", icon='ADD')
+            layout.label(text="No DSL definitions found", icon='INFO')
+            layout.label(text="Click Refresh to scan")
 
 
 @procedural_panel

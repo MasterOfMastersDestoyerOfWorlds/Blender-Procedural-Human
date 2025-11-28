@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Type, Any
 
 import bpy
 from bpy.types import Operator
+from bpy.props import StringProperty
 
 from procedural_human.decorators.operator_decorator import procedural_operator
 
@@ -61,55 +62,37 @@ def get_all_dsl_instances() -> List[tuple]:
     return instances
 
 
-def get_dsl_instance_enum_items(self, context):
-    """Get enum items for DSL instances."""
-    if not _dsl_instances_cache:
-        scan_dsl_files()
-    
-    items = []
-    for file_path, instance_names in _dsl_instances_cache.items():
-        file_name = os.path.basename(file_path).replace('.py', '')
-        for name in instance_names:
-            identifier = f"{file_path}|{name}"
-            items.append((identifier, f"{name} ({file_name})", f"Create {name} from {file_name}.py"))
-    
-    if not items:
-        items.append(("NONE", "No DSL instances found", "Scan for DSL files first"))
-    
-    return items
-
-
 @procedural_operator
 class DSLCreateInstance(Operator):
     """Create a procedural object from DSL definition"""
     
-    dsl_instance: bpy.props.EnumProperty(
-        name="DSL Instance",
-        description="Select DSL instance to create",
-        items=get_dsl_instance_enum_items,
+    file_path: StringProperty(
+        name="File Path",
+        description="Path to the DSL file",
+        default="",
+    )
+    
+    instance_name: StringProperty(
+        name="Instance Name", 
+        description="Name of the DSL instance to create",
+        default="",
     )
     
     @classmethod
     def poll(cls, context):
         return context.area.type == 'VIEW_3D'
     
-    def invoke(self, context, event):
-        scan_dsl_files()
-        return context.window_manager.invoke_props_dialog(self)
-    
     def execute(self, context):
-        if self.dsl_instance == "NONE" or "|" not in self.dsl_instance:
-            self.report({'ERROR'}, "No valid DSL instance selected")
+        if not self.file_path or not self.instance_name:
+            self.report({'ERROR'}, "No DSL instance specified")
             return {'CANCELLED'}
-        
-        file_path, instance_name = self.dsl_instance.split("|", 1)
         
         try:
             from procedural_human.dsl.generator import generate_from_dsl_file
             from procedural_human.dsl.watcher import DSLFileWatcher
             
             generated = generate_from_dsl_file(
-                file_path, context, instance_filter=[instance_name])
+                self.file_path, context, instance_filter=[self.instance_name])
             
             if generated:
                 obj = generated[0].blend_obj
@@ -117,12 +100,12 @@ class DSLCreateInstance(Operator):
                 obj.select_set(True)
                 
                 watcher = DSLFileWatcher.get_instance()
-                watcher.watch_file(file_path, [obj.name])
+                watcher.watch_file(self.file_path, [obj.name])
                 
-                self.report({'INFO'}, f"Created {instance_name}")
+                self.report({'INFO'}, f"Created {self.instance_name}")
                 return {'FINISHED'}
             else:
-                self.report({'ERROR'}, f"Failed to generate {instance_name}")
+                self.report({'ERROR'}, f"Failed to generate {self.instance_name}")
                 return {'CANCELLED'}
         except Exception as e:
             self.report({'ERROR'}, str(e))

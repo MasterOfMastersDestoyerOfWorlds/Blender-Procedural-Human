@@ -127,14 +127,29 @@ class DSLExecutor:
         self._instances.clear()
         
         dsl_primitives = {'DualRadial', 'QuadRadial', 'IKLimits', 'RadialAttachment', 'Joint'}
+        builtin_names = {'range', 'len', 'sum', 'min', 'max', 'abs', 'print', 
+                         'normalize', 'last', 'Extend', 'Join', 'AttachRaycast'}
+        skip_names = dsl_primitives | builtin_names
         
+        # First pass: extract all class definitions
         for name, value in namespace.items():
             if name.startswith('_'):
                 continue
-            if isinstance(value, type) and name not in dsl_primitives:
+            if isinstance(value, type) and name not in skip_names:
                 self._definitions[name] = value
-            elif not callable(value) and name not in dsl_primitives:
-                if hasattr(value, '__class__') and value.__class__.__name__ in self._definitions:
+        
+        # Second pass: extract instances of those classes
+        for name, value in namespace.items():
+            if name.startswith('_'):
+                continue
+            if name in skip_names:
+                continue
+            if isinstance(value, type):
+                continue  # Skip classes
+            if not callable(value):
+                # Check if it's an instance of one of our defined classes
+                class_name = value.__class__.__name__
+                if class_name in self._definitions:
                     self._instances[name] = value
 
 
@@ -147,6 +162,11 @@ def execute_dsl_file(file_path: str) -> DSLExecutionResult:
 def get_dsl_instances(file_path: str) -> List[str]:
     """Get list of instance names from a DSL file."""
     result = execute_dsl_file(file_path)
+    print(f"[DSL] File: {file_path}")
+    print(f"[DSL] Definitions found: {list(result.definitions.keys())}")
+    print(f"[DSL] Instances found: {list(result.instances.keys())}")
+    if result.errors:
+        print(f"[DSL] Errors: {result.errors}")
     return list(result.instances.keys())
 
 

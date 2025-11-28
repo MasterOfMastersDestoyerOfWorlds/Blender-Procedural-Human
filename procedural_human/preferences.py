@@ -105,8 +105,14 @@ class RefreshCodebasePath(Operator):
 
 
 def register():
-    bpy.utils.register_class(ProceduralHumanPreferences)
+    try:
+        bpy.utils.register_class(ProceduralHumanPreferences)
+    except Exception as e:
+        print(f"Warning: Failed to register ProceduralHumanPreferences: {e}")
 
 
 def unregister():
-    bpy.utils.unregister_class(ProceduralHumanPreferences)
+    try:
+        bpy.utils.unregister_class(ProceduralHumanPreferences)
+    except Exception as e:
+        print(f"Warning: Failed to unregister ProceduralHumanPreferences: {e}")
