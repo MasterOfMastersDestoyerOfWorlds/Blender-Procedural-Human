@@ -501,49 +501,68 @@ def check_curves_for_changes():
 
 
 def _auto_save_curves(obj, changed_curves):
-    """Auto-save changed curves for a DSL object."""
+    """Auto-save changed curves for a DSL object to a separate presets file."""
+    from procedural_human.utils.tree_sitter_utils import (
+        ensure_presets_file_exists,
+        batch_update_preset_classes,
+    )
+    
     source_file = obj.get("dsl_source_file", "")
     instance_name = obj.get("dsl_instance_name", "")
     
     if not source_file or not instance_name:
         return
     
-    preset_name = f"{instance_name}_AutoSave"
+    if not os.path.exists(source_file):
+        print(f"[AutoSave] Source file not found: {source_file}")
+        return
     
-    preset_data = {}
+    presets_file = ensure_presets_file_exists(source_file)
+    
+    segments_data = {}
     all_curves = _get_dsl_object_curves(obj)
     
     for label, curve_data in all_curves.items():
         node = curve_data["node"]
         data = serialize_float_curve_node(node)
         if data:
-            if " X " in label or label.endswith(" X") or "_X" in label:
-                seg_name = (
-                    label.replace(" X Profile", "")
-                    .replace(" X Segment", "")
-                    .replace("_X", "")
-                    .replace(" X", "")
-                    .strip()
-                )
-                key = f"{seg_name}_X"
-            elif " Y " in label or label.endswith(" Y") or "_Y" in label:
-                seg_name = (
-                    label.replace(" Y Profile", "")
-                    .replace(" Y Segment", "")
-                    .replace("_Y", "")
-                    .replace(" Y", "")
-                    .strip()
-                )
-                key = f"{seg_name}_Y"
+            if " X Profile" in label:
+                seg_name = label.replace(" X Profile", "").strip()
+                axis = "X"
+            elif " Y Profile" in label:
+                seg_name = label.replace(" Y Profile", "").strip()
+                axis = "Y"
             else:
-                key = label
+                continue
             
-            preset_data[key] = data
+            if seg_name not in segments_data:
+                segments_data[seg_name] = {}
+            segments_data[seg_name][f"{seg_name}_{axis}"] = data
     
-    if preset_data:
-        FLOAT_CURVE_PRESETS[preset_name] = preset_data
-        register_preset_data(preset_name, preset_data, source_file)
-        print(f"[AutoSave] Saved curves for {instance_name}: {list(changed_curves.keys())}")
+    if not segments_data:
+        return
+    
+    presets_to_update = []
+    for seg_name, curves in segments_data.items():
+        safe_class_name = f"Preset{instance_name}{seg_name.replace('_', '').replace(' ', '')}Curves"
+        preset_name = f"{instance_name}_{seg_name}"
+        presets_to_update.append({
+            "preset_name": preset_name,
+            "class_name": safe_class_name,
+            "curves_data": curves,
+        })
+    
+    success = batch_update_preset_classes(presets_file, presets_to_update)
+    
+    if success:
+        preset_name = f"{instance_name}_Curves"
+        combined_data = {}
+        for seg_name, seg_curves in segments_data.items():
+            combined_data.update(seg_curves)
+        FLOAT_CURVE_PRESETS[preset_name] = combined_data
+        register_preset_data(preset_name, combined_data, presets_file)
+        
+        print(f"[AutoSave] Saved curves for {instance_name} to {presets_file}: {list(changed_curves.keys())}")
 
 
 def start_curve_autosave():

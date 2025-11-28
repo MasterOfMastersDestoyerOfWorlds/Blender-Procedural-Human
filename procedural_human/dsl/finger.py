@@ -96,4 +96,3 @@ Thumb = Finger([46.22, 21.67])
 Middle = Finger([44.63, 26.33, 17.40])
 Ring = Finger([41.37, 25.65, 17.30])
 Little = Finger([32.74, 18.11, 15.96])
-

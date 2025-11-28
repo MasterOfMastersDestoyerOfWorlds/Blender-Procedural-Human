@@ -618,3 +618,331 @@ def _parse_instance_assignment(assign_node: Any, source_bytes: bytes, class_name
         "args": args,
         "line": assign_node.start_point[0] + 1,
     }
+
+
+def find_preset_class_range(file_path: str, preset_name: str) -> Optional[Dict]:
+    """
+    Find the byte range and line range of a preset class in a file.
+    
+    Returns dict with start_byte, end_byte, start_line, end_line or None.
+    """
+    if not os.path.exists(file_path):
+        return None
+    
+    parser, source_bytes = parse_python_file(file_path)
+    tree = parser.parse(source_bytes)
+    
+    for node in tree.root_node.children:
+        if node.type == "decorated_definition":
+            decorators = []
+            class_node = None
+            
+            for child in node.children:
+                if child.type == "decorator":
+                    decorators.append(child)
+                elif child.type == "class_definition":
+                    class_node = child
+            
+            if decorators and class_node:
+                for decorator_node in decorators:
+                    decorator_text = _get_node_text(decorator_node, source_bytes)
+                    if f'register_preset_class("{preset_name}")' in decorator_text:
+                        return {
+                            "start_byte": node.start_byte,
+                            "end_byte": node.end_byte,
+                            "start_line": node.start_point[0] + 1,
+                            "end_line": node.end_point[0] + 1,
+                        }
+    
+    return None
+
+
+def find_last_import_position(file_path: str) -> Dict:
+    """
+    Find the position after the last import statement in a file.
+    
+    Returns dict with byte position and line number.
+    """
+    parser, source_bytes = parse_python_file(file_path)
+    tree = parser.parse(source_bytes)
+    
+    last_import_end = 0
+    last_import_line = 0
+    
+    for node in tree.root_node.children:
+        if node.type in ("import_statement", "import_from_statement"):
+            last_import_end = node.end_byte
+            last_import_line = node.end_point[0] + 1
+    
+    return {
+        "byte": last_import_end,
+        "line": last_import_line,
+    }
+
+
+def find_file_end_position(file_path: str) -> Dict:
+    """
+    Find the end position of a file.
+    
+    Returns dict with byte position and line number.
+    """
+    parser, source_bytes = parse_python_file(file_path)
+    tree = parser.parse(source_bytes)
+    
+    return {
+        "byte": len(source_bytes),
+        "line": tree.root_node.end_point[0] + 1,
+    }
+
+
+def has_import(file_path: str, import_text: str) -> bool:
+    """Check if a file contains a specific import statement."""
+    if not os.path.exists(file_path):
+        return False
+    
+    parser, source_bytes = parse_python_file(file_path)
+    tree = parser.parse(source_bytes)
+    source_str = source_bytes.decode("utf-8")
+    
+    for node in tree.root_node.children:
+        if node.type in ("import_statement", "import_from_statement"):
+            node_text = _get_node_text(node, source_bytes)
+            if import_text in node_text:
+                return True
+    
+    return False
+
+
+def insert_import_after_last(file_path: str, import_statement: str) -> bool:
+    """
+    Insert an import statement after the last existing import.
+    Uses tree-sitter to find the correct position.
+    
+    Returns True if successful, False otherwise.
+    """
+    if has_import(file_path, import_statement.split()[-1].split(".")[0]):
+        return True
+    
+    parser, source_bytes = parse_python_file(file_path)
+    tree = parser.parse(source_bytes)
+    
+    last_import_end = 0
+    
+    for node in tree.root_node.children:
+        if node.type in ("import_statement", "import_from_statement"):
+            last_import_end = node.end_byte
+    
+    source_str = source_bytes.decode("utf-8")
+    
+    if last_import_end > 0:
+        new_content = (
+            source_str[:last_import_end] + 
+            "\n" + import_statement + 
+            source_str[last_import_end:]
+        )
+    else:
+        if source_str.startswith('"""') or source_str.startswith("'''"):
+            end_docstring = source_str.find('"""', 3)
+            if end_docstring == -1:
+                end_docstring = source_str.find("'''", 3)
+            if end_docstring != -1:
+                end_docstring += 3
+                while end_docstring < len(source_str) and source_str[end_docstring] in "\n\r":
+                    end_docstring += 1
+                new_content = (
+                    source_str[:end_docstring] + 
+                    "\n" + import_statement + "\n" + 
+                    source_str[end_docstring:]
+                )
+            else:
+                new_content = import_statement + "\n\n" + source_str
+        else:
+            new_content = import_statement + "\n\n" + source_str
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    
+    return True
+
+
+def replace_or_append_preset_class(
+    file_path: str,
+    preset_name: str,
+    class_name: str,
+    curves_data: dict,
+) -> bool:
+    """
+    Replace an existing preset class or append a new one using tree-sitter.
+    
+    Uses line-based replacement to be more robust against concurrent modifications.
+    
+    Args:
+        file_path: Path to the Python file
+        preset_name: Name for the @register_preset_class decorator
+        class_name: Name of the class to create
+        curves_data: Dictionary of curve data
+        
+    Returns:
+        True if successful, False otherwise.
+    """
+    import json
+    
+    formatted_data = json.dumps(curves_data, indent=4)
+    formatted_data_lines = formatted_data.split("\n")
+    indented_data = "\n".join(
+        "        " + line if i > 0 else "        " + line 
+        for i, line in enumerate(formatted_data_lines)
+    )
+    
+    new_class = f'''@register_preset_class("{preset_name}")
+class {class_name}(Preset):
+    """Preset for {preset_name} curves"""
+
+    def get_data(self):
+        return {indented_data.strip()}
+'''
+    
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    
+    existing_range = find_preset_class_range(file_path, preset_name)
+    
+    if existing_range:
+        lines = content.split("\n")
+        start_line = existing_range["start_line"] - 1
+        end_line = existing_range["end_line"]
+        
+        new_class_lines = new_class.rstrip("\n").split("\n")
+        new_lines = lines[:start_line] + new_class_lines + lines[end_line:]
+        new_content = "\n".join(new_lines)
+    else:
+        if not content.endswith("\n"):
+            content += "\n"
+        if not content.endswith("\n\n"):
+            content += "\n"
+        new_content = content + new_class
+    
+    try:
+        compile(new_content, file_path, "exec")
+    except SyntaxError as e:
+        print(f"[TreeSitter] Warning: Generated code has syntax error: {e}")
+        print(f"[TreeSitter] Skipping write to {file_path}")
+        return False
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    
+    return True
+
+
+def batch_update_preset_classes(
+    file_path: str,
+    presets: List[Dict],
+) -> bool:
+    """
+    Update multiple preset classes in a single file operation.
+    
+    This avoids race conditions from multiple sequential writes.
+    
+    Args:
+        file_path: Path to the Python file
+        presets: List of dicts with keys: preset_name, class_name, curves_data
+        
+    Returns:
+        True if successful, False otherwise.
+    """
+    import json
+    
+    if not os.path.exists(file_path):
+        return False
+    
+    existing_presets = {}
+    for preset_info in presets:
+        preset_name = preset_info["preset_name"]
+        existing_range = find_preset_class_range(file_path, preset_name)
+        existing_presets[preset_name] = existing_range
+    
+    with open(file_path, "r", encoding="utf-8") as f:
+        lines = f.read().split("\n")
+    
+    ranges_to_remove = []
+    for preset_name, existing_range in existing_presets.items():
+        if existing_range:
+            ranges_to_remove.append((existing_range["start_line"] - 1, existing_range["end_line"]))
+    
+    ranges_to_remove.sort(key=lambda x: x[0], reverse=True)
+    for start_line, end_line in ranges_to_remove:
+        lines = lines[:start_line] + lines[end_line:]
+    
+    while lines and lines[-1] == "":
+        lines.pop()
+    
+    for preset_info in presets:
+        preset_name = preset_info["preset_name"]
+        class_name = preset_info["class_name"]
+        curves_data = preset_info["curves_data"]
+        
+        formatted_data = json.dumps(curves_data, indent=4)
+        formatted_data_lines = formatted_data.split("\n")
+        indented_data = "\n".join(
+            "        " + line if i > 0 else "        " + line 
+            for i, line in enumerate(formatted_data_lines)
+        )
+        
+        new_class_text = f'''
+
+@register_preset_class("{preset_name}")
+class {class_name}(Preset):
+    """Preset for {preset_name} curves"""
+
+    def get_data(self):
+        return {indented_data.strip()}
+'''
+        new_class_lines = new_class_text.split("\n")
+        lines.extend(new_class_lines)
+    
+    new_content = "\n".join(lines)
+    
+    try:
+        compile(new_content, file_path, "exec")
+    except SyntaxError as e:
+        print(f"[TreeSitter] Warning: Generated code has syntax error at line {e.lineno}: {e.msg}")
+        print(f"[TreeSitter] Skipping write to {file_path}")
+        return False
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    
+    return True
+
+
+def ensure_presets_file_exists(source_file: str) -> str:
+    """
+    Ensure the presets file for a DSL source file exists.
+    Creates it if it doesn't exist.
+    
+    Args:
+        source_file: Path to the main DSL file (e.g., finger.py)
+        
+    Returns:
+        Path to the presets file (e.g., finger_float_curve_presets.py)
+    """
+    dir_path = os.path.dirname(source_file)
+    base_name = os.path.basename(source_file)
+    name_without_ext = os.path.splitext(base_name)[0]
+    presets_file = os.path.join(dir_path, f"{name_without_ext}_float_curve_presets.py")
+    
+    if not os.path.exists(presets_file):
+        with open(presets_file, "w", encoding="utf-8") as f:
+            f.write(f'''"""
+Float curve presets for {name_without_ext} DSL.
+
+Auto-generated file - do not edit manually.
+Presets are saved here when curves are modified in Blender.
+"""
+
+from procedural_human.decorators.curve_preset_decorator import register_preset_class, Preset
+
+''')
+    
+    return presets_file
