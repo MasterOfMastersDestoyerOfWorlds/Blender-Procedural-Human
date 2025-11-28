@@ -2,7 +2,9 @@ import bpy
 import json
 import importlib
 import os
+import hashlib
 from bpy.types import Operator
+from bpy.app.handlers import persistent
 from procedural_human.decorators.operator_decorator import (
     procedural_operator,
     dynamic_enum_operator,
@@ -20,6 +22,10 @@ from procedural_human.hand.finger.finger_segment import finger_segment_profiles
 
 
 FLOAT_CURVE_PRESETS = {}
+
+_curve_hashes = {}
+_autosave_enabled = True
+_autosave_timer = None
 
 
 def load_presets_from_file():
@@ -420,3 +426,180 @@ class LoadFloatCurvePreset(Operator):
 
 
 load_presets_from_file()
+
+
+def _get_curve_hash(node):
+    """Get a hash of a float curve node's current state."""
+    if node.type != "FLOAT_CURVE" and node.bl_idname != "ShaderNodeFloatCurve":
+        return None
+    
+    curve = node.mapping.curves[0]
+    data = []
+    for p in curve.points:
+        data.append((round(p.location[0], 4), round(p.location[1], 4), p.handle_type))
+    return hashlib.md5(str(data).encode()).hexdigest()
+
+
+def _get_dsl_object_curves(obj):
+    """Get all float curve nodes from a DSL-generated object."""
+    curves = {}
+    
+    if not obj or obj.type != "MESH":
+        return curves
+    
+    if not obj.get("dsl_source_file"):
+        return curves
+    
+    for mod in obj.modifiers:
+        if mod.type == "NODES" and mod.node_group:
+            for node in mod.node_group.nodes:
+                if node.type == "FLOAT_CURVE" or node.bl_idname == "ShaderNodeFloatCurve":
+                    label = node.label or node.name
+                    curves[label] = {
+                        "node": node,
+                        "hash": _get_curve_hash(node),
+                        "object": obj,
+                        "modifier": mod,
+                    }
+    
+    return curves
+
+
+def check_curves_for_changes():
+    """Check all DSL objects for curve changes and save if modified."""
+    global _curve_hashes, _autosave_enabled
+    
+    if not _autosave_enabled:
+        return 1.0
+    
+    changed_objects = {}
+    
+    for obj in bpy.data.objects:
+        if not obj.get("dsl_source_file"):
+            continue
+        
+        curves = _get_dsl_object_curves(obj)
+        obj_name = obj.name
+        
+        for label, curve_data in curves.items():
+            key = f"{obj_name}:{label}"
+            new_hash = curve_data["hash"]
+            
+            if key in _curve_hashes:
+                if _curve_hashes[key] != new_hash:
+                    if obj_name not in changed_objects:
+                        changed_objects[obj_name] = {"object": obj, "curves": {}}
+                    changed_objects[obj_name]["curves"][label] = curve_data
+                    _curve_hashes[key] = new_hash
+            else:
+                _curve_hashes[key] = new_hash
+    
+    for obj_name, obj_data in changed_objects.items():
+        _auto_save_curves(obj_data["object"], obj_data["curves"])
+    
+    return 1.0
+
+
+def _auto_save_curves(obj, changed_curves):
+    """Auto-save changed curves for a DSL object."""
+    source_file = obj.get("dsl_source_file", "")
+    instance_name = obj.get("dsl_instance_name", "")
+    
+    if not source_file or not instance_name:
+        return
+    
+    preset_name = f"{instance_name}_AutoSave"
+    
+    preset_data = {}
+    all_curves = _get_dsl_object_curves(obj)
+    
+    for label, curve_data in all_curves.items():
+        node = curve_data["node"]
+        data = serialize_float_curve_node(node)
+        if data:
+            if " X " in label or label.endswith(" X") or "_X" in label:
+                seg_name = (
+                    label.replace(" X Profile", "")
+                    .replace(" X Segment", "")
+                    .replace("_X", "")
+                    .replace(" X", "")
+                    .strip()
+                )
+                key = f"{seg_name}_X"
+            elif " Y " in label or label.endswith(" Y") or "_Y" in label:
+                seg_name = (
+                    label.replace(" Y Profile", "")
+                    .replace(" Y Segment", "")
+                    .replace("_Y", "")
+                    .replace(" Y", "")
+                    .strip()
+                )
+                key = f"{seg_name}_Y"
+            else:
+                key = label
+            
+            preset_data[key] = data
+    
+    if preset_data:
+        FLOAT_CURVE_PRESETS[preset_name] = preset_data
+        register_preset_data(preset_name, preset_data, source_file)
+        print(f"[AutoSave] Saved curves for {instance_name}: {list(changed_curves.keys())}")
+
+
+def start_curve_autosave():
+    """Start the curve auto-save timer."""
+    global _autosave_timer, _autosave_enabled
+    _autosave_enabled = True
+    
+    if _autosave_timer is None:
+        _autosave_timer = bpy.app.timers.register(check_curves_for_changes, first_interval=2.0, persistent=True)
+        print("[AutoSave] Float curve auto-save started")
+
+
+def stop_curve_autosave():
+    """Stop the curve auto-save timer."""
+    global _autosave_timer, _autosave_enabled
+    _autosave_enabled = False
+    
+    if _autosave_timer is not None:
+        try:
+            bpy.app.timers.unregister(check_curves_for_changes)
+        except ValueError:
+            pass
+        _autosave_timer = None
+        print("[AutoSave] Float curve auto-save stopped")
+
+
+def initialize_curve_tracking():
+    """Initialize curve tracking for all DSL objects."""
+    global _curve_hashes
+    _curve_hashes.clear()
+    
+    for obj in bpy.data.objects:
+        if obj.get("dsl_source_file"):
+            curves = _get_dsl_object_curves(obj)
+            for label, curve_data in curves.items():
+                key = f"{obj.name}:{label}"
+                _curve_hashes[key] = curve_data["hash"]
+    
+    print(f"[AutoSave] Initialized tracking for {len(_curve_hashes)} curves")
+
+
+@persistent
+def on_load_handler(dummy):
+    """Re-initialize curve tracking when a file is loaded."""
+    initialize_curve_tracking()
+
+
+def register_autosave_handlers():
+    """Register auto-save handlers."""
+    if on_load_handler not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(on_load_handler)
+    start_curve_autosave()
+
+
+def unregister_autosave_handlers():
+    """Unregister auto-save handlers."""
+    stop_curve_autosave()
+    if on_load_handler in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(on_load_handler)

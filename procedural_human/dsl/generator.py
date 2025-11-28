@@ -7,6 +7,10 @@ actual Blender geometry nodes.
 
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
+import json
+import os
+import tempfile
+from datetime import datetime
 
 import bpy
 
@@ -119,6 +123,8 @@ class DSLGenerator:
         
         gen_result = self._build_geometry_nodes(node_group, instance, gen_context)
         
+        self._export_debug_info(node_group, instance_name, source_file)
+        
         return GeneratedObject(
             name=instance_name,
             blend_obj=obj,
@@ -162,13 +168,99 @@ class DSLGenerator:
         
         node_group.links.new(input_node.outputs["Geometry"], join_geo.inputs["Geometry"])
         
+        all_geometry_outputs = []
+        
+        for seg in gen_result.segments:
+            if seg and "instance" in seg and hasattr(seg["instance"], "outputs"):
+                if "Geometry" in seg["instance"].outputs:
+                    all_geometry_outputs.append(seg["instance"].outputs["Geometry"])
+        
+        for joint in gen_result.joints:
+            if joint and "instance" in joint and hasattr(joint["instance"], "outputs"):
+                if "Geometry" in joint["instance"].outputs:
+                    all_geometry_outputs.append(joint["instance"].outputs["Geometry"])
+        
+        for attach in gen_result.attachments:
+            if attach and "instance" in attach and hasattr(attach["instance"], "outputs"):
+                if "Geometry" in attach["instance"].outputs:
+                    all_geometry_outputs.append(attach["instance"].outputs["Geometry"])
+        
         for geo_output in gen_result.geometry_outputs:
+            if geo_output is not None and geo_output not in all_geometry_outputs:
+                all_geometry_outputs.append(geo_output)
+        
+        for geo_output in all_geometry_outputs:
             if geo_output is not None:
                 node_group.links.new(geo_output, join_geo.inputs["Geometry"])
         
         node_group.links.new(join_geo.outputs["Geometry"], output_node.inputs["Geometry"])
         
         return gen_result
+    
+    def _export_debug_info(
+        self,
+        node_group: Any,
+        instance_name: str,
+        source_file: str,
+    ) -> None:
+        """Export node group structure to temp folder for debugging."""
+        debug_data = {
+            "instance_name": instance_name,
+            "source_file": source_file,
+            "timestamp": datetime.now().isoformat(),
+            "node_group_name": node_group.name,
+            "nodes": [],
+            "links": [],
+        }
+        
+        for node in node_group.nodes:
+            node_data = {
+                "name": node.name,
+                "label": node.label,
+                "type": node.bl_idname,
+                "location": list(node.location),
+            }
+            
+            if hasattr(node, 'inputs'):
+                node_data["inputs"] = [
+                    {"name": inp.name, "type": inp.bl_idname}
+                    for inp in node.inputs
+                ]
+            
+            if hasattr(node, 'outputs'):
+                node_data["outputs"] = [
+                    {"name": out.name, "type": out.bl_idname}
+                    for out in node.outputs
+                ]
+            
+            if hasattr(node, 'node_tree') and node.node_tree:
+                node_data["node_tree"] = node.node_tree.name
+            
+            if node.parent:
+                node_data["parent"] = node.parent.name
+            
+            debug_data["nodes"].append(node_data)
+        
+        for link in node_group.links:
+            link_data = {
+                "from_node": link.from_node.name,
+                "from_socket": link.from_socket.name,
+                "to_node": link.to_node.name,
+                "to_socket": link.to_socket.name,
+            }
+            debug_data["links"].append(link_data)
+        
+        debug_folder = os.path.join(tempfile.gettempdir(), "procedural_human_debug")
+        os.makedirs(debug_folder, exist_ok=True)
+        
+        safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in instance_name)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        debug_file = os.path.join(debug_folder, f"{safe_name}_{timestamp}.json")
+        
+        with open(debug_file, 'w') as f:
+            json.dump(debug_data, f, indent=2)
+        
+        print(f"[DSL Debug] Exported node structure to: {debug_file}")
     
     def _generate_recursive(
         self,
@@ -177,6 +269,7 @@ class DSLGenerator:
         prev_geometry: Any = None,
         depth: int = 0,
         index: int = 0,
+        attr_name: str = "",
     ) -> GenerationResult:
         """
         Recursively generate nodes for any object with generate() or generatable attributes.
@@ -190,7 +283,7 @@ class DSLGenerator:
             return result
         
         if hasattr(obj, 'generate'):
-            gen_result = self._call_generate(obj, context, prev_geometry, index)
+            gen_result = self._call_generate(obj, context, prev_geometry, index, attr_name)
             if gen_result:
                 self._categorize_result(gen_result, result)
                 if "instance" in gen_result and hasattr(gen_result["instance"], "outputs"):
@@ -201,25 +294,45 @@ class DSLGenerator:
         if isinstance(obj, (list, tuple)):
             prev_output = prev_geometry
             for idx, item in enumerate(obj):
-                sub_result = self._generate_recursive(item, context, prev_output, depth + 1, idx)
+                sub_result = self._generate_recursive(
+                    item, context, prev_output, depth + 1, idx, attr_name
+                )
                 result.merge(sub_result)
-                if sub_result.geometry_outputs:
+                
+                if sub_result.segments:
+                    last_seg = sub_result.segments[-1]
+                    if last_seg and "instance" in last_seg:
+                        instance = last_seg["instance"]
+                        if hasattr(instance, "outputs") and "Geometry" in instance.outputs:
+                            prev_output = instance.outputs["Geometry"]
+                elif sub_result.geometry_outputs:
                     prev_output = sub_result.geometry_outputs[-1]
             return result
         
         if isinstance(obj, dict):
             for key, value in obj.items():
-                sub_result = self._generate_recursive(value, context, prev_geometry, depth + 1)
+                sub_result = self._generate_recursive(
+                    value, context, prev_geometry, depth + 1, attr_name=key
+                )
                 result.merge(sub_result)
             return result
         
         if self._is_dsl_instance(obj):
-            for attr_name in self._get_generatable_attrs(obj):
-                attr_value = getattr(obj, attr_name, None)
+            for attr_nm in self._get_generatable_attrs(obj):
+                attr_value = getattr(obj, attr_nm, None)
                 if attr_value is not None:
-                    sub_result = self._generate_recursive(attr_value, context, prev_geometry, depth + 1)
+                    sub_result = self._generate_recursive(
+                        attr_value, context, prev_geometry, depth + 1, attr_name=attr_nm
+                    )
                     result.merge(sub_result)
-                    if sub_result.geometry_outputs:
+                    
+                    if sub_result.segments:
+                        last_seg = sub_result.segments[-1]
+                        if last_seg and "instance" in last_seg:
+                            instance = last_seg["instance"]
+                            if hasattr(instance, "outputs") and "Geometry" in instance.outputs:
+                                prev_geometry = instance.outputs["Geometry"]
+                    elif sub_result.geometry_outputs:
                         prev_geometry = sub_result.geometry_outputs[-1]
         
         return result
@@ -230,6 +343,7 @@ class DSLGenerator:
         context: GenerationContext,
         prev_geometry: Any,
         index: int,
+        attr_name: str = "",
     ) -> Optional[Dict]:
         """Call generate() on an object with appropriate arguments."""
         import inspect
@@ -246,6 +360,8 @@ class DSLGenerator:
             kwargs['context'] = context
         if 'index' in params:
             kwargs['index'] = index
+        if 'attr_name' in params:
+            kwargs['attr_name'] = attr_name
         if 'segment_results' in params:
             kwargs['segment_results'] = list(context.segment_results.values())
         if 'segment_result' in params and context.segment_results:

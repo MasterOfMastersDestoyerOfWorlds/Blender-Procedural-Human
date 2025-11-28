@@ -45,6 +45,8 @@ class GenerationContext:
     segment_results: Dict[int, Dict] = field(default_factory=dict)
     current_y_offset: float = 0
     node_spacing: float = 300
+    current_attr_name: str = ""
+    normalized_lengths: List[float] = field(default_factory=list)
     
     def get_next_y_offset(self) -> float:
         """Get next Y position and decrement for next call."""
@@ -348,9 +350,16 @@ class Joint:
         )
         
         node_group = context.node_group
-        y_offset = context.get_next_y_offset()
         
         joint_name = f"Joint_{index}"
+        
+        frame = node_group.nodes.new("NodeFrame")
+        frame.label = joint_name
+        frame.label_size = 30
+        
+        prev_y = prev_segment_result.get("abs_y", 0)
+        next_y = next_segment_result.get("abs_y", 0)
+        y_offset = (prev_y + next_y) / 2
         
         joint_group = create_joint_segment_node_group(
             name=f"{context.instance_name}_{joint_name}_Group",
@@ -361,12 +370,24 @@ class Joint:
         curve_labels = ["0°", "90°", "180°", "270°"]
         closures = []
         
-        for i, angle_label in enumerate(curve_labels):
+        first_closure = create_flat_float_curve_closure(
+            node_group.nodes,
+            node_group.links,
+            label=f"{joint_name} {curve_labels[0]}",
+            location=(-500, y_offset),
+            value=0.5,
+        )
+        closures.append(first_closure)
+        
+        closure_height = first_closure.height()
+        vertical_spacing = 300
+        
+        for i, angle_label in enumerate(curve_labels[1:], start=1):
             closure = create_flat_float_curve_closure(
                 node_group.nodes,
                 node_group.links,
                 label=f"{joint_name} {angle_label}",
-                location=(-500, y_offset - i * 100),
+                location=(-500, y_offset - i * vertical_spacing),
                 value=0.5,
             )
             closures.append(closure)
@@ -374,10 +395,12 @@ class Joint:
         joint_instance = node_group.nodes.new("GeometryNodeGroup")
         joint_instance.node_tree = joint_group
         joint_instance.label = joint_name
-        joint_instance.location = (
-            (prev_segment_result["abs_x"] + next_segment_result["abs_x"]) / 2,
-            (prev_segment_result["abs_y"] + next_segment_result["abs_y"]) / 2,
-        )
+        
+        prev_x = prev_segment_result.get("abs_x", 0)
+        next_x = next_segment_result.get("abs_x", 0)
+        joint_x = (prev_x + next_x) / 2 + 200
+        
+        joint_instance.location = (joint_x, y_offset)
         
         node_group.links.new(
             prev_segment_result["instance"].outputs["Geometry"],
@@ -392,6 +415,11 @@ class Joint:
         for closure, input_name in zip(closures, closure_inputs):
             node_group.links.new(closure.output_socket, joint_instance.inputs[input_name])
         
+        for closure in closures:
+            for node in closure.nodes():
+                node.parent = frame
+        joint_instance.parent = frame
+        
         context.current_y_offset = closures[-1].min_y() - 200
         
         return {
@@ -399,6 +427,7 @@ class Joint:
             "node_group": joint_group,
             "instance": joint_instance,
             "closures": closures,
+            "frame": frame,
             "joint": self,
             "abs_x": joint_instance.location[0],
             "abs_y": joint_instance.location[1],
@@ -428,6 +457,7 @@ class RadialAttachment:
         self,
         context: GenerationContext,
         segment_result: Dict,
+        attr_name: str = "",
     ) -> Dict:
         """Generate attachment geometry using raycast positioning."""
         import bpy
@@ -438,8 +468,13 @@ class RadialAttachment:
         node_group = context.node_group
         segment = segment_result["segment"]
         
+        attachment_label = f"Attachment_{attr_name}" if attr_name else "Attachment"
+        attachment_label = attachment_label.strip("_").replace("_attachment", "").replace("attachment_", "")
+        if attr_name:
+            attachment_label = f"Attachment_{attr_name.lstrip('_').title()}"
+        
         nail_group = create_fingernail_node_group(
-            name=f"{context.instance_name}_Attachment",
+            name=f"{context.instance_name}_{attachment_label}_Group",
             curl_direction=self.rotation,
             distal_seg_radius=segment.radius,
             nail_width_ratio=self.size_ratio,
@@ -448,7 +483,7 @@ class RadialAttachment:
         
         attachment_instance = node_group.nodes.new("GeometryNodeGroup")
         attachment_instance.node_tree = nail_group
-        attachment_instance.label = "Attachment"
+        attachment_instance.label = attachment_label
         attachment_instance.location = (
             segment_result["abs_x"] + 200,
             segment_result["abs_y"],
@@ -479,6 +514,7 @@ class SegmentChain:
     """Result of Extend() - a chain of segments along an axis."""
     segments: List[Any]
     axis: str = 'Z'
+    norm_lengths: List[float] = field(default_factory=list)
     
     def __iter__(self):
         return iter(self.segments)
@@ -494,12 +530,19 @@ class SegmentChain:
         Generate chained segment geometry nodes.
         
         Creates each segment and chains geometry: prev_output -> next_input
+        Uses normalized lengths if available.
         """
         results = []
         prev_geometry_output = None
         
+        if self.norm_lengths and len(self.norm_lengths) == len(self.segments):
+            context.normalized_lengths = self.norm_lengths
+        
         for idx, segment in enumerate(self.segments):
             if hasattr(segment, 'generate'):
+                if self.norm_lengths and idx < len(self.norm_lengths):
+                    segment.length = self.norm_lengths[idx]
+                
                 result = segment.generate(context, idx)
                 results.append(result)
                 
@@ -562,11 +605,13 @@ class AttachedStructure:
     """Result of AttachRaycast() - segment with terminal attachment."""
     segment: Any
     attachment: RadialAttachment
+    attr_name: str = ""
     
-    def generate(self, context: GenerationContext, segment_result: Dict) -> Dict:
+    def generate(self, context: GenerationContext, segment_result: Dict, attr_name: str = "") -> Dict:
         """Generate attachment on segment end."""
+        attachment_name = attr_name or self.attr_name or "attachment"
         if hasattr(self.attachment, 'generate'):
-            return self.attachment.generate(context, segment_result)
+            return self.attachment.generate(context, segment_result, attr_name=attachment_name)
         return {}
 
 
@@ -590,9 +635,9 @@ def last(items: List[Any]) -> Any:
 
 
 @dsl_helper
-def Extend(segments: List[Any], axis: str = 'Z') -> SegmentChain:
-    """Chain segments along an axis."""
-    return SegmentChain(segments=segments, axis=axis)
+def Extend(segments: List[Any], axis: str = 'Z', norm_lengths: List[float] = None) -> SegmentChain:
+    """Chain segments along an axis, optionally with normalized lengths."""
+    return SegmentChain(segments=segments, axis=axis, norm_lengths=norm_lengths or [])
 
 
 @dsl_helper

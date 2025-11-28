@@ -327,9 +327,21 @@ def register():
     panels.register()
     menus.register()
     finger.register()
+    
+    try:
+        from procedural_human.utils.curve_serialization import register_autosave_handlers
+        register_autosave_handlers()
+    except ImportError as e:
+        print(f"[Procedural Human] Could not register curve autosave: {e}")
 
 
 def unregister():
+    try:
+        from procedural_human.utils.curve_serialization import unregister_autosave_handlers
+        unregister_autosave_handlers()
+    except ImportError:
+        pass
+    
     finger.unregister()
     menus.unregister()
     panels.unregister()

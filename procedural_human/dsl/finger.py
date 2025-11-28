@@ -72,7 +72,7 @@ class Finger:
         )
         self.knuckle_template = Knuckle
         
-        self._segment_chain = Extend(segments, axis='Z')
+        self._segment_chain = Extend(segments, axis='Z', norm_lengths=norm_lengths)
         self._joined_structure = Join(segments, Knuckle)
         self.joints = self._joined_structure.joints
         self._nail_attachment = AttachRaycast(last(segments), Nail)
