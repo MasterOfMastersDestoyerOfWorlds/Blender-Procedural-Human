@@ -150,10 +150,6 @@ class DSLGenerator:
         input_node.label = "Input"
         input_node.location = (-1000, 0)
         
-        output_node = node_group.nodes.new("NodeGroupOutput")
-        output_node.label = "Output"
-        output_node.location = (1200, 0)
-        
         starting_point = node_group.nodes.new("GeometryNodeCurvePrimitiveLine")
         starting_point.label = "Starting Axis"
         starting_point.location = (-700, 400)
@@ -162,9 +158,20 @@ class DSLGenerator:
         
         gen_result = self._generate_recursive(instance, context, starting_point.outputs["Curve"])
         
+        max_x = 0
+        for node in node_group.nodes:
+            if node.bl_idname != "NodeFrame":
+                node_right = node.location[0] + node.width
+                if node_right > max_x:
+                    max_x = node_right
+        
         join_geo = node_group.nodes.new("GeometryNodeJoinGeometry")
         join_geo.label = "Join All"
-        join_geo.location = (1000, 0)
+        join_geo.location = (max_x + 200, 0)
+        
+        output_node = node_group.nodes.new("NodeGroupOutput")
+        output_node.label = "Output"
+        output_node.location = (join_geo.location[0] + 200, 0)
         
         node_group.links.new(input_node.outputs["Geometry"], join_geo.inputs["Geometry"])
         
@@ -203,7 +210,7 @@ class DSLGenerator:
         instance_name: str,
         source_file: str,
     ) -> None:
-        """Export node group structure to temp folder for debugging."""
+        """Export node group structure to temp folder in repo for debugging."""
         debug_data = {
             "instance_name": instance_name,
             "source_file": source_file,
@@ -250,7 +257,8 @@ class DSLGenerator:
             }
             debug_data["links"].append(link_data)
         
-        debug_folder = os.path.join(tempfile.gettempdir(), "procedural_human_debug")
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        debug_folder = os.path.join(repo_root, ".temp", "debug")
         os.makedirs(debug_folder, exist_ok=True)
         
         safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in instance_name)
@@ -427,15 +435,39 @@ class DSLGenerator:
     def _get_generatable_attrs(self, obj: Any) -> List[str]:
         """Get list of attribute names that might be generatable.
         
-        Returns attrs sorted so public attrs (no underscore) come first,
-        then single-underscore attrs. This ensures primary data like 'segments'
-        is processed before derived data like '_nail_attachment'.
+        Returns attrs in processing order:
+        1. _segment_chain (if exists) instead of segments
+        2. _joined_structure (if exists) instead of joints
+        3. Other private attrs like _nail_attachment
+        
+        Skips raw lists that are wrapped by structure classes.
         """
-        public_attrs = []
-        private_attrs = []
+        from procedural_human.dsl.primitives import SegmentChain, JoinedStructure
+        
+        has_segment_chain = hasattr(obj, '_segment_chain') and isinstance(getattr(obj, '_segment_chain', None), SegmentChain)
+        has_joined_structure = hasattr(obj, '_joined_structure') and isinstance(getattr(obj, '_joined_structure', None), JoinedStructure)
+        
+        skip_attrs = set()
+        if has_segment_chain:
+            skip_attrs.add('segments')
+        if has_joined_structure:
+            skip_attrs.add('joints')
+        
+        ordered_attrs = []
+        
+        if has_segment_chain:
+            ordered_attrs.append('_segment_chain')
+        if has_joined_structure:
+            ordered_attrs.append('_joined_structure')
+        
+        other_private = []
         
         for attr_name in dir(obj):
             if attr_name.startswith('__'):
+                continue
+            if attr_name in skip_attrs:
+                continue
+            if attr_name in ('_segment_chain', '_joined_structure'):
                 continue
             if attr_name.startswith('get_') or attr_name.startswith('to_'):
                 continue
@@ -459,11 +491,10 @@ class DSLGenerator:
             
             if is_generatable:
                 if attr_name.startswith('_'):
-                    private_attrs.append(attr_name)
-                else:
-                    public_attrs.append(attr_name)
+                    other_private.append(attr_name)
         
-        return public_attrs + private_attrs
+        ordered_attrs.extend(other_private)
+        return ordered_attrs
 
 
 def generate_from_dsl_file(

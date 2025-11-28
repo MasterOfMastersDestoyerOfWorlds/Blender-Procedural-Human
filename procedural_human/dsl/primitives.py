@@ -342,6 +342,7 @@ class Joint:
         Generate joint geometry nodes between two segments.
         
         Takes geometry from adjacent segments and creates smooth transition.
+        Positions joint frame to the right of the segment frames it connects.
         """
         import bpy
         from procedural_human.geo_node_groups.closures import create_flat_float_curve_closure
@@ -356,6 +357,25 @@ class Joint:
         frame = node_group.nodes.new("NodeFrame")
         frame.label = joint_name
         frame.label_size = 30
+        
+        prev_frame = prev_segment_result.get("frame")
+        next_frame = next_segment_result.get("frame")
+        
+        max_segment_x = 0
+        if prev_frame:
+            for node in node_group.nodes:
+                if node.parent == prev_frame and node.bl_idname != "NodeFrame":
+                    node_right = node.location[0] + node.width
+                    if node_right > max_segment_x:
+                        max_segment_x = node_right
+        if next_frame:
+            for node in node_group.nodes:
+                if node.parent == next_frame and node.bl_idname != "NodeFrame":
+                    node_right = node.location[0] + node.width
+                    if node_right > max_segment_x:
+                        max_segment_x = node_right
+        
+        joint_x_start = max_segment_x + 300
         
         prev_y = prev_segment_result.get("abs_y", 0)
         next_y = next_segment_result.get("abs_y", 0)
@@ -374,7 +394,7 @@ class Joint:
             node_group.nodes,
             node_group.links,
             label=f"{joint_name} {curve_labels[0]}",
-            location=(-500, y_offset),
+            location=(joint_x_start, y_offset),
             value=0.5,
         )
         closures.append(first_closure)
@@ -387,7 +407,7 @@ class Joint:
                 node_group.nodes,
                 node_group.links,
                 label=f"{joint_name} {angle_label}",
-                location=(-500, y_offset - i * vertical_spacing),
+                location=(joint_x_start, y_offset - i * vertical_spacing),
                 value=0.5,
             )
             closures.append(closure)
@@ -396,11 +416,8 @@ class Joint:
         joint_instance.node_tree = joint_group
         joint_instance.label = joint_name
         
-        prev_x = prev_segment_result.get("abs_x", 0)
-        next_x = next_segment_result.get("abs_x", 0)
-        joint_x = (prev_x + next_x) / 2 + 200
-        
-        joint_instance.location = (joint_x, y_offset)
+        joint_instance_x = first_closure.out_node.location[0] + first_closure.out_node.width + 100
+        joint_instance.location = (joint_instance_x, y_offset)
         
         node_group.links.new(
             prev_segment_result["instance"].outputs["Geometry"],
@@ -419,8 +436,6 @@ class Joint:
             for node in closure.nodes():
                 node.parent = frame
         joint_instance.parent = frame
-        
-        context.current_y_offset = closures[-1].min_y() - 200
         
         return {
             "index": index,
