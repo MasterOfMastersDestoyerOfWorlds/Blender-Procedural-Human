@@ -54,6 +54,17 @@ from procedural_human.decorators.dsl_primitive_decorator import (
     get_primitive_class,
 )
 
+from procedural_human.decorators.dsl_definition_decorator import (
+    dsl_definition,
+    register_dsl_instance,
+    get_all_dsl_definitions,
+    get_dsl_files,
+    get_dsl_instances_for_file,
+    get_dsl_classes_for_file,
+    clear_dsl_registry,
+    scan_registered_dsl_files,
+)
+
 __all__ = [
     "procedural_operator",
     "register_all_operators",
@@ -77,5 +88,13 @@ __all__ = [
     "is_dsl_primitive",
     "is_dsl_primitive_class",
     "get_primitive_class",
+    "dsl_definition",
+    "register_dsl_instance",
+    "get_all_dsl_definitions",
+    "get_dsl_files",
+    "get_dsl_instances_for_file",
+    "get_dsl_classes_for_file",
+    "clear_dsl_registry",
+    "scan_registered_dsl_files",
 ]
 

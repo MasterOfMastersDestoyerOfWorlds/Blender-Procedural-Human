@@ -28,7 +28,6 @@ class DSLBrowserPanel(Panel):
     """DSL Browser panel for creating procedural objects from DSL definitions"""
     
     bl_label = "DSL Browser"
-    bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
         layout = self.layout
@@ -77,7 +76,6 @@ class DSLObjectInfoPanel(Panel):
     """Panel showing DSL info for selected object"""
     
     bl_label = "DSL Object Info"
-    bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
@@ -103,3 +101,27 @@ class DSLObjectInfoPanel(Panel):
         row = layout.row(align=True)
         row.operator("mesh.procedural_dsl_refresh_from_source", icon='FILE_REFRESH')
         row.operator("mesh.procedural_dsl_open_source_file", icon='TEXT')
+        
+        layout.separator()
+        
+        box2 = layout.box()
+        box2.label(text="Animation", icon='ARMATURE_DATA')
+        
+        col2 = box2.column(align=True)
+        col2.operator(
+            "mesh.procedural_dsl_realize_and_animate",
+            text="Realize & Animate",
+            icon='POSE_HLT'
+        )
+        
+        row2 = box2.row(align=True)
+        row2.operator(
+            "mesh.procedural_dsl_realize_geometry",
+            text="Realize Only",
+            icon='MESH_DATA'
+        )
+        row2.operator(
+            "mesh.procedural_dsl_add_armature",
+            text="Add Armature",
+            icon='BONE_DATA'
+        )

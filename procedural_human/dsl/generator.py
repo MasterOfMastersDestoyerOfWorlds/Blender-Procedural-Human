@@ -27,6 +27,7 @@ class GenerationResult:
     joints: List[Dict] = field(default_factory=list)
     attachments: List[Dict] = field(default_factory=list)
     geometry_outputs: List[Any] = field(default_factory=list)
+    bones: List[Dict] = field(default_factory=list)
     
     def merge(self, other: 'GenerationResult') -> None:
         """Merge another result into this one."""
@@ -34,6 +35,7 @@ class GenerationResult:
         self.joints.extend(other.joints)
         self.attachments.extend(other.attachments)
         self.geometry_outputs.extend(other.geometry_outputs)
+        self.bones.extend(other.bones)
 
 
 @dataclass
@@ -401,24 +403,29 @@ class DSLGenerator:
                 return None
     
     def _categorize_result(self, gen_result: Dict, result: GenerationResult) -> None:
-        """Categorize a generation result into segments, joints, or attachments."""
+        """Categorize a generation result into segments, joints, attachments, or bones."""
         if gen_result is None:
             return
         
-        if "segment" in gen_result or "segments" in gen_result:
-            if "segments" in gen_result:
-                result.segments.extend(gen_result["segments"])
-            else:
-                result.segments.append(gen_result)
-        elif "joint" in gen_result or "joints" in gen_result:
-            if "joints" in gen_result:
-                result.joints.extend(gen_result["joints"])
-            else:
-                result.joints.append(gen_result)
-        elif "attachment" in gen_result:
-            result.attachments.append(gen_result)
+        if "segments" in gen_result:
+            result.segments.extend(gen_result["segments"])
+        elif "segment" in gen_result:
+            result.segments.append(gen_result)
         elif "instance" in gen_result:
             result.segments.append(gen_result)
+        
+        if "joints" in gen_result:
+            result.joints.extend(gen_result["joints"])
+        elif "joint" in gen_result:
+            result.joints.append(gen_result)
+        
+        if "attachment" in gen_result:
+            result.attachments.append(gen_result)
+        
+        if "bones" in gen_result:
+            result.bones.extend(gen_result["bones"])
+        elif gen_result.get("bone"):
+            result.bones.append(gen_result)
     
     def _is_dsl_instance(self, obj: Any) -> bool:
         """Check if an object is a DSL instance (user-defined class from DSL file)."""
@@ -435,39 +442,28 @@ class DSLGenerator:
     def _get_generatable_attrs(self, obj: Any) -> List[str]:
         """Get list of attribute names that might be generatable.
         
-        Returns attrs in processing order:
-        1. _segment_chain (if exists) instead of segments
-        2. _joined_structure (if exists) instead of joints
-        3. Other private attrs like _nail_attachment
+        Uses type-based checking (isinstance) instead of name-based checking.
+        This allows DSL definitions to use any attribute names while still
+        being processed correctly.
         
-        Skips raw lists that are wrapped by structure classes.
+        Processing order:
+        1. SegmentChain instances (skip raw 'segments' lists if present)
+        2. JoinedStructure instances (skip raw 'joints' lists if present)
+        3. AttachedStructure instances
+        4. Other generatable attributes
         """
-        from procedural_human.dsl.primitives import SegmentChain, JoinedStructure
+        from procedural_human.dsl.primitives import (
+            SegmentChain, JoinedStructure, AttachedStructure, Bone
+        )
         
-        has_segment_chain = hasattr(obj, '_segment_chain') and isinstance(getattr(obj, '_segment_chain', None), SegmentChain)
-        has_joined_structure = hasattr(obj, '_joined_structure') and isinstance(getattr(obj, '_joined_structure', None), JoinedStructure)
-        
-        skip_attrs = set()
-        if has_segment_chain:
-            skip_attrs.add('segments')
-        if has_joined_structure:
-            skip_attrs.add('joints')
-        
-        ordered_attrs = []
-        
-        if has_segment_chain:
-            ordered_attrs.append('_segment_chain')
-        if has_joined_structure:
-            ordered_attrs.append('_joined_structure')
-        
-        other_private = []
+        segment_chain_attr = None
+        joined_structure_attr = None
+        attached_structure_attrs = []
+        other_generatable = []
+        raw_lists_to_skip = set()
         
         for attr_name in dir(obj):
             if attr_name.startswith('__'):
-                continue
-            if attr_name in skip_attrs:
-                continue
-            if attr_name in ('_segment_chain', '_joined_structure'):
                 continue
             if attr_name.startswith('get_') or attr_name.startswith('to_'):
                 continue
@@ -480,20 +476,35 @@ class DSLGenerator:
             if isinstance(attr_value, (str, int, float, bool, bytes)):
                 continue
             
-            is_generatable = False
-            if hasattr(attr_value, 'generate'):
-                is_generatable = True
+            if isinstance(attr_value, SegmentChain):
+                segment_chain_attr = attr_name
+                raw_lists_to_skip.add('segments')
+            elif isinstance(attr_value, JoinedStructure):
+                joined_structure_attr = attr_name
+                raw_lists_to_skip.add('joints')
+            elif isinstance(attr_value, AttachedStructure):
+                attached_structure_attrs.append(attr_name)
+            elif hasattr(attr_value, 'generate'):
+                other_generatable.append(attr_name)
             elif isinstance(attr_value, (list, tuple)):
-                if attr_value and hasattr(attr_value[0], 'generate'):
-                    is_generatable = True
+                if attr_value and (hasattr(attr_value[0], 'generate') or isinstance(attr_value[0], Bone)):
+                    other_generatable.append(attr_name)
             elif self._is_dsl_instance(attr_value):
-                is_generatable = True
-            
-            if is_generatable:
-                if attr_name.startswith('_'):
-                    other_private.append(attr_name)
+                other_generatable.append(attr_name)
         
-        ordered_attrs.extend(other_private)
+        ordered_attrs = []
+        
+        if segment_chain_attr:
+            ordered_attrs.append(segment_chain_attr)
+        if joined_structure_attr:
+            ordered_attrs.append(joined_structure_attr)
+        
+        ordered_attrs.extend(attached_structure_attrs)
+        
+        for attr_name in other_generatable:
+            if attr_name not in raw_lists_to_skip:
+                ordered_attrs.append(attr_name)
+        
         return ordered_attrs
 
 

@@ -11,6 +11,7 @@ from procedural_human.dsl.primitives import (
     DualRadial,
     QuadRadial,
     IKLimits,
+    Bone,
     RadialAttachment,
     Joint,
     normalize,
@@ -19,37 +20,42 @@ from procedural_human.dsl.primitives import (
     Join,
     AttachRaycast,
 )
+from procedural_human.decorators.dsl_definition_decorator import dsl_definition
 
 
+@dsl_definition
 class Finger:
     """
     Procedural finger definition.
     
     A finger consists of:
-    - N segments (DualRadial with X/Y profile curves)
+    - N segments (DualRadial wrapped in Bone for armature creation)
     - N-1 joints (QuadRadial with 4 profile curves)
-    - 1 nail attachment at the distal end
+    - 1 nail attachment at the distal end (no bone needed)
     """
     
     def __init__(self, segment_lengths: List[float], radius_taper=0.85, curl_axis='Y'):
-
+        Segment = DualRadial()
         
-        Segment = DualRadial(
-            ik=IKLimits(x=(-10, 150), y=(-10, 10), z=(-5, 5))
-        )
         self.norm_lengths = norm_lengths = normalize(segment_lengths)
         self.segments = []
+        self.bones = []
         self.segment_lengths = segment_lengths
         self.radius_taper = radius_taper
         self.curl_axis = curl_axis
         radius = 0.5
         for i in range(len(segment_lengths)):
             seg = Segment(
-                length=segment_lengths[i],
-                radius=radius,
-                profile_lookup=i,
-            )
+                    length=segment_lengths[i],
+                    radius=radius,
+                    profile_lookup=i,
+                )
             self.segments.append(seg)
+            bone = Bone(
+                geometry=seg,
+                ik=IKLimits(x=(-10, 150), y=(-10, 10), z=(-5, 5))
+            )
+            self.bones.append(bone)
             radius = radius * radius_taper
         
         self.nail = RadialAttachment(

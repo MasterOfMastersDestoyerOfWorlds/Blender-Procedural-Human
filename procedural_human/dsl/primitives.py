@@ -79,14 +79,60 @@ class IKLimits:
 
 @dsl_primitive
 @dataclass
+class Bone:
+    """
+    Wrapper that marks geometry for armature bone creation.
+    
+    Wraps any geometry-generating primitive (DualRadial, QuadRadial, etc.)
+    and specifies that a bone should be created for this geometry segment.
+    The IK limits are applied to the bone, not the geometry.
+    
+    Usage:
+        Bone(
+            geometry=DualRadial(length=10, radius=1.0, profile_lookup=0),
+            ik=IKLimits(x=(-10, 150), y=(-10, 10), z=(-5, 5))
+        )
+    """
+    geometry: Any = None
+    ik: Optional[IKLimits] = None
+    _index: Optional[int] = field(default=None, repr=False)
+    
+    def generate(self, context: GenerationContext, index: int) -> Dict:
+        """
+        Generate geometry nodes by delegating to wrapped geometry,
+        then record bone information in context for armature creation.
+        """
+        if self.geometry is None:
+            return {}
+        
+        if hasattr(self.geometry, 'generate'):
+            result = self.geometry.generate(context, index)
+        else:
+            result = {}
+        
+        result["bone"] = True
+        result["bone_index"] = index
+        result["ik_limits"] = self.ik
+        
+        if hasattr(self.geometry, 'length'):
+            result["bone_length"] = self.geometry.length
+        if hasattr(self.geometry, 'radius'):
+            result["bone_radius"] = self.geometry.radius
+        
+        return result
+
+
+@dsl_primitive
+@dataclass
 class DualRadial:
     """
     Dual-axis radial profile segment.
     
     Uses X and Y profile curves for organic cross-sections.
     Maps to: procedural_human/geo_node_groups/dual_radial.py
+    
+    Note: IK limits should be specified via the Bone wrapper, not directly on DualRadial.
     """
-    ik: Optional[IKLimits] = None
     profile_type: str = "dual"
     length: float = 1.0
     radius: float = 1.0
@@ -98,7 +144,6 @@ class DualRadial:
                  profile_lookup: Optional[int] = None) -> 'DualRadial':
         """Create a segment instance with specific parameters."""
         instance = DualRadial(
-            ik=self.ik,
             profile_type=self.profile_type,
             length=length,
             radius=radius,
@@ -150,6 +195,8 @@ class DualRadial:
             label=f"{seg_name} Y Profile",
             location=(-500, x_closure.min_y() - 100),
         )
+        
+        self._apply_preset_to_closures(context, index, x_closure, y_closure)
         
         segment_group = self._create_segment_node_group(
             name=f"{context.instance_name}_{seg_name}_Group",
@@ -281,6 +328,43 @@ class DualRadial:
         segment_group.links.new(input_node.outputs["Segment Radius"], output_node.inputs["Segment Radius"])
         
         return segment_group
+    
+    def _apply_preset_to_closures(
+        self,
+        context: GenerationContext,
+        index: int,
+        x_closure: Any,
+        y_closure: Any,
+    ) -> bool:
+        """
+        Apply preset curve data to the X and Y closures if a preset exists.
+        
+        Looks up preset by: {instance_name}_Segment_{index}
+        Preset data keys: Segment_{index}_X, Segment_{index}_Y
+        """
+        from procedural_human.decorators.curve_preset_decorator import get_preset
+        from procedural_human.utils.curve_serialization import apply_data_to_float_curve_node
+        
+        preset_name = f"{context.instance_name}_Segment_{index}"
+        preset_data = get_preset(preset_name)
+        
+        if preset_data is None:
+            return False
+        
+        x_key = f"Segment_{index}_X"
+        y_key = f"Segment_{index}_Y"
+        
+        applied = False
+        
+        if x_key in preset_data and x_closure.curve_node:
+            if apply_data_to_float_curve_node(x_closure.curve_node, preset_data[x_key]):
+                applied = True
+        
+        if y_key in preset_data and y_closure.curve_node:
+            if apply_data_to_float_curve_node(y_closure.curve_node, preset_data[y_key]):
+                applied = True
+        
+        return applied
 
 
 @dsl_primitive
@@ -546,31 +630,57 @@ class SegmentChain:
         
         Creates each segment and chains geometry: prev_output -> next_input
         Uses normalized lengths if available.
+        
+        When segments are wrapped in Bone, also tracks bone chain info
+        for armature creation (tip-to-tail connections).
         """
         results = []
+        bones = []
         prev_geometry_output = None
         
         if self.norm_lengths and len(self.norm_lengths) == len(self.segments):
             context.normalized_lengths = self.norm_lengths
         
         for idx, segment in enumerate(self.segments):
-            if hasattr(segment, 'generate'):
-                if self.norm_lengths and idx < len(self.norm_lengths):
+            actual_segment = segment
+            is_bone = isinstance(segment, Bone)
+            
+            if is_bone:
+                actual_segment = segment.geometry
+            
+            if self.norm_lengths and idx < len(self.norm_lengths):
+                if is_bone and hasattr(segment.geometry, 'length'):
+                    segment.geometry.length = self.norm_lengths[idx]
+                elif hasattr(segment, 'length'):
                     segment.length = self.norm_lengths[idx]
-                
+            
+            if hasattr(segment, 'generate'):
                 result = segment.generate(context, idx)
                 results.append(result)
                 
-                if prev_geometry_output is not None:
+                if is_bone or result.get("bone"):
+                    bone_info = {
+                        "index": idx,
+                        "ik_limits": segment.ik if is_bone else result.get("ik_limits"),
+                        "length": result.get("bone_length", getattr(actual_segment, 'length', 1.0)),
+                        "radius": result.get("bone_radius", getattr(actual_segment, 'radius', 1.0)),
+                        "parent_index": idx - 1 if idx > 0 else None,
+                        "axis": self.axis,
+                    }
+                    bones.append(bone_info)
+                
+                if prev_geometry_output is not None and "instance" in result:
                     context.node_group.links.new(
                         prev_geometry_output,
                         result["instance"].inputs["Geometry"]
                     )
                 
-                prev_geometry_output = result["instance"].outputs["Geometry"]
+                if "instance" in result:
+                    prev_geometry_output = result["instance"].outputs["Geometry"]
         
         return {
             "segments": results,
+            "bones": bones,
             "output": prev_geometry_output,
         }
 
