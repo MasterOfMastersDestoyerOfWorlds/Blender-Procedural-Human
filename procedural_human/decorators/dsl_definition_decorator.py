@@ -11,6 +11,31 @@ import inspect
 
 
 _dsl_definition_registry: Dict[str, Dict[str, Any]] = {}
+_definitions_loaded: bool = False
+
+
+def ensure_definitions_loaded() -> None:
+    """
+    Ensure DSL definition modules have been imported and decorators triggered.
+    
+    This triggers module discovery if the registry is empty, ensuring that
+    files like finger.py get imported and their @dsl_definition decorators
+    populate the registry.
+    """
+    global _definitions_loaded
+    
+    if _definitions_loaded:
+        return
+    
+    if not _dsl_definition_registry:
+        try:
+            from procedural_human.decorators.module_discovery import import_all_modules
+            print("[DSL Definition Registry] Registry empty, triggering module discovery...")
+            import_all_modules()
+        except ImportError:
+            pass
+    
+    _definitions_loaded = True
 
 
 def dsl_definition(cls: Type) -> Type:
@@ -68,11 +93,13 @@ def register_dsl_instance(file_path: str, instance_name: str) -> None:
 
 def get_all_dsl_definitions() -> Dict[str, Dict[str, Any]]:
     """Get all registered DSL definitions."""
+    ensure_definitions_loaded()
     return _dsl_definition_registry.copy()
 
 
 def get_dsl_files() -> List[str]:
     """Get list of all registered DSL file paths."""
+    ensure_definitions_loaded()
     return list(_dsl_definition_registry.keys())
 
 
@@ -92,7 +119,9 @@ def get_dsl_classes_for_file(file_path: str) -> List[str]:
 
 def clear_dsl_registry() -> None:
     """Clear the DSL definition registry (useful for reloading)."""
+    global _definitions_loaded
     _dsl_definition_registry.clear()
+    _definitions_loaded = False
 
 
 def scan_registered_dsl_files() -> Dict[str, List[str]]:

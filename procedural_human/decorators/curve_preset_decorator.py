@@ -1,6 +1,52 @@
 from typing import Optional
 
 _preset_registry: dict = {}  # Maps display_name -> {"instance": PresetInstance, "location": {...}}
+_presets_loaded: bool = False
+
+
+def ensure_presets_loaded() -> None:
+    """
+    Ensure preset modules have been imported and decorators triggered.
+    
+    This triggers module discovery if the registry is empty, ensuring that
+    preset files like finger_float_curve_presets.py get imported and their
+    @register_preset_class decorators populate the registry.
+    """
+    global _presets_loaded
+    
+    if _presets_loaded and _preset_registry:
+        return
+    
+    if not _preset_registry:
+        try:
+            from procedural_human.decorators.module_discovery import import_all_modules
+            print("[Preset Registry] Registry empty, triggering module discovery with force_reload for presets...")
+            imported = import_all_modules(force_reload=False)
+            print(f"[Preset Registry] After discovery, registry has {len(_preset_registry)} presets: {list(_preset_registry.keys())}")
+            
+            if not _preset_registry:
+                print("[Preset Registry] Still empty! Trying direct import of finger_float_curve_presets...")
+                try:
+                    import importlib
+                    import sys
+                    module_name = "procedural_human.dsl.finger_float_curve_presets"
+                    if module_name in sys.modules:
+                        importlib.reload(sys.modules[module_name])
+                    else:
+                        importlib.import_module(module_name)
+                    print(f"[Preset Registry] After direct import, registry has {len(_preset_registry)} presets")
+                except Exception as direct_e:
+                    print(f"[Preset Registry] Direct import failed: {direct_e}")
+                    import traceback
+                    traceback.print_exc()
+        except ImportError as e:
+            print(f"[Preset Registry] Import error: {e}")
+        except Exception as e:
+            print(f"[Preset Registry] Error during module discovery: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    _presets_loaded = bool(_preset_registry)
 
 class Preset:
     """
@@ -94,6 +140,7 @@ def register_preset_class(name: str = None):
                 "preset_name": display_name,
             },
         }
+        print(f"[Preset Registry] Registered preset: '{display_name}' from {cls.__name__}")
         return cls
 
     if callable(name):
@@ -178,6 +225,8 @@ def get_all_presets() -> dict:
     Get all registered presets by calling their functions or instances.
     Returns a dictionary mapping display_name -> preset_data.
     """
+    ensure_presets_loaded()
+    
     presets = {}
     for name, preset_entry in _preset_registry.items():
         try:
@@ -221,11 +270,15 @@ def get_preset_location(preset_name: str) -> Optional[dict]:
 
 def clear_preset_registry():
     """Clear the preset registry (useful for reloading)."""
+    global _presets_loaded
     _preset_registry.clear()
+    _presets_loaded = False
 
 
 def get_preset(name: str) -> Optional[dict]:
     """Get a preset by name."""
+    ensure_presets_loaded()
+    
     if name not in _preset_registry:
         return None
     
@@ -314,4 +367,5 @@ def build_profile_name_chain(
 
 def get_registry_names() -> list:
     """Get all registered preset names."""
+    ensure_presets_loaded()
     return list(_preset_registry.keys())

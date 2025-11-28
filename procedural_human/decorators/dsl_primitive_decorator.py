@@ -11,6 +11,31 @@ from typing import Dict, Callable, Any, Set, List, Type
 _dsl_primitive_registry: Dict[str, type] = {}
 _dsl_helper_registry: Dict[str, Callable] = {}
 _dsl_builtin_registry: Dict[str, Any] = {}
+_primitives_loaded: bool = False
+
+
+def ensure_primitives_loaded() -> None:
+    """
+    Ensure primitive modules have been imported and decorators triggered.
+    
+    This triggers module discovery if registries are empty, ensuring that
+    files like primitives.py get imported and their @dsl_primitive decorators
+    populate the registry.
+    """
+    global _primitives_loaded
+    
+    if _primitives_loaded:
+        return
+    
+    if not _dsl_primitive_registry:
+        try:
+            from procedural_human.decorators.module_discovery import import_all_modules
+            print("[DSL Primitive Registry] Registry empty, triggering module discovery...")
+            import_all_modules()
+        except ImportError:
+            pass
+    
+    _primitives_loaded = True
 
 
 def dsl_primitive(cls: type) -> type:
@@ -83,6 +108,8 @@ def get_dsl_namespace(extra: Dict[str, Any] = None) -> Dict[str, Any]:
     Returns:
         Dict ready to use as globals in exec()
     """
+    ensure_primitives_loaded()
+    
     namespace = {}
     namespace.update(_dsl_primitive_registry)
     namespace.update(_dsl_helper_registry)
@@ -109,6 +136,7 @@ def get_dsl_builtin_names() -> Set[str]:
 
 def get_all_dsl_names() -> Set[str]:
     """Get set of all registered DSL names (primitives + helpers + builtins)."""
+    ensure_primitives_loaded()
     return get_dsl_primitive_names() | get_dsl_helper_names() | get_dsl_builtin_names()
 
 
@@ -129,9 +157,11 @@ def get_primitive_class(name: str) -> type:
 
 def clear_registries() -> None:
     """Clear all registries (useful for testing/reloading)."""
+    global _primitives_loaded
     _dsl_primitive_registry.clear()
     _dsl_helper_registry.clear()
     _dsl_builtin_registry.clear()
+    _primitives_loaded = False
 
 
 def init_default_builtins() -> None:
