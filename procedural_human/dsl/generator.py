@@ -16,6 +16,12 @@ from procedural_human.dsl.naming import NamingEnvironment
 from procedural_human.dsl.executor import DSLExecutionResult
 from procedural_human.decorators.dsl_primitive_decorator import is_dsl_primitive
 from procedural_human.logger import *
+from procedural_human.dsl.primitives import (
+    SegmentChain,
+    JoinedStructure,
+    AttachedStructure,
+    Bone,
+)
 
 @dataclass
 class GenerationResult:
@@ -225,6 +231,9 @@ class DSLGenerator:
         if obj is None:
             return result
         if hasattr(obj, "generate"):
+
+            if obj._type == "JoinedStructure":
+                logger.info(f"Generating JoinedStructure: {obj._type}")
             gen_result = None
             generate_method = getattr(obj, "generate", None)
             sig = inspect.signature(generate_method)
@@ -333,11 +342,11 @@ class DSLGenerator:
             return result
 
         if self._is_dsl_instance(obj):
-            for attr_nm in self._get_generatable_attrs(obj):
-                attr_value = getattr(obj, attr_nm, None)
+            for attribute in self._get_generatable_attrs(obj):
+                attr_value = getattr(obj, attribute, None) 
                 if attr_value is not None:
                     sub_result = self._generate_recursive(
-                        attr_value, context, prev_geometry, depth + 1, attr_name=attr_nm
+                        attr_value, context, prev_geometry, depth + 1, attr_name=attribute
                     )
                     result.merge(sub_result)
 
@@ -383,12 +392,7 @@ class DSLGenerator:
         Note: 'bones' lists are skipped - they're metadata for armature creation,
         not geometry generation.
         """
-        from procedural_human.dsl.primitives import (
-            SegmentChain,
-            JoinedStructure,
-            AttachedStructure,
-            Bone,
-        )
+
 
         segment_chain_attr = None
         joined_structure_attr = None

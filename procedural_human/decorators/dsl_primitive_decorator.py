@@ -22,6 +22,7 @@ def dsl_primitive(cls: type) -> type:
     @return: The class.
     """
     _dsl_primitive_registry[cls.__name__] = cls
+    cls._type = cls.__name__
     return cls
 
 
