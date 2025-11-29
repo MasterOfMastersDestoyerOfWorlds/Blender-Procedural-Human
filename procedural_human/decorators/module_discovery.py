@@ -67,7 +67,7 @@ def import_all_modules() -> Set[str]:
     """
     global _discovered_modules
     
-    modules = discover_modules()
+    modules = discover_modules() 
     imported = set()
     
     print(f"[Module Discovery] Found {len(modules)} modules to import")

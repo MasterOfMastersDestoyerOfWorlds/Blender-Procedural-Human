@@ -8,7 +8,7 @@ Presets are saved here when curves are modified in Blender.
 from procedural_human.decorators.curve_preset_decorator import register_preset_class, Preset
 
 
-@register_preset_class("Index_Segment_0")
+@register_preset_class(name="Index_Segment_0")
 class PresetIndexSegment0Curves(Preset):
     """Preset for Index_Segment_0 curves"""
 
@@ -72,7 +72,7 @@ class PresetIndexSegment0Curves(Preset):
 
 
 
-@register_preset_class("Index_Segment_1")
+@register_preset_class(name="Index_Segment_1")
 class PresetIndexSegment1Curves(Preset):
     """Preset for Index_Segment_1 curves"""
 
@@ -136,7 +136,7 @@ class PresetIndexSegment1Curves(Preset):
 
 
 
-@register_preset_class("Index_Segment_2")
+@register_preset_class(name="Index_Segment_2")
 class PresetIndexSegment2Curves(Preset):
     """Preset for Index_Segment_2 curves"""
 

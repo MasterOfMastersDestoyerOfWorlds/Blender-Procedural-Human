@@ -794,7 +794,7 @@ def replace_or_append_preset_class(
         for i, line in enumerate(formatted_data_lines)
     )
     
-    new_class = f'''@register_preset_class("{preset_name}")
+    new_class = f'''@register_preset_class(name="{preset_name}")
 class {class_name}(Preset):
     """Preset for {preset_name} curves"""
 
@@ -891,7 +891,7 @@ def batch_update_preset_classes(
         
         new_class_text = f'''
 
-@register_preset_class("{preset_name}")
+@register_preset_class(name="{preset_name}")
 class {class_name}(Preset):
     """Preset for {preset_name} curves"""
 

@@ -19,22 +19,6 @@ _curve_hashes = {}
 _autosave_enabled = True
 _autosave_timer = None
 
-
-def load_presets_from_file():
-    """
-    Loads presets from the decorator-based registry and legacy file-based presets.
-    """
-
-    count = 0
-
-    registered_presets = register_preset_class.get_all_presets()
-    count += len(registered_presets)
-
-    print(
-        f"Loaded {count} presets ({len(registered_presets)} from registry, {count - len(registered_presets)} from file)."
-    )
-
-
 def serialize_float_curve_node(node):
     """
     Serializes a ShaderNodeFloatCurve's points into a list of dicts.
@@ -203,8 +187,6 @@ class SaveFloatCurvePreset(Operator):
 
             update_profiles_file(self.preset_name, preset_data)
 
-            load_presets_from_file()
-
         return {"FINISHED"}
 
     def invoke(self, context, event):
@@ -275,19 +257,13 @@ def get_preset_enum_items():
     This ensures the enum always shows all presets from the registry.
     """
 
-    load_presets_from_file()
-
-    all_presets = register_preset_class.get_all_presets()
+    all_presets = register_preset_class.registry.keys()
 
     if not all_presets:
         return [("", "No presets available", "")]
 
-    items = [(k, k, "") for k in sorted(all_presets.keys())]
+    items = [(k, k, "") for k in sorted(all_presets)]
     return items
-
-
-load_presets_from_file()
-
 
 def _get_curve_hash(node):
     """Get a hash of a float curve node's current state."""

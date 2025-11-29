@@ -1,9 +1,7 @@
 from typing import Optional
 import inspect
 import os
-
 from procedural_human.decorators.discoverable_decorator import DiscoverableClassDecorator
-from procedural_human.decorators.module_discovery import import_all_modules
 
 class Preset:
     """
@@ -33,9 +31,11 @@ class register_preset_class(DiscoverableClassDecorator):
     registry = {}
 
     @staticmethod
-    def setup_decorator(cls, **kwargs):
+    def setup_decorator(cls, *args, **kwargs):
+        for arg in args:
+            setattr(cls, arg, arg)
         for key, value in kwargs.items():
-            setattr(cls, key, value)
+            setattr(cls, key, value) 
         name = kwargs.get("name")
         if name:
             display_name = name
@@ -43,9 +43,9 @@ class register_preset_class(DiscoverableClassDecorator):
 
             class_name = cls.__name__
             if class_name.startswith("Preset"):
-                display_name = class_name[6:].replace("_", " ").title()
+                display_name = class_name[6:].replace("_", " ")
             else:
-                display_name = class_name.replace("_", " ").title()
+                display_name = class_name.replace("_", " ")
 
         frame = inspect.currentframe()
         try:
@@ -75,7 +75,6 @@ class register_preset_class(DiscoverableClassDecorator):
                 "preset_name": display_name,
             },
         }
-        return cls
 
     @classmethod
     def register_preset_data(cls, name: str, data: dict, file_path: Optional[str] = None):
@@ -85,7 +84,7 @@ class register_preset_class(DiscoverableClassDecorator):
         @param data: Preset data dictionary
         @param file_path: Optional file path where this preset is defined
         """
-        cls.registry[name] = {
+        register_preset_class.registry[name] = { 
             "instance": lambda: data,
             "location": {
                 "file_path": file_path,
@@ -94,32 +93,6 @@ class register_preset_class(DiscoverableClassDecorator):
             },
         }
 
-    @classmethod
-    def get_all_presets(cls) -> dict:
-        """
-        Get all registered presets by calling their functions or instances.
-
-        @return: Dictionary mapping display_name -> preset_data
-        """
-        presets = {}
-        for name, preset_entry in cls.registry.items():
-            try:
-                # Handle new format with location metadata
-                if isinstance(preset_entry, dict) and "instance" in preset_entry:
-                    preset_func_or_instance = preset_entry["instance"]
-                else:
-                    # Backward compatibility with old format
-                    preset_func_or_instance = preset_entry
-
-                if isinstance(preset_func_or_instance, Preset):
-                    presets[name] = preset_func_or_instance.get_data()
-                elif callable(preset_func_or_instance):
-                    presets[name] = preset_func_or_instance()
-                else:
-                    presets[name] = preset_func_or_instance
-            except Exception as e:
-                print(f"Warning: Failed to load preset '{name}': {e}")
-        return presets
 
 
     @classmethod
@@ -130,10 +103,10 @@ class register_preset_class(DiscoverableClassDecorator):
         @param preset_name: Name of the preset 
         @return: Dictionary with location information or None if not found
         """
-        if preset_name not in cls.registry:
+        if preset_name not in register_preset_class.registry:
             return None
         
-        preset_entry = cls.registry[preset_name]
+        preset_entry = register_preset_class.registry[preset_name]
         if isinstance(preset_entry, dict) and "location" in preset_entry:
             return preset_entry["location"]
         
@@ -148,10 +121,10 @@ class register_preset_class(DiscoverableClassDecorator):
         @param name: Name of the preset
         @return: Dictionary with preset data or None if not found
         """
-        if name not in cls.registry:
+        if name not in register_preset_class.registry:
             return None
         
-        preset_entry = cls.registry[name]
+        preset_entry = register_preset_class.registry[name]
         try:
             if isinstance(preset_entry, dict) and "instance" in preset_entry:
                 preset_func_or_instance = preset_entry["instance"]
@@ -171,8 +144,7 @@ class register_preset_class(DiscoverableClassDecorator):
     def discover_and_register_all_decorators(cls):
         """
         Discover all modules and register all decorated preset classes.
-        """
-        import_all_modules()
+        """ 
         print(
             f"[Preset Registry] Registering {len(register_preset_class.registry.keys())} presets"
         )
@@ -185,4 +157,4 @@ class register_preset_class(DiscoverableClassDecorator):
         """
         Unregister all decorated preset classes in reverse order.
         """
-        register_preset_class.registry.clear()
+        register_preset_class.registry.clear() 

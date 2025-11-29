@@ -11,6 +11,8 @@ from pathlib import Path
 from procedural_human.decorators.curve_preset_decorator import register_preset_class
 from procedural_human.decorators.panel_decorator import procedural_panel
 from procedural_human.decorators.operator_decorator import procedural_operator
+from procedural_human.utils.curve_serialization import unregister_autosave_handlers
+from procedural_human.decorators.module_discovery import clear_discovered, import_all_modules
 
 REQUIRED_PACKAGES = [
     ("tree_sitter", "tree-sitter"),
@@ -326,6 +328,8 @@ def register():
         print("Install dependencies via addon preferences to enable all features.")
     
     register_scene_properties()
+    
+    import_all_modules()
     procedural_panel.discover_and_register_all_decorators()
     procedural_operator.discover_and_register_all_decorators()
     register_preset_class.discover_and_register_all_decorators()
@@ -341,7 +345,6 @@ def register():
 
 def unregister():
     try:
-        from procedural_human.utils.curve_serialization import unregister_autosave_handlers
         unregister_autosave_handlers()
     except ImportError:
         pass
@@ -353,6 +356,7 @@ def unregister():
     register_preset_class.unregister_all_decorators()
     unregister_scene_properties()
     preferences.unregister()
+    clear_discovered()
 
 
 if __name__ == "__main__":

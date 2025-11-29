@@ -9,9 +9,9 @@ import bpy
 import re
 import inspect
 from pathlib import Path
-from typing import List, Type
-from bpy.types import Panel
-from procedural_human.decorators.discoverable_decorator import DiscoverableClassDecorator
+from procedural_human.decorators.discoverable_decorator import (
+    DiscoverableClassDecorator,
+)
 from procedural_human.decorators.module_discovery import import_all_modules
 
 
@@ -20,6 +20,7 @@ class procedural_panel(DiscoverableClassDecorator):
     """
     Decorator for panel classes that automatically sets Blender panel attributes.
     """
+
     @staticmethod
     def setup_decorator(cls, **kwargs):
         module_path = inspect.getfile(cls)
@@ -32,7 +33,9 @@ class procedural_panel(DiscoverableClassDecorator):
         snake_case_name = DiscoverableClassDecorator.to_snake_case(name_without_panel)
         bl_idname = f"PROCEDURAL_PT_{snake_case_name}_panel"
 
-        label_with_spaces = DiscoverableClassDecorator.to_title_with_spaces(name_without_panel)
+        label_with_spaces = DiscoverableClassDecorator.to_title_with_spaces(
+            name_without_panel
+        )
         bl_label = label_with_spaces
 
         if not hasattr(cls, "bl_idname"):
@@ -68,14 +71,12 @@ class procedural_panel(DiscoverableClassDecorator):
             pass
 
         procedural_panel.registry[cls.__name__] = cls
-        
 
     @classmethod
     def discover_and_register_all_decorators(cls):
         """
         Discover all modules and register all decorated panel classes.
         """
-        import_all_modules() 
         print(
             f"[Panel Registry] Registering {len(procedural_panel.registry.keys())} panels"
         )
@@ -84,6 +85,11 @@ class procedural_panel(DiscoverableClassDecorator):
                 bpy.utils.register_class(panel_cls)
             except Exception as e:
                 print(f"Warning: Failed to register panel {panel_cls.__name__}: {e}")
+
+        print(
+            f"[Panel Registry] Registered: {[panel_cls.bl_idname for panel_cls in procedural_panel.registry.values()]}"
+        )
+
     @classmethod
     def unregister_all_decorators(cls):
         """
