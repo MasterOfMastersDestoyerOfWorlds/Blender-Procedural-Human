@@ -148,9 +148,3 @@ def get_dsl_instances(file_path: str) -> List[str]:
         print(f"[DSL] Errors: {result.errors}")
     return list(result.instances.keys())
 
-
-def get_dsl_definitions(file_path: str) -> List[str]:
-    """Get list of definition class names from a DSL file."""
-    result = execute_dsl_file(file_path)
-    return list(result.definitions.keys())
-

@@ -4,7 +4,11 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from procedural_human.decorators.dsl_primitive_decorator import dsl_primitive
 from procedural_human.dsl.primitives.primitives import GenerationContext, ProfileType
-
+import bpy
+from procedural_human.geo_node_groups.dual_radial import create_dual_profile_radial_group
+from procedural_human.geo_node_groups.closures import create_float_curve_closure
+from procedural_human.hand.finger.finger_segment.finger_segment_const import SEGMENT_SAMPLE_COUNT
+from procedural_human.utils import setup_node_group_interface
 
 @dsl_primitive
 @dataclass
@@ -51,11 +55,6 @@ class DualRadial:
         - closures: Dict of profile closures (X, Y)
         - frame: NodeFrame containing the nodes
         """
-        import bpy
-        from procedural_human.geo_node_groups.dual_radial import create_dual_profile_radial_group
-        from procedural_human.geo_node_groups.closures import create_float_curve_closure
-        from procedural_human.hand.finger.finger_segment.finger_segment_const import SEGMENT_SAMPLE_COUNT
-        from procedural_human.utils import setup_node_group_interface
         
         node_group = context.node_group
         y_offset = context.get_next_y_offset()
@@ -131,11 +130,6 @@ class DualRadial:
         index: int,
     ) -> Any:
         """Create the internal segment node group structure."""
-        import bpy
-        from procedural_human.geo_node_groups.dual_radial import create_dual_profile_radial_group
-        from procedural_human.hand.finger.finger_segment.finger_segment_const import SEGMENT_SAMPLE_COUNT
-        from procedural_human.utils import setup_node_group_interface
-        
         segment_group = bpy.data.node_groups.new(name, "GeometryNodeTree")
         setup_node_group_interface(segment_group)
         
