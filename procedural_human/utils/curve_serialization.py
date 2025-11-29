@@ -14,6 +14,7 @@ from procedural_human.decorators.curve_preset_decorator import (
 from procedural_human.utils.tree_sitter_utils import replace_get_data_method
 import inspect
 import os
+from procedural_human.logger import *
 
 _curve_hashes = {}
 _autosave_enabled = True
@@ -83,12 +84,12 @@ def find_float_curve_nodes_in_finger(obj):
     if not obj or obj.type != "MESH":
         return found_nodes
 
-    print(f"Searching for curves in {obj.name}...")
+    logger.info(f"Searching for curves in {obj.name}...")
 
     for mod in obj.modifiers:
         if mod.type == "NODES" and mod.node_group:
             main_group = mod.node_group
-            print(f"  Checking modifier {mod.name} with group {main_group.name}")
+            logger.info(f"  Checking modifier {mod.name} with group {main_group.name}")
 
             for node in main_group.nodes:
                 if (
@@ -126,7 +127,7 @@ def find_float_curve_nodes_in_finger(obj):
                         else f"{seg_name}_Y" if axis == "Y" else f"{seg_name}_{axis}"
                     )
                     found_nodes[key] = node
-                    print(f"        Found Curve: {key}")
+                    logger.info(f"        Found Curve: {key}")
 
     return found_nodes
 
@@ -209,10 +210,10 @@ def update_profiles_file(preset_name, preset_data):
         success = replace_get_data_method(file_path, preset_name, preset_data)
 
         if success:
-            print(f"Updated preset '{preset_name}' in {file_path}")
+            logger.info(f"Updated preset '{preset_name}' in {file_path}")
             return
         else:
-            print(
+            logger.info(
                 f"Warning: Could not replace preset '{preset_name}' in {file_path}, appending instead"
             )
 
@@ -230,7 +231,7 @@ def update_profiles_file(preset_name, preset_data):
     target_path = os.path.abspath(target_path)
 
     if not os.path.exists(target_path):
-        print(f"Error: Could not find profiles file at {target_path}")
+        logger.info(f"Error: Could not find profiles file at {target_path}")
         return
 
     safe_class_name = "Preset" + "".join(
@@ -248,7 +249,7 @@ def update_profiles_file(preset_name, preset_data):
         f.write(f"    def get_data(self):\n")
         f.write(f"        return {formatted_data}\n")
 
-    print(f"Appended preset class {safe_class_name} to {target_path}")
+    logger.info(f"Appended preset class {safe_class_name} to {target_path}")
 
 
 def get_preset_enum_items():
@@ -354,7 +355,7 @@ def _auto_save_curves(obj, changed_curves):
         return
 
     if not os.path.exists(source_file):
-        print(f"[AutoSave] Source file not found: {source_file}")
+        logger.info(f"[AutoSave] Source file not found: {source_file}")
         return
 
     presets_file = ensure_presets_file_exists(source_file)
@@ -407,7 +408,7 @@ def _auto_save_curves(obj, changed_curves):
             preset_name, combined_data, presets_file
         )
 
-        print(
+        logger.info(
             f"[AutoSave] Saved curves for {instance_name} to {presets_file}: {list(changed_curves.keys())}"
         )
 
@@ -421,7 +422,7 @@ def start_curve_autosave():
         _autosave_timer = bpy.app.timers.register(
             check_curves_for_changes, first_interval=2.0, persistent=True
         )
-        print("[AutoSave] Float curve auto-save started")
+        logger.info("[AutoSave] Float curve auto-save started")
 
 
 def stop_curve_autosave():
@@ -435,7 +436,7 @@ def stop_curve_autosave():
         except ValueError:
             pass
         _autosave_timer = None
-        print("[AutoSave] Float curve auto-save stopped")
+        logger.info("[AutoSave] Float curve auto-save stopped")
 
 
 def initialize_curve_tracking():
@@ -450,7 +451,7 @@ def initialize_curve_tracking():
                 key = f"{obj.name}:{label}"
                 _curve_hashes[key] = curve_data["hash"]
 
-    print(f"[AutoSave] Initialized tracking for {len(_curve_hashes)} curves")
+    logger.info(f"[AutoSave] Initialized tracking for {len(_curve_hashes)} curves")
 
 
 @persistent

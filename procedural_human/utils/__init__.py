@@ -4,7 +4,7 @@ Utility functions for Procedural Human Generator
 
 import bpy
 from mathutils import Vector
-
+from procedural_human.logger import *
 
 def get_property_value(prop_name, default):
     """Get actual value from Blender property"""
@@ -62,7 +62,7 @@ def setup_node_group_interface(node_group):
                 name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
             )
         except Exception as e:
-            print(f"Warning: Could not create input Geometry socket: {e}")
+            logger.info(f"Warning: Could not create input Geometry socket: {e}")
 
     existing_sockets = [socket.name for socket in node_group.interface.items_tree]
     if "Geometry" not in existing_sockets or existing_sockets.count("Geometry") < 2:
@@ -71,7 +71,7 @@ def setup_node_group_interface(node_group):
                 name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
             )
         except Exception as e:
-            print(f"Warning: Could not create output Geometry socket: {e}")
+            logger.info(f"Warning: Could not create output Geometry socket: {e}")
 
 
 def create_geometry_nodes_modifier(obj, name):

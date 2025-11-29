@@ -1,5 +1,4 @@
-
-
+from procedural_human.logger import *
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from procedural_human.decorators.dsl_primitive_decorator import dsl_primitive
@@ -228,16 +227,16 @@ class DualRadial:
         preset_name = f"{context.instance_name}_Segment_{index}"
         
         all_names = register_preset_class.registry.keys()
-        print(f"[Preset Debug] Looking for preset: '{preset_name}'")
-        print(f"[Preset Debug] Available presets in registry: {all_names}")
+        logger.info(f"[Preset Debug] Looking for preset: '{preset_name}'")
+        logger.info(f"[Preset Debug] Available presets in registry: {all_names}")
         
         preset_data = register_preset_class.get_preset(preset_name)
         
         if preset_data is None:
-            print(f"[Preset Debug] No preset found for '{preset_name}'")
+            logger.info(f"[Preset Debug] No preset found for '{preset_name}'")
             return False
         
-        print(f"[Preset Debug] Found preset '{preset_name}' with keys: {list(preset_data.keys())}")
+        logger.info(f"[Preset Debug] Found preset '{preset_name}' with keys: {list(preset_data.keys())}")
         
         x_key = f"Segment_{index}_X"
         y_key = f"Segment_{index}_Y"
@@ -245,19 +244,19 @@ class DualRadial:
         applied = False
         
         if x_key in preset_data and x_closure.curve_node:
-            print(f"[Preset Debug] Applying {x_key} to X closure")
+            logger.info(f"[Preset Debug] Applying {x_key} to X closure")
             if apply_data_to_float_curve_node(x_closure.curve_node, preset_data[x_key]):
                 applied = True
-                print(f"[Preset Debug] Successfully applied {x_key}")
+                logger.info(f"[Preset Debug] Successfully applied {x_key}")
         else:
-            print(f"[Preset Debug] Key '{x_key}' not in preset or closure missing")
+            logger.info(f"[Preset Debug] Key '{x_key}' not in preset or closure missing")
         
         if y_key in preset_data and y_closure.curve_node:
-            print(f"[Preset Debug] Applying {y_key} to Y closure")
+            logger.info(f"[Preset Debug] Applying {y_key} to Y closure")
             if apply_data_to_float_curve_node(y_closure.curve_node, preset_data[y_key]):
                 applied = True
-                print(f"[Preset Debug] Successfully applied {y_key}")
+                logger.info(f"[Preset Debug] Successfully applied {y_key}")
         else:
-            print(f"[Preset Debug] Key '{y_key}' not in preset or closure missing")
+            logger.info(f"[Preset Debug] Key '{y_key}' not in preset or closure missing")
         
         return applied

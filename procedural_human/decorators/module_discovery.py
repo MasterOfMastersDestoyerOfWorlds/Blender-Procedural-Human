@@ -10,7 +10,7 @@ import importlib
 import sys
 from pathlib import Path
 from typing import Set
-
+from procedural_human.logger import *
 
 _discovered_modules: Set[str] = set()
 
@@ -70,7 +70,7 @@ def import_all_modules() -> Set[str]:
     modules = discover_modules() 
     imported = set()
     
-    print(f"[Module Discovery] Found {len(modules)} modules to import")
+    logger.info(f"[Module Discovery] Found {len(modules)} modules to import")
     
     for module_name in sorted(modules):
         if module_name in _discovered_modules:
@@ -86,14 +86,14 @@ def import_all_modules() -> Set[str]:
             _discovered_modules.add(module_name)
         except ModuleNotFoundError as e:
             missing_module = str(e).split("'")[1] if "'" in str(e) else str(e)
-            print(f"[Module Discovery] SKIPPED {module_name}: missing dependency '{missing_module}'")
-            print(f"    -> Install via addon preferences or run: pip install {missing_module}")
+            logger.info(f"[Module Discovery] SKIPPED {module_name}: missing dependency '{missing_module}'")
+            logger.info(f"    -> Install via addon preferences or run: pip install {missing_module}")
         except Exception as e:
             import traceback
-            print(f"[Module Discovery] ERROR importing {module_name}:")
+            logger.info(f"[Module Discovery] ERROR importing {module_name}:")
             traceback.print_exc()
     
-    print(f"[Module Discovery] Successfully imported {len(imported)} new modules")
+    logger.info(f"[Module Discovery] Successfully imported {len(imported)} new modules")
     return imported
 
 

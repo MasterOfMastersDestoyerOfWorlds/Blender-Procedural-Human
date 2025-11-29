@@ -8,7 +8,7 @@ without scanning the entire dsl directory.
 from typing import Dict, List, Optional, Type, Any
 import os
 import inspect
-
+from procedural_human.logger import *
 
 _dsl_definition_registry: Dict[str, Dict[str, Any]] = {}
 
@@ -119,7 +119,7 @@ def scan_registered_dsl_files() -> Dict[str, List[str]]:
                 for instance_name in instances:
                     register_dsl_instance(file_path, instance_name)
             except Exception as e:
-                print(f"Error scanning DSL file {file_path}: {e}")
+                logger.info(f"Error scanning DSL file {file_path}: {e}")
                 result[file_path] = []
 
     return result

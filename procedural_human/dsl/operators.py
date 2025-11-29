@@ -10,7 +10,7 @@ from bpy.types import Operator
 from bpy.props import StringProperty
 
 from procedural_human.decorators.operator_decorator import procedural_operator
-
+from procedural_human.logger import *
 
 _dsl_instances_cache: Dict[str, List[str]] = {}
 
@@ -62,7 +62,7 @@ def scan_dsl_files() -> Dict[str, List[str]]:
             instances = get_dsl_instances(file_path)
             _dsl_instances_cache[file_path] = instances
         except Exception as e:
-            print(f"Error scanning DSL file {file_path}: {e}")
+            logger.info(f"Error scanning DSL file {file_path}: {e}")
     
     return _dsl_instances_cache
 

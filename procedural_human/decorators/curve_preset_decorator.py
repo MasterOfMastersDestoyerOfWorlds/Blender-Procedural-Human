@@ -2,7 +2,7 @@ from typing import Optional
 import inspect
 import os
 from procedural_human.decorators.discoverable_decorator import DiscoverableClassDecorator
-
+from procedural_human.logger import *
 class Preset:
     """
     Base class for preset data.
@@ -138,17 +138,17 @@ class register_preset_class(DiscoverableClassDecorator):
             else:
                 return preset_func_or_instance
         except Exception as e:
-            print(f"Warning: Failed to load preset '{name}': {e}")
+            logger.info(f"Warning: Failed to load preset '{name}': {e}")
             return None
     @classmethod
     def discover_and_register_all_decorators(cls):
         """
         Discover all modules and register all decorated preset classes.
         """ 
-        print(
+        logger.info(
             f"[Preset Registry] Registering {len(register_preset_class.registry.keys())} presets"
         )
-        print(
+        logger.info(
             f"[Preset Registry] Registered presets: {list(register_preset_class.registry.keys())}"
         )
 

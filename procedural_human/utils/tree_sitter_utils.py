@@ -9,7 +9,7 @@ from typing import Optional, Dict, List, Tuple, Any
 
 import tree_sitter_python as tspython
 from tree_sitter import Language, Parser, Node
-
+from procedural_human.logger import *
 
 DSL_PRIMITIVE_TYPES = {
     "DualRadial": {"profile_type": "dual", "profiles": ["X", "Y"]},
@@ -91,7 +91,7 @@ def scan_directory_for_presets(directory: str) -> List[Dict]:
                     # For now, we'll rely on the registry to provide preset names
                     pass
                 except Exception as e:
-                    print(f"Error scanning {file_path}: {e}")
+                    logger.info(f"Error scanning {file_path}: {e}")
     
     return presets
 
@@ -825,8 +825,8 @@ class {class_name}(Preset):
     try:
         compile(new_content, file_path, "exec")
     except SyntaxError as e:
-        print(f"[TreeSitter] Warning: Generated code has syntax error: {e}")
-        print(f"[TreeSitter] Skipping write to {file_path}")
+        logger.info(f"[TreeSitter] Warning: Generated code has syntax error: {e}")
+        logger.info(f"[TreeSitter] Skipping write to {file_path}")
         return False
     
     with open(file_path, "w", encoding="utf-8") as f:
@@ -906,8 +906,8 @@ class {class_name}(Preset):
     try:
         compile(new_content, file_path, "exec")
     except SyntaxError as e:
-        print(f"[TreeSitter] Warning: Generated code has syntax error at line {e.lineno}: {e.msg}")
-        print(f"[TreeSitter] Skipping write to {file_path}")
+        logger.info(f"[TreeSitter] Warning: Generated code has syntax error at line {e.lineno}: {e.msg}")
+        logger.info(f"[TreeSitter] Skipping write to {file_path}")
         return False
     
     with open(file_path, "w", encoding="utf-8") as f:

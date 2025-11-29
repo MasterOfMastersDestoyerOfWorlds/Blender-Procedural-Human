@@ -17,6 +17,7 @@ from procedural_human.hand.finger.finger_types import (
 )
 from procedural_human.hand.finger import finger_animation as finger_animation
 from procedural_human.decorators.operator_decorator import procedural_operator
+from procedural_human.logger import *
 
 
 @procedural_operator

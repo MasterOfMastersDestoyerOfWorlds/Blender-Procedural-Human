@@ -7,6 +7,7 @@ based on bone information extracted from DSL generation.
 
 from typing import Dict, List, Any, Optional
 import math
+from procedural_human.logger import *
 
 
 def create_dsl_armature(obj: Any, bone_info: List[Dict], name_prefix: str = "") -> Any:
@@ -274,47 +275,47 @@ def get_bone_info_from_object(obj: Any) -> List[Dict]:
     source_file = obj.get("dsl_source_file", "")
     instance_name = obj.get("dsl_instance_name", "")
     
-    print(f"[Bone Debug] Getting bone info for: source={source_file}, instance={instance_name}")
+    logger.info(f"[Bone Debug] Getting bone info for: source={source_file}, instance={instance_name}")
     
     if not source_file or not instance_name:
-        print("[Bone Debug] Missing source_file or instance_name")
+        logger.info("[Bone Debug] Missing source_file or instance_name")
         return []
     
     from procedural_human.dsl.executor import execute_dsl_file
     
     result = execute_dsl_file(source_file)
     if instance_name not in result.instances:
-        print(f"[Bone Debug] Instance '{instance_name}' not in result.instances: {list(result.instances.keys())}")
+        logger.info(f"[Bone Debug] Instance '{instance_name}' not in result.instances: {list(result.instances.keys())}")
         return []
     
     instance = result.instances[instance_name]
-    print(f"[Bone Debug] Found instance: {type(instance).__name__}")
+    logger.info(f"[Bone Debug] Found instance: {type(instance).__name__}")
     
     bones_list = getattr(instance, 'bones', None)
     
     if bones_list is None:
-        print(f"[Bone Debug] No 'bones' attribute found on instance")
-        print(f"[Bone Debug] Available attributes: {[a for a in dir(instance) if not a.startswith('__') and not callable(getattr(instance, a, None))]}")
+        logger.info(f"[Bone Debug] No 'bones' attribute found on instance")
+        logger.info(f"[Bone Debug] Available attributes: {[a for a in dir(instance) if not a.startswith('__') and not callable(getattr(instance, a, None))]}")
         return []
     
     if not isinstance(bones_list, (list, tuple)):
-        print(f"[Bone Debug] 'bones' is not a list: {type(bones_list)}")
+        logger.info(f"[Bone Debug] 'bones' is not a list: {type(bones_list)}")
         return []
     
-    print(f"[Bone Debug] Found bones list with {len(bones_list)} items")
+    logger.info(f"[Bone Debug] Found bones list with {len(bones_list)} items")
     
     from procedural_human.dsl.primitives import Bone
     
     bone_info_list = []
     for idx, bone in enumerate(bones_list):
         if not isinstance(bone, Bone):
-            print(f"[Bone Debug] Item {idx} is not a Bone: {type(bone)}")
+            logger.info(f"[Bone Debug] Item {idx} is not a Bone: {type(bone)}")
             continue
         
         info = bone.get_bone_info(idx)
-        print(f"[Bone Debug] Bone {idx}: length={info['length']}, ik={info['ik_limits']}")
+        logger.info(f"[Bone Debug] Bone {idx}: length={info['length']}, ik={info['ik_limits']}")
         bone_info_list.append(info)
     
-    print(f"[Bone Debug] Total bones extracted: {len(bone_info_list)}")
+    logger.info(f"[Bone Debug] Total bones extracted: {len(bone_info_list)}")
     return bone_info_list
 

@@ -4,12 +4,12 @@ DSL Executor for procedural generation.
 
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
-
 from procedural_human.dsl.naming import NamingEnvironment, build_naming_environment
 from procedural_human.decorators.dsl_primitive_decorator import (
     get_dsl_namespace,
     get_all_dsl_names,
 )
+from procedural_human.logger import *
 
 
 @dataclass
@@ -141,10 +141,10 @@ def execute_dsl_file(file_path: str) -> DSLExecutionResult:
 def get_dsl_instances(file_path: str) -> List[str]:
     """Get list of instance names from a DSL file."""
     result = execute_dsl_file(file_path)
-    print(f"[DSL] File: {file_path}")
-    print(f"[DSL] Definitions found: {list(result.definitions.keys())}")
-    print(f"[DSL] Instances found: {list(result.instances.keys())}")
+    logger.info(f"[DSL] File: {file_path}")
+    logger.info(f"[DSL] Definitions found: {list(result.definitions.keys())}")
+    logger.info(f"[DSL] Instances found: {list(result.instances.keys())}")
     if result.errors:
-        print(f"[DSL] Errors: {result.errors}")
+        logger.info(f"[DSL] Errors: {result.errors}")
     return list(result.instances.keys())
 

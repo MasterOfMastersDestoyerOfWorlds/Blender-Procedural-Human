@@ -6,7 +6,7 @@ import bpy
 from bpy.types import AddonPreferences, Operator
 from bpy.props import StringProperty
 from pathlib import Path
-
+from procedural_human.logger import *
 from procedural_human.decorators.operator_decorator import procedural_operator
 
 
@@ -170,11 +170,11 @@ def register():
     try:
         bpy.utils.register_class(ProceduralHumanPreferences)
     except Exception as e:
-        print(f"Warning: Failed to register ProceduralHumanPreferences: {e}")
+        logger.info(f"Warning: Failed to register ProceduralHumanPreferences: {e}")
 
 
 def unregister():
     try:
         bpy.utils.unregister_class(ProceduralHumanPreferences)
     except Exception as e:
-        print(f"Warning: Failed to unregister ProceduralHumanPreferences: {e}")
+        logger.info(f"Warning: Failed to unregister ProceduralHumanPreferences: {e}")

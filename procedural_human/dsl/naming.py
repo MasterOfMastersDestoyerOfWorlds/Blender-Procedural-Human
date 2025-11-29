@@ -9,6 +9,7 @@ from procedural_human.utils.tree_sitter_utils import (
     extract_instance_assignments,
     DSL_PRIMITIVE_TYPES,
 )
+from procedural_human.logger import *
 
 
 class NamingEnvironment:

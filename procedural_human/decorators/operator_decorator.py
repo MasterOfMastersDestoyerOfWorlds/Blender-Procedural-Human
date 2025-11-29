@@ -8,7 +8,7 @@ and manages operator registration.
 import bpy
 import re
 from procedural_human.decorators.discoverable_decorator import DiscoverableClassDecorator
-
+from procedural_human.logger import *
 
 class procedural_operator(DiscoverableClassDecorator):
     """
@@ -48,15 +48,15 @@ class procedural_operator(DiscoverableClassDecorator):
         """
         Discover all modules and register all decorated operator classes.
         """
-        print(
+        logger.info(
             f"[Operator Registry] Registering {len(procedural_operator.registry.keys())} operators"
         )
         for op_cls in procedural_operator.registry.values():
             try:
                 bpy.utils.register_class(op_cls)
             except Exception as e:
-                print(f"Warning: Failed to register operator {op_cls.__name__}: {e}")
-        print(f"[Operator Registry] Registered: {[op_cls.bl_idname for op_cls in procedural_operator.registry.values()]}")
+                logger.info(f"Warning: Failed to register operator {op_cls.__name__}: {e}")
+        logger.info(f"[Operator Registry] Registered: {[op_cls.bl_idname for op_cls in procedural_operator.registry.values()]}")
 
     @classmethod
     def unregister_all_decorators(cls):
@@ -67,5 +67,5 @@ class procedural_operator(DiscoverableClassDecorator):
             try:
                 bpy.utils.unregister_class(op_cls)
             except Exception as e:
-                print(f"Warning: Failed to unregister operator {op_cls.__name__}: {e}")
+                logger.info(f"Warning: Failed to unregister operator {op_cls.__name__}: {e}")
         procedural_operator.registry.clear()

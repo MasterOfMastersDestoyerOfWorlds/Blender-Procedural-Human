@@ -15,7 +15,7 @@ from procedural_human.dsl.primitives import GenerationContext
 from procedural_human.dsl.naming import NamingEnvironment
 from procedural_human.dsl.executor import DSLExecutionResult
 from procedural_human.decorators.dsl_primitive_decorator import is_dsl_primitive
-
+from procedural_human.logger import *
 
 @dataclass
 class GenerationResult:
@@ -264,7 +264,7 @@ class DSLGenerator:
             try:
                 gen_result = generate_method(**kwargs)
             except TypeError as e:
-                print(
+                logger.info(
                     f"[Generator] Error calling generate on {type(obj).__name__}: {e}"
                 )
                 try:
@@ -456,7 +456,7 @@ def generate_from_dsl_file(
 
     result = execute_dsl_file(file_path)
     if not result.success:
-        print(f"DSL execution errors: {result.errors}")
+        logger.info(f"DSL execution errors: {result.errors}")
 
     generator = DSLGenerator(context)
     return generator.generate_from_result(result, instance_filter)

@@ -7,6 +7,7 @@ import bpy
 import subprocess
 import sys
 from pathlib import Path
+from procedural_human.logger import *
 
 from procedural_human.decorators.curve_preset_decorator import register_preset_class
 from procedural_human.decorators.panel_decorator import procedural_panel
@@ -52,7 +53,7 @@ def ensure_pip() -> bool:
         if result.returncode == 0:
             return True
         
-        print("[Procedural Human] pip not found, running ensurepip...")
+        logger.info("[Procedural Human] pip not found, running ensurepip...")
         result = subprocess.run(
             [python_exe, "-m", "ensurepip", "--upgrade"],
             capture_output=True,
@@ -61,7 +62,7 @@ def ensure_pip() -> bool:
         )
         return result.returncode == 0
     except Exception as e:
-        print(f"[Procedural Human] Error ensuring pip: {e}")
+        logger.info(f"[Procedural Human] Error ensuring pip: {e}")
         return False
 
 
@@ -111,44 +112,44 @@ def ensure_dependencies() -> bool:
         _MISSING_DEPENDENCIES = []
         return True
     
-    print(f"\n{'='*60}")
-    print("PROCEDURAL HUMAN: Installing required dependencies...")
-    print(f"{'='*60}")
+    logger.info(f"\n{'='*60}")
+    logger.info("PROCEDURAL HUMAN: Installing required dependencies...")
+    logger.info(f"{'='*60}")
     
     if not ensure_pip():
-        print("ERROR: Could not ensure pip is available.")
-        print("Please install pip manually or run Blender as administrator.")
-        print(f"{'='*60}\n")
+        logger.info("ERROR: Could not ensure pip is available.")
+        logger.info("Please install pip manually or run Blender as administrator.")
+        logger.info(f"{'='*60}\n")
         _DEPENDENCIES_CHECKED = True
         _MISSING_DEPENDENCIES = missing
         return False
     
     all_installed = True
     for import_name, pip_name in missing:
-        print(f"  Installing {pip_name}...")
+        logger.info(f"  Installing {pip_name}...")
         success, message = install_package(pip_name)
         if success:
-            print(f"    ✓ {message}")
+            logger.info(f"    ✓ {message}")
         else:
-            print(f"    ✗ {message}")
+            logger.info(f"    ✗ {message}")
             all_installed = False
     
     final_missing = check_dependencies()
     
     if not final_missing:
-        print(f"\n✓ All dependencies installed successfully!")
-        print(f"{'='*60}\n")
+        logger.info(f"\n✓ All dependencies installed successfully!")
+        logger.info(f"{'='*60}\n")
         _DEPENDENCIES_CHECKED = True
         _DEPENDENCIES_INSTALLED = True
         _MISSING_DEPENDENCIES = []
         return True
     else:
-        print(f"\n✗ Some dependencies could not be installed:")
+        logger.info(f"\n✗ Some dependencies could not be installed:")
         for import_name, pip_name in final_missing:
-            print(f"    - {pip_name}")
-        print(f"\nTry running Blender as administrator, or install manually:")
-        print(f"  {get_blender_python_executable()} -m pip install {' '.join(pip for _, pip in final_missing)}")
-        print(f"{'='*60}\n")
+            logger.info(f"    - {pip_name}")
+        logger.info(f"\nTry running Blender as administrator, or install manually:")
+        logger.info(f"  {get_blender_python_executable()} -m pip install {' '.join(pip for _, pip in final_missing)}")
+        logger.info(f"{'='*60}\n")
         _DEPENDENCIES_CHECKED = True
         _MISSING_DEPENDENCIES = final_missing
         return False
@@ -324,8 +325,8 @@ def register():
     
     deps_ok = ensure_dependencies()
     if not deps_ok:
-        print("Procedural Human: Some features disabled due to missing dependencies.")
-        print("Install dependencies via addon preferences to enable all features.")
+        logger.info("Procedural Human: Some features disabled due to missing dependencies.")
+        logger.info("Install dependencies via addon preferences to enable all features.")
     
     register_scene_properties()
     
@@ -340,7 +341,7 @@ def register():
         from procedural_human.utils.curve_serialization import register_autosave_handlers
         register_autosave_handlers()
     except ImportError as e:
-        print(f"[Procedural Human] Could not register curve autosave: {e}")
+        logger.info(f"[Procedural Human] Could not register curve autosave: {e}")
 
 
 def unregister():

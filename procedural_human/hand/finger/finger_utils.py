@@ -16,6 +16,7 @@ from procedural_human.hand.finger.finger_types import (
     ensure_finger_type,
 )
 from procedural_human.hand.finger.finger import FingerData
+from procedural_human.logger import *
 
 
 def realize_finger_geometry(finger: FingerData):
@@ -76,21 +77,21 @@ def create_finger_geometry(
             finger,
         )
 
-        print(f"Node group created with {len(node_group.nodes)} nodes")
-        print(f"Node group links: {len(node_group.links)}")
+        logger.info(f"Node group created with {len(node_group.nodes)} nodes")
+        logger.info(f"Node group links: {len(node_group.links)}")
 
         output_nodes = [n for n in node_group.nodes if n.type == "GROUP_OUTPUT"]
         if output_nodes:
             output_node = output_nodes[0]
             if "Geometry" not in output_node.inputs:
-                print(
+                logger.info(
                     f"Warning: Output node inputs: {[inp.name for inp in output_node.inputs]}"
                 )
         else:
-            print("Warning: No GROUP_OUTPUT node found in node group")
+            logger.info("Warning: No GROUP_OUTPUT node found in node group")
 
     except Exception as e:
-        print(f"Error creating finger nodes: {e}")
+        logger.info(f"Error creating finger nodes: {e}")
         import traceback
 
         traceback.print_exc()
@@ -110,9 +111,9 @@ def create_finger_geometry(
 
         if not finger_eval.data:
 
-            print(f"Modifier: {modifier.name}, Type: {modifier.type}")
-            print(f"Node group: {node_group.name}")
-            print(f"Node group nodes: {len(node_group.nodes)}")
+            logger.info(f"Modifier: {modifier.name}, Type: {modifier.type}")
+            logger.info(f"Node group: {node_group.name}")
+            logger.info(f"Node group nodes: {len(node_group.nodes)}")
             raise RuntimeError(
                 "Geometry Nodes modifier did not produce any geometry. Check node setup."
             )

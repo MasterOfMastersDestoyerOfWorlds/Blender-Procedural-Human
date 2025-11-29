@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 from typing import Any
+from procedural_human.logger import *
 
 
 def export_debug_info(
@@ -70,13 +71,11 @@ def export_debug_info(
         debug_folder = os.path.join(tempfile.gettempdir(), "procedural_human_debug")
     os.makedirs(debug_folder, exist_ok=True)
 
-    safe_name = "".join(
-        c if c.isalnum() or c in "-_" else "_" for c in instance_name
-    )
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in instance_name)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_file = os.path.join(debug_folder, f"{safe_name}_{timestamp}.json")
 
     with open(debug_file, "w") as f:
         json.dump(debug_data, f, indent=2)
 
-    print(f"[DSL Debug] Exported node structure to: {debug_file}")
+    logger.info(f"[DSL Debug] Exported node structure to: {debug_file}")

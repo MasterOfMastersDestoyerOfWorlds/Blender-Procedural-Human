@@ -7,7 +7,7 @@ import hashlib
 from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass, field
 import bpy
-
+from procedural_human.logger import *
 
 @dataclass
 class WatchedFile:
@@ -103,7 +103,7 @@ class DSLFileWatcher:
                     try:
                         callback(path, watched.linked_objects)
                     except Exception as e:
-                        print(f"DSL watcher callback error: {e}")
+                        logger.info(f"DSL watcher callback error: {e}")
         
         return changed
     
@@ -141,13 +141,13 @@ def on_dsl_file_changed(file_path: str, linked_objects: List[str]) -> None:
     
     from procedural_human.dsl.generator import regenerate_dsl_object
     
-    print(f"DSL file changed: {file_path}")
+    logger.info(f"DSL file changed: {file_path}")
     
     for obj_name in linked_objects:
         if obj_name in bpy.data.objects:
             obj = bpy.data.objects[obj_name]
             regenerate_dsl_object(obj)
-            print(f"Regenerated: {obj_name}")
+            logger.info(f"Regenerated: {obj_name}")
 
 
 def start_watching(dsl_directory: Optional[str] = None) -> DSLFileWatcher:
