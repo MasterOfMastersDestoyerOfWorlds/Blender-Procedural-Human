@@ -8,6 +8,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from procedural_human.decorators.curve_preset_decorator import register_preset_class
+from procedural_human.decorators.panel_decorator import procedural_panel
+from procedural_human.decorators.operator_decorator import procedural_operator
+
 REQUIRED_PACKAGES = [
     ("tree_sitter", "tree-sitter"),
     ("tree_sitter_python", "tree-sitter-python"),
@@ -148,11 +152,10 @@ def ensure_dependencies() -> bool:
         return False
 
 
+from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.hand.finger.finger_segment.finger_segment_const import (
     SEGMENT_SAMPLE_COUNT,
 )
-from procedural_human import operators
-from procedural_human import panels
 from procedural_human import menus
 from procedural_human import preferences
 from procedural_human.hand.finger.finger_types import (
@@ -323,8 +326,9 @@ def register():
         print("Install dependencies via addon preferences to enable all features.")
     
     register_scene_properties()
-    operators.register()
-    panels.register()
+    procedural_panel.discover_and_register_all_decorators()
+    procedural_operator.discover_and_register_all_decorators()
+    register_preset_class.discover_and_register_all_decorators()
     menus.register()
     finger.register()
     
@@ -344,8 +348,9 @@ def unregister():
     
     finger.unregister()
     menus.unregister()
-    panels.unregister()
-    operators.unregister()
+    procedural_panel.unregister_all_decorators()
+    procedural_operator.unregister_all_decorators()
+    register_preset_class.unregister_all_decorators()
     unregister_scene_properties()
     preferences.unregister()
 

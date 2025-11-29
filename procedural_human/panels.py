@@ -9,9 +9,7 @@ import bpy
 from bpy.types import Panel
 
 from procedural_human.decorators.panel_decorator import (
-    procedural_panel,
-    discover_and_register_all_panels,
-    unregister_all_panels,
+    procedural_panel
 )
 
 
@@ -25,13 +23,3 @@ class MainPanel(Panel):
     def draw(self, context):
         layout = self.layout
         layout.label(text="Procedural Human Generator")
-
-
-def register():
-    """Discover and register all panels using the decorator system"""
-    discover_and_register_all_panels()
-
-
-def unregister():
-    """Unregister all panels using the decorator system"""
-    unregister_all_panels()

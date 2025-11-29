@@ -332,17 +332,17 @@ class DualRadial:
         Preset data keys: Segment_{index}_X, Segment_{index}_Y
         """
         from procedural_human.decorators.curve_preset_decorator import (
-            get_preset, get_registry_names
+            register_preset_class
         )
         from procedural_human.utils.curve_serialization import apply_data_to_float_curve_node
         
         preset_name = f"{context.instance_name}_Segment_{index}"
         
-        all_names = get_registry_names()
+        all_names = register_preset_class.registry.keys()
         print(f"[Preset Debug] Looking for preset: '{preset_name}'")
         print(f"[Preset Debug] Available presets in registry: {all_names}")
         
-        preset_data = get_preset(preset_name)
+        preset_data = register_preset_class.get_preset(preset_name)
         
         if preset_data is None:
             print(f"[Preset Debug] No preset found for '{preset_name}'")

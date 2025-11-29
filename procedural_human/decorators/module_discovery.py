@@ -58,12 +58,9 @@ def discover_modules(root_path: Path = None, package_name: str = "procedural_hum
     return modules
 
 
-def import_all_modules(force_reload: bool = False) -> Set[str]:
+def import_all_modules() -> Set[str]:
     """
     Import all discovered modules to trigger decorators.
-    
-    Args:
-        force_reload: If True, reload modules even if already discovered
     
     Returns:
         Set of successfully imported module names
@@ -75,28 +72,14 @@ def import_all_modules(force_reload: bool = False) -> Set[str]:
     
     print(f"[Module Discovery] Found {len(modules)} modules to import")
     
-    preset_modules = [m for m in modules if 'preset' in m.lower()]
-    if preset_modules:
-        print(f"[Module Discovery] Preset modules found: {preset_modules}")
-    
     for module_name in sorted(modules):
-        if not force_reload and module_name in _discovered_modules:
+        if module_name in _discovered_modules:
             continue
         
         try:
-            is_preset_module = 'preset' in module_name.lower()
-            
             if module_name in sys.modules:
-                if force_reload or is_preset_module:
-                    if is_preset_module:
-                        print(f"[Module Discovery] Reloading preset module: {module_name}")
-                    importlib.reload(sys.modules[module_name])
-                else:
-                    _discovered_modules.add(module_name)
-                    continue
+                importlib.reload(sys.modules[module_name])
             else:
-                if is_preset_module:
-                    print(f"[Module Discovery] Importing preset module: {module_name}")
                 importlib.import_module(module_name)
             
             imported.add(module_name)
