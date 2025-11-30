@@ -646,7 +646,9 @@ def find_preset_class_range(file_path: str, preset_name: str) -> Optional[Dict]:
             if decorators and class_node:
                 for decorator_node in decorators:
                     decorator_text = _get_node_text(decorator_node, source_bytes)
-                    if f'register_preset_class("{preset_name}")' in decorator_text:
+                    # Check both positional and keyword arg forms
+                    if (f'register_preset_class("{preset_name}")' in decorator_text or
+                        f'register_preset_class(name="{preset_name}")' in decorator_text):
                         return {
                             "start_byte": node.start_byte,
                             "end_byte": node.end_byte,
