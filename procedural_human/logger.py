@@ -9,4 +9,4 @@ class FilenameFilter(logging.Filter):
         return record.pathname.endswith(self.filename)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.addFilter(FilenameFilter("generator.py"))
+#logger.addFilter(FilenameFilter("generator.py"))

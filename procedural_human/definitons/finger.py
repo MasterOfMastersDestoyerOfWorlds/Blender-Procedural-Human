@@ -1,9 +1,5 @@
 """
 Finger DSL definition.
-
-Defines procedural finger structures using the DSL primitives.
-Profile curves are automatically looked up from the registry using
-hierarchical naming: Index_Finger_Segment_0_X -> Finger_Segment_0_X -> default
 """
 
 from typing import List
