@@ -7,3 +7,4 @@ from procedural_human.dsl.primitives.bone import *
 from procedural_human.dsl.primitives.extend import *
 from procedural_human.dsl.primitives.join import *
 from procedural_human.dsl.primitives.primitives import *
+from procedural_human.dsl.primitives.output import *

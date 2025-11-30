@@ -58,9 +58,14 @@ class Finger:
         self.finger_segment_chain = Extend(
             self.segments, axis="Z", norm_lengths=self.norm_lengths
         )
-        self.finger_joints = Join(self.segments, self.knuckle)
-        self.finger_nail_attachment = AttachRaycast(last(self.segments), self.nail)
-
+        self.finger_joints = Join(self.finger_segment_chain, self.knuckle)
+        self.finger_nail_attachment = AttachRaycast(self.finger_segment_chain[-1], self.nail)
+        self.output = Output([
+            self.finger_segment_chain,
+            self.finger_joints,
+            self.finger_nail_attachment,
+        ])
+ 
 
 # Finger instances with anatomical measurements (in mm)
 Index = Finger([39.78, 22.38, 15.82])

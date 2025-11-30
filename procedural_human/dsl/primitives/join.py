@@ -151,6 +151,7 @@ class JoinedStructure:
     segments: List[Any]
     joints: List[Joint]
     joint_template: Joint
+    segment_source: Any = None  # Original SegmentChain if passed, for dependency tracking
     
     def get_all_components(self) -> List[Any]:
         """Return interleaved segments and joints."""
@@ -185,7 +186,9 @@ class JoinedStructure:
 @dsl_helper
 def Join(segments: List[Any], joint: Joint) -> JoinedStructure:
     """Insert joints between segments."""
+    segment_source = None
     if isinstance(segments, SegmentChain):
+        segment_source = segments
         segment_list = segments.segments
     else:
         segment_list = segments
@@ -205,4 +208,5 @@ def Join(segments: List[Any], joint: Joint) -> JoinedStructure:
         segments=segment_list,
         joints=joints,
         joint_template=joint,
+        segment_source=segment_source,
     )

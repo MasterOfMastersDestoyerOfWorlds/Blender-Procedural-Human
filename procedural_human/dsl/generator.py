@@ -15,6 +15,7 @@ from procedural_human.dsl.primitives import GenerationContext
 from procedural_human.dsl.naming import NamingEnvironment
 from procedural_human.dsl.executor import DSLExecutionResult
 from procedural_human.decorators.dsl_primitive_decorator import is_dsl_primitive
+from procedural_human.dsl.primitives.output import Output
 from procedural_human.logger import *
 from procedural_human.dsl.primitives import (
     SegmentChain,
@@ -342,11 +343,18 @@ class DSLGenerator:
             return result
 
         if self._is_dsl_instance(obj):
-            for attribute in self._get_generatable_attrs(obj):
-                attr_value = getattr(obj, attribute, None) 
-                if attr_value is not None:
+            output_attr = None
+            for att in dir(obj):
+                attr = getattr(obj,att)
+                if hasattr(attr, "_type") and attr._type == Output.__name__:
+                    assert output_attr is None, "Multiple Output declarations found"
+                    output_attr = attr
+            if output_attr is not None: 
+                # Use Output's ordered items instead of auto-discovering attrs
+                items_to_generate = output_attr.get_ordered_items()
+                for item in items_to_generate:
                     sub_result = self._generate_recursive(
-                        attr_value, context, prev_geometry, depth + 1, attr_name=attribute
+                        item, context, prev_geometry, depth + 1, attr_name=""
                     )
                     result.merge(sub_result)
 
@@ -361,6 +369,27 @@ class DSLGenerator:
                                 prev_geometry = instance.outputs["Geometry"]
                     elif sub_result.geometry_outputs:
                         prev_geometry = sub_result.geometry_outputs[-1]
+            else:
+                # Fall back to auto-discovery for backward compatibility
+                for attribute in self._get_generatable_attrs(obj):
+                    attr_value = getattr(obj, attribute, None) 
+                    if attr_value is not None:
+                        sub_result = self._generate_recursive(
+                            attr_value, context, prev_geometry, depth + 1, attr_name=attribute
+                        )
+                        result.merge(sub_result)
+
+                        if sub_result.segments:
+                            last_seg = sub_result.segments[-1]
+                            if last_seg and "instance" in last_seg:
+                                instance = last_seg["instance"]
+                                if (
+                                    hasattr(instance, "outputs")
+                                    and "Geometry" in instance.outputs
+                                ):
+                                    prev_geometry = instance.outputs["Geometry"]
+                        elif sub_result.geometry_outputs:
+                            prev_geometry = sub_result.geometry_outputs[-1]
 
         return result 
 
