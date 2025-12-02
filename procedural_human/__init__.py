@@ -7,6 +7,7 @@ import bpy
 import subprocess
 import sys
 from pathlib import Path
+from procedural_human.dsl.finger_segment_const import SEGMENT_SAMPLE_COUNT
 from procedural_human.logger import *
 
 from procedural_human.decorators.curve_preset_decorator import register_preset_class
@@ -156,16 +157,8 @@ def ensure_dependencies() -> bool:
 
 
 from procedural_human.decorators.operator_decorator import procedural_operator
-from procedural_human.hand.finger.finger_segment.finger_segment_const import (
-    SEGMENT_SAMPLE_COUNT,
-)
 from procedural_human import menus
 from procedural_human import preferences
-from procedural_human.hand.finger.finger_types import (
-    FingerType,
-    enum_items as finger_type_items,
-)
-import procedural_human.hand.finger as finger
 
 
 def update_profile_curves(self, context):
@@ -202,12 +195,6 @@ bl_info = {
 
 def register_scene_properties():
     """Register scene properties for finger operations"""
-    bpy.types.Scene.procedural_finger_type = bpy.props.EnumProperty(
-        name="Finger Type",
-        items=list(finger_type_items()),
-        default=FingerType.INDEX.value,
-        description="Type of finger to generate",
-    )
 
     bpy.types.Scene.procedural_finger_curl_direction = bpy.props.EnumProperty(
         name="Curl Direction",
@@ -335,7 +322,6 @@ def register():
     procedural_operator.discover_and_register_all_decorators()
     register_preset_class.discover_and_register_all_decorators()
     menus.register()
-    finger.register()
     
     try:
         from procedural_human.utils.curve_serialization import register_autosave_handlers
@@ -350,7 +336,6 @@ def unregister():
     except ImportError:
         pass
     
-    finger.unregister()
     menus.unregister()
     procedural_panel.unregister_all_decorators()
     procedural_operator.unregister_all_decorators()
@@ -361,4 +346,4 @@ def unregister():
 
 
 if __name__ == "__main__":
-    register()
+    register() 

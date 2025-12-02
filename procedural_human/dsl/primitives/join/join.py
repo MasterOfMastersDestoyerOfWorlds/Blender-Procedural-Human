@@ -1,14 +1,14 @@
 import bpy
-from procedural_human.dsl.primitives.extend import SegmentChain
+from procedural_human.dsl.primitives.extend.extend import SegmentChain
 from procedural_human.geo_node_groups.closures import create_flat_float_curve_closure
-from procedural_human.hand.finger.finger_segment.joint_segment_nodes import (
+from procedural_human.dsl.primitives.join.joint_segment_nodes import (
     create_joint_segment_node_group,
 )
 from procedural_human.dsl.primitives.primitives import GenerationContext, ProfileType
 from procedural_human.decorators.dsl_primitive_decorator import dsl_helper, dsl_primitive
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-from procedural_human.dsl.primitives.quad_radial import QuadRadial
+from procedural_human.dsl.primitives.quad_radial.quad_radial import QuadRadial
 
 @dsl_primitive
 @dataclass

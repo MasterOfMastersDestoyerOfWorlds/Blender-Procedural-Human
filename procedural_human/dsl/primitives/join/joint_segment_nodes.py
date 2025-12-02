@@ -7,17 +7,23 @@ Joint segments create organic transitions at knuckle locations by:
 - Creating smooth blended geometry using quad radial profiles
 """
 
+from enum import Enum
 import bpy
-import math
 from procedural_human.geo_node_groups.quad_radial import create_quad_profile_radial_group
-from procedural_human.hand.finger.finger_segment.finger_segment_const import (
+from procedural_human.dsl.finger_segment_const import (
     SEGMENT_SAMPLE_COUNT,
 )
-from procedural_human.hand.finger.finger_segment.finger_segment_properties import (
-    JointSegmentProperties,
-)
-from procedural_human.utils import setup_node_group_interface
 
+class JointSegmentProperties(Enum):
+    PREV_SEGMENT = "Previous Segment"
+    NEXT_SEGMENT = "Next Segment" 
+    PREV_SEGMENT_START = "Prev Segment Start"
+    NEXT_SEGMENT_START = "Next Segment Start"
+    CURVE_0 = "0° Float Curve"
+    CURVE_90 = "90° Float Curve"
+    CURVE_180 = "180° Float Curve"
+    CURVE_270 = "270° Float Curve"
+    SAMPLE_COUNT = "Sample Count"
 
 DEFAULT_PREV_START = 0.8
 DEFAULT_NEXT_START = 0.2

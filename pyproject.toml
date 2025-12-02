@@ -36,6 +36,7 @@ dependencies = [
     "fake-bpy-module>=20251003",
     "tree-sitter>=0.20.0",
     "tree-sitter-python>=0.20.0",
+    "filemover @ git+https://github.com/plex1/filemover"
 ]
 
 [project.urls]
@@ -76,3 +77,6 @@ disallow_untyped_defs = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.hatch.metadata]
+allow-direct-references= true

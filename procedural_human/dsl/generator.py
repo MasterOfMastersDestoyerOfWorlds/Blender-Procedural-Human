@@ -15,7 +15,7 @@ from procedural_human.dsl.primitives import GenerationContext
 from procedural_human.dsl.naming import NamingEnvironment
 from procedural_human.dsl.executor import DSLExecutionResult
 from procedural_human.decorators.dsl_primitive_decorator import is_dsl_primitive
-from procedural_human.dsl.primitives.output import Output
+from procedural_human.dsl.primitives.output.output import Output
 from procedural_human.logger import *
 from procedural_human.dsl.primitives import (
     SegmentChain,

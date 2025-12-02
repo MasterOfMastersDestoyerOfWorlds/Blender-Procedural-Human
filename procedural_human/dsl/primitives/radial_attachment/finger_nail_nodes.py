@@ -5,17 +5,9 @@ Geometry Node helpers for fingernail creation and attachment.
 import bpy
 
 from procedural_human.blender_const import NODE_WIDTH
-from procedural_human.hand.finger.finger_nail import NAIL_SAMPLE_COUNT
+from procedural_human.dsl.finger_segment_const import SEGMENT_SAMPLE_COUNT
 from procedural_human.utils import setup_node_group_interface
-from procedural_human.hand.finger.finger_nail.finger_nail_proportions import (
-    get_fingernail_proportions,
-)
-from procedural_human.hand.finger.finger_segment.finger_segment_properties import (
-    FingerSegmentProperties,
-)
-from procedural_human.hand.finger.finger_types import (
-    ensure_finger_type,
-)
+
 
 DEFAULT_NAIL_SIZE = 0.003
 OFFSET_RATIO = 0.1
@@ -37,7 +29,7 @@ def create_fingernail_node_group(
     setup_node_group_interface(nail_group)
 
     radius_socket = nail_group.interface.new_socket(
-        name=FingerSegmentProperties.SEGMENT_RADIUS.value,
+        name="Segment Radius",
         in_out="INPUT",
         socket_type="NodeSocketFloat",
     )
@@ -94,7 +86,7 @@ def create_fingernail_node_group(
     width_calc.operation = "MULTIPLY"
     width_calc.location = (-1000, -200)
     nail_group.links.new(
-        input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
+        input_node.outputs["Segment Radius"],
         width_calc.inputs[0],
     )
     nail_group.links.new(input_node.outputs["Nail Width Ratio"], width_calc.inputs[1])
@@ -143,7 +135,7 @@ def create_fingernail_node_group(
     offset_dist.operation = "MULTIPLY"
     offset_dist.inputs[1].default_value = 2.0
     nail_group.links.new(
-        input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
+        input_node.outputs["Segment Radius"],
         offset_dist.inputs[0],
     )
 
@@ -178,7 +170,7 @@ def create_fingernail_node_group(
     nail_sphere = nail_group.nodes.new("GeometryNodeMeshUVSphere")
     nail_sphere.location = (-400, -500)
     nail_sphere.inputs["Radius"].default_value = 1.0
-    nail_sphere.inputs["Segments"].default_value = NAIL_SAMPLE_COUNT
+    nail_sphere.inputs["Segments"].default_value = SEGMENT_SAMPLE_COUNT
 
     thickness_calc = nail_group.nodes.new("ShaderNodeMath")
     thickness_calc.operation = "MULTIPLY"
@@ -213,7 +205,7 @@ def create_fingernail_node_group(
     offset_out_val.operation = "MULTIPLY"
     offset_out_val.inputs[1].default_value = OFFSET_RATIO * 0.1
     nail_group.links.new(
-        input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
+        input_node.outputs["Segment Radius"],
         offset_out_val.inputs[0],
     )
 
@@ -243,7 +235,7 @@ def create_fingernail_node_group(
     rad_1_1.operation = "MULTIPLY"
     rad_1_1.inputs[1].default_value = 1.1
     nail_group.links.new(
-        input_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
+        input_node.outputs["Segment Radius"],
         rad_1_1.inputs[0],
     )
     nail_group.links.new(rad_1_1.outputs["Value"], fallback_offset.inputs[3])
@@ -263,75 +255,3 @@ def create_fingernail_node_group(
     nail_group.links.new(join_geo.outputs["Geometry"], output_node.inputs["Geometry"])
 
     return nail_group
-
-
-def attach_fingernail_to_distal_segment(
-    node_group,
-    distal_transform_node,
-    curl_direction,
-    distal_seg_radius,
-    finger_type,
-    nail_size=DEFAULT_NAIL_SIZE,
-    parent_frame=None,
-):
-    """
-    Build and attach a fingernail node group for the distal segment.
-
-    Args:
-        node_group: The parent node group
-        distal_transform_node: The distal segment node to attach nail to
-        curl_direction: Direction of finger curl ("X", "Y", or "Z")
-        distal_seg_radius: Radius of the distal segment
-        finger_type: Type of finger (FingerType enum or string)
-        nail_size: Size of the fingernail
-        parent_frame: Optional NodeFrame to parent the nail node to
-    """
-    finger_enum = ensure_finger_type(finger_type)
-    nail_props = get_fingernail_proportions(finger_enum)
-
-    size_multiplier = 1.0
-    if nail_size and nail_size > 0:
-        size_multiplier = max(0.25, min(2.5, nail_size / DEFAULT_NAIL_SIZE))
-
-    width_ratio = max(0.05, nail_props["width_ratio"] * size_multiplier)
-    height_ratio = max(0.5, nail_props["height_ratio"])
-
-    nail_group = create_fingernail_node_group(
-        f"{finger_enum.value}_Fingernail",
-        curl_direction,
-        distal_seg_radius,
-        width_ratio,
-        height_ratio,
-    )
-
-    nail_instance = node_group.nodes.new("GeometryNodeGroup")
-    nail_instance.node_tree = nail_group
-    nail_instance.label = f"{finger_enum.label} Nail"
-
-    # Parent to frame if provided (must happen after setting location)
-    if parent_frame is not None:
-        nail_instance.parent = parent_frame
-
-    nail_instance.location = (
-        distal_transform_node.location[0] + NODE_WIDTH,
-        distal_transform_node.location[1],
-    )
-
-    if FingerSegmentProperties.SEGMENT_RADIUS.value in nail_instance.inputs:
-        nail_instance.inputs[
-            FingerSegmentProperties.SEGMENT_RADIUS.value
-        ].default_value = distal_seg_radius
-    if "Nail Width Ratio" in nail_instance.inputs:
-        nail_instance.inputs["Nail Width Ratio"].default_value = width_ratio
-    if "Nail Height Ratio" in nail_instance.inputs:
-        nail_instance.inputs["Nail Height Ratio"].default_value = height_ratio
-
-    if FingerSegmentProperties.SEGMENT_RADIUS.value in distal_transform_node.outputs:
-        node_group.links.new(
-            distal_transform_node.outputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
-            nail_instance.inputs[FingerSegmentProperties.SEGMENT_RADIUS.value],
-        )
-    node_group.links.new(
-        distal_transform_node.outputs["Geometry"], nail_instance.inputs["Geometry"]
-    )
-    return nail_instance

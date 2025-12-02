@@ -66,6 +66,14 @@ wheels = [
 ]
 
 [[package]]
+name = "filemover"
+version = "0.1.0"
+source = { git = "https://github.com/plex1/filemover#321b5782c9f49a8d3f96c78b58aad6ea6f5858be" }
+dependencies = [
+    { name = "click" },
+]
+
+[[package]]
 name = "flake8"
 version = "7.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -187,6 +195,7 @@ source = { editable = "." }
 dependencies = [
     { name = "black" },
     { name = "fake-bpy-module" },
+    { name = "filemover" },
     { name = "flake8" },
     { name = "mypy" },
     { name = "pytest" },
@@ -198,6 +207,7 @@ dependencies = [
 requires-dist = [
     { name = "black", specifier = ">=22.0.0" },
     { name = "fake-bpy-module", specifier = ">=20251003" },
+    { name = "filemover", git = "https://github.com/plex1/filemover" },
     { name = "flake8", specifier = ">=4.0.0" },
     { name = "mypy", specifier = ">=0.950" },
     { name = "pytest", specifier = ">=7.0.0" },
