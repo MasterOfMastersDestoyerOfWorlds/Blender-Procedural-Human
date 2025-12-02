@@ -8,6 +8,7 @@ from procedural_human.geo_node_groups.dual_radial import create_dual_profile_rad
 from procedural_human.geo_node_groups.closures import create_float_curve_closure
 from procedural_human.dsl.finger_segment_const import SEGMENT_SAMPLE_COUNT
 from procedural_human.utils import setup_node_group_interface
+from procedural_human.utils.node_layout import auto_layout_nodes
 
 @dsl_primitive
 @dataclass
@@ -160,21 +161,17 @@ class DualRadial:
         
         input_node = segment_group.nodes.new("NodeGroupInput")
         input_node.label = "Inputs"
-        input_node.location = (-1400, 0)
         
         bbox_node = segment_group.nodes.new("GeometryNodeBoundBox")
         bbox_node.label = "Find Endpoint"
-        bbox_node.location = (-1200, 200)
         segment_group.links.new(input_node.outputs["Geometry"], bbox_node.inputs["Geometry"])
         
         separate_xyz = segment_group.nodes.new("ShaderNodeSeparateXYZ")
         separate_xyz.label = "Extract Z"
-        separate_xyz.location = (-1000, 200)
         segment_group.links.new(bbox_node.outputs["Max"], separate_xyz.inputs["Vector"])
         
         grid = segment_group.nodes.new("GeometryNodeMeshGrid")
         grid.label = "Parameter Grid"
-        grid.location = (550, -100)
         grid.inputs["Vertices X"].default_value = SEGMENT_SAMPLE_COUNT
         grid.inputs["Size X"].default_value = 1.0
         grid.inputs["Size Y"].default_value = 1.0
@@ -183,7 +180,6 @@ class DualRadial:
         radial_instance = segment_group.nodes.new("GeometryNodeGroup")
         radial_instance.node_tree = radial_group
         radial_instance.label = "Radial Profile (Dual)"
-        radial_instance.location = (1400, -200)
         
         segment_group.links.new(input_node.outputs["Segment Radius"], radial_instance.inputs["Radius"])
         segment_group.links.new(separate_xyz.outputs["Z"], radial_instance.inputs["Z Position"])
@@ -194,16 +190,15 @@ class DualRadial:
         
         apply_shape = segment_group.nodes.new("GeometryNodeSetPosition")
         apply_shape.label = "Apply Shape"
-        apply_shape.location = (2200, 0)
         segment_group.links.new(grid.outputs["Mesh"], apply_shape.inputs["Geometry"])
         segment_group.links.new(radial_instance.outputs["Position"], apply_shape.inputs["Position"])
         
         output_node = segment_group.nodes.new("NodeGroupOutput")
         output_node.label = "Output"
-        output_node.location = (2600, 0)
         segment_group.links.new(apply_shape.outputs["Geometry"], output_node.inputs["Geometry"])
         segment_group.links.new(input_node.outputs["Segment Radius"], output_node.inputs["Segment Radius"])
         
+        auto_layout_nodes(segment_group)
         return segment_group
     
     def _apply_preset_to_closures(
