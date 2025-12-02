@@ -20,11 +20,18 @@ class RadialAttachment:
     Terminal attachment (like fingernail) that attaches to segment end.
 
     Maps to: procedural_human/hand/finger/finger_nail/finger_nail_nodes.py
+    
+    Args:
+        type: The profile type to use for the attachment
+        size_ratio: Width ratio of nail relative to segment radius
+        rotation: Curl direction axis (X, Y, or Z)
+        attachment_position: Position along segment (0-1) to sample radius for sizing (default 0.8)
     """
 
     type: type = DualRadial
     size_ratio: float = 0.3
     rotation: str = "Y"
+    attachment_position: float = 0.8
     _naming_context: Optional[List[str]] = field(default=None, repr=False)
 
     def get_profile_names(self) -> List[str]:
@@ -39,10 +46,12 @@ class RadialAttachment:
         segment_result: Dict,
         attr_name: str = "",
     ) -> Dict:
-        """Generate attachment geometry using raycast positioning."""
+        """Generate attachment geometry using raycast positioning.
+        
+        Segment radius is determined automatically via raycast on the input geometry.
+        """
 
         node_group = context.node_group
-        segment = segment_result["segment"]
 
         attachment_label = f"Attachment_{attr_name}" if attr_name else "Attachment"
         attachment_label = (
@@ -56,9 +65,9 @@ class RadialAttachment:
         nail_group = create_fingernail_node_group(
             name=f"{context.instance_name}_{attachment_label}_Group",
             curl_direction=self.rotation,
-            distal_seg_radius=segment.radius,
             nail_width_ratio=self.size_ratio,
             nail_height_ratio=0.7,
+            attachment_position=self.attachment_position,
         )
 
         attachment_instance = node_group.nodes.new("GeometryNodeGroup")
@@ -77,9 +86,9 @@ class RadialAttachment:
             attachment_instance.inputs["Geometry"],
         )
 
-        attachment_instance.inputs["SegmentRadius"].default_value = segment.radius
         attachment_instance.inputs["Nail Width Ratio"].default_value = self.size_ratio
         attachment_instance.inputs["Nail Height Ratio"].default_value = 0.7
+        attachment_instance.inputs["Attachment Position"].default_value = self.attachment_position
 
         return {
             "node_group": nail_group,

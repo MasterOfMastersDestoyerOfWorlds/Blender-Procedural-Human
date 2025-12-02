@@ -193,119 +193,6 @@ bl_info = {
 }
 
 
-def register_scene_properties():
-    """Register scene properties for finger operations"""
-
-    bpy.types.Scene.procedural_finger_curl_direction = bpy.props.EnumProperty(
-        name="Curl Direction",
-        items=[
-            ("X", "X Axis", "Curl along X axis"),
-            ("Y", "Y Axis", "Curl along Y axis (default)"),
-            ("Z", "Z Axis", "Curl along Z axis"),
-        ],
-        default="Y",
-        description="Axis along which the finger curls",
-    )
-
-    bpy.types.Scene.procedural_create_animation_finger = bpy.props.BoolProperty(
-        name="Create Animation",
-        default=True,
-        description="Create keyframe animation for finger curl",
-    )
-
-    bpy.types.Scene.procedural_finger_expanded = bpy.props.BoolProperty(
-        name="Finger Expanded",
-        default=True,
-        description="Show/hide finger panel content",
-    )
-
-    bpy.types.Scene.procedural_finger_nail_expanded = bpy.props.BoolProperty(
-        name="Finger Nail Expanded",
-        default=False,
-        description="Show/hide finger nail panel content",
-    )
-
-    bpy.types.Scene.procedural_finger_segment_expanded = bpy.props.BoolProperty(
-        name="Finger Segment Expanded",
-        default=False,
-        description="Show/hide finger segment panel content",
-    )
-
-    bpy.types.Scene.procedural_finger_segment_sample_count = bpy.props.IntProperty(
-        name="Sample Count",
-        default=SEGMENT_SAMPLE_COUNT,
-        min=3,
-        description="Number of samples for profile curve resolution. Higher values improve quality but increase geometry count",
-        update=update_profile_curves,
-    )
-
-    bpy.types.Scene.procedural_segment_proximal_x_profile = bpy.props.PointerProperty(
-        name="Proximal X Profile",
-        type=bpy.types.Object,
-        description="X-axis profile curve for proximal finger segment",
-        poll=lambda self, obj: obj.type == "CURVE",
-        update=update_profile_curves,
-    )
-
-    bpy.types.Scene.procedural_segment_proximal_y_profile = bpy.props.PointerProperty(
-        name="Proximal Y Profile",
-        type=bpy.types.Object,
-        description="Y-axis profile curve for proximal finger segment",
-        poll=lambda self, obj: obj.type == "CURVE",
-        update=update_profile_curves,
-    )
-
-    bpy.types.Scene.procedural_segment_middle_x_profile = bpy.props.PointerProperty(
-        name="Middle X Profile",
-        type=bpy.types.Object,
-        description="X-axis profile curve for middle finger segment",
-        poll=lambda self, obj: obj.type == "CURVE",
-        update=update_profile_curves,
-    )
-
-    bpy.types.Scene.procedural_segment_middle_y_profile = bpy.props.PointerProperty(
-        name="Middle Y Profile",
-        type=bpy.types.Object,
-        description="Y-axis profile curve for middle finger segment",
-        poll=lambda self, obj: obj.type == "CURVE",
-        update=update_profile_curves,
-    )
-
-    bpy.types.Scene.procedural_segment_distal_x_profile = bpy.props.PointerProperty(
-        name="Distal X Profile",
-        type=bpy.types.Object,
-        description="X-axis profile curve for distal finger segment",
-        poll=lambda self, obj: obj.type == "CURVE",
-        update=update_profile_curves,
-    )
-
-    bpy.types.Scene.procedural_segment_distal_y_profile = bpy.props.PointerProperty(
-        name="Distal Y Profile",
-        type=bpy.types.Object,
-        description="Y-axis profile curve for distal finger segment",
-        poll=lambda self, obj: obj.type == "CURVE",
-        update=update_profile_curves,
-    )
-
-
-def unregister_scene_properties():
-    """Unregister scene properties"""
-    del bpy.types.Scene.procedural_finger_type
-    del bpy.types.Scene.procedural_finger_curl_direction
-    del bpy.types.Scene.procedural_create_animation_finger
-
-    del bpy.types.Scene.procedural_finger_expanded
-    del bpy.types.Scene.procedural_finger_nail_expanded
-    del bpy.types.Scene.procedural_finger_segment_expanded
-    del bpy.types.Scene.procedural_finger_segment_sample_count
-
-    del bpy.types.Scene.procedural_segment_proximal_x_profile
-    del bpy.types.Scene.procedural_segment_proximal_y_profile
-    del bpy.types.Scene.procedural_segment_middle_x_profile
-    del bpy.types.Scene.procedural_segment_middle_y_profile
-    del bpy.types.Scene.procedural_segment_distal_x_profile
-    del bpy.types.Scene.procedural_segment_distal_y_profile
-
 
 def register():
     preferences.register()
@@ -314,8 +201,6 @@ def register():
     if not deps_ok:
         logger.info("Procedural Human: Some features disabled due to missing dependencies.")
         logger.info("Install dependencies via addon preferences to enable all features.")
-    
-    register_scene_properties()
     
     import_all_modules()
     procedural_panel.discover_and_register_all_decorators()
@@ -340,9 +225,8 @@ def unregister():
     procedural_panel.unregister_all_decorators()
     procedural_operator.unregister_all_decorators()
     register_preset_class.unregister_all_decorators()
-    unregister_scene_properties()
     preferences.unregister()
-    clear_discovered()
+    clear_discovered() 
 
 
 if __name__ == "__main__":
