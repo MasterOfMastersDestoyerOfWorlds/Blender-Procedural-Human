@@ -342,7 +342,11 @@ def check_curves_for_changes():
 
 
 def _auto_save_curves(obj, changed_curves):
-    """Auto-save changed curves for a DSL object to a separate presets file."""
+    """Auto-save changed curves for a DSL object to a separate presets file.
+    
+    Groups curves by component (extracted from label prefix) and creates
+    one preset class per component (e.g., Index_Segment_0, Index_Joint_0).
+    """
     from procedural_human.utils.tree_sitter_utils import (
         ensure_presets_file_exists,
         batch_update_preset_classes,
@@ -360,56 +364,56 @@ def _auto_save_curves(obj, changed_curves):
 
     presets_file = ensure_presets_file_exists(source_file)
 
-    segments_data = {}
+    # Collect ALL float curves and group by component
     all_curves = _get_dsl_object_curves(obj)
-
+    
+    # Group curves by component prefix (first token before space)
+    # e.g., "Segment_0 X Profile" -> component = "Segment_0"
+    # e.g., "Joint_0 0°" -> component = "Joint_0"
+    # e.g., "Attachment_Attachment Angle Profile" -> component = "Attachment_Attachment"
+    components = {}
     for label, curve_data in all_curves.items():
         node = curve_data["node"]
         data = serialize_float_curve_node(node)
         if data:
-            if " X Profile" in label:
-                seg_name = label.replace(" X Profile", "").strip()
-                axis = "X"
-            elif " Y Profile" in label:
-                seg_name = label.replace(" Y Profile", "").strip()
-                axis = "Y"
-            else:
-                continue
+            # Extract component from label prefix (first token before space)
+            parts = label.split()
+            component = parts[0] if parts else label
+            
+            if component not in components:
+                components[component] = {}
+            components[component][label] = data
 
-            if seg_name not in segments_data:
-                segments_data[seg_name] = {}
-            segments_data[seg_name][f"{seg_name}_{axis}"] = data
-
-    if not segments_data:
+    if not components:
         return
 
+    # Create one preset per component
     presets_to_update = []
-    for seg_name, curves in segments_data.items():
-        safe_class_name = (
-            f"Preset{instance_name}{seg_name.replace('_', '').replace(' ', '')}Curves"
-        )
-        preset_name = f"{instance_name}_{seg_name}"
-        presets_to_update.append(
-            {
-                "preset_name": preset_name,
-                "class_name": safe_class_name,
-                "curves_data": curves,
-            }
-        )
+    for component, curves_data in components.items():
+        # Preset name: {InstanceName}_{Component} (e.g., Index_Segment_0)
+        preset_name = f"{instance_name}_{component}"
+        # Safe class name for Python
+        safe_class_name = f"Preset{preset_name.replace('_', '').replace(' ', '')}Curves"
+        
+        presets_to_update.append({
+            "preset_name": preset_name,
+            "class_name": safe_class_name,
+            "curves_data": curves_data,
+        })
 
     success = batch_update_preset_classes(presets_file, presets_to_update)
 
     if success:
-        preset_name = f"{instance_name}_Curves"
-        combined_data = {}
-        for seg_name, seg_curves in segments_data.items():
-            combined_data.update(seg_curves)
-        register_preset_class.register_preset_data(
-            preset_name, combined_data, presets_file
-        )
+        # Register each component preset
+        for preset_info in presets_to_update:
+            register_preset_class.register_preset_data(
+                preset_info["preset_name"], 
+                preset_info["curves_data"], 
+                presets_file
+            )
 
         logger.info(
-            f"[AutoSave] Saved curves for {instance_name} to {presets_file}: {list(changed_curves.keys())}"
+            f"[AutoSave] Saved {len(components)} component presets for {instance_name} to {presets_file}: {list(changed_curves.keys())}"
         )
 
 

@@ -18,7 +18,7 @@ class Finger:
     - 1 nail attachment at the distal end (no bone needed)
     """
 
-    def __init__(self, segment_lengths: List[float], radius_taper=0.85, curl_axis="Y"):
+    def __init__(self, segment_lengths: List[float], radius_taper=0.85, curl_axis="Y", nail_max_thickness_mm=1.0):
         Segment = DualRadial()
 
         self.norm_lengths = normalize(segment_lengths)
@@ -27,6 +27,7 @@ class Finger:
         self.segment_lengths = segment_lengths
         self.radius_taper = radius_taper
         self.curl_axis = curl_axis
+        self.nail_max_thickness_mm = nail_max_thickness_mm
         radius = 0.5
         for i in range(len(segment_lengths)):
             seg = Segment(
@@ -42,7 +43,8 @@ class Finger:
         self.nail = RadialAttachment(
             type=DualRadial,
             size_ratio=0.3,
-            rotation=curl_axis,
+            curl_axis=curl_axis,
+            max_thickness_mm=nail_max_thickness_mm,
         )
 
         self.knuckle = Joint(

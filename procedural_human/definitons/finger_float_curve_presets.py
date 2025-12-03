@@ -14,7 +14,7 @@ class PresetIndexSegment0Curves(Preset):
 
     def get_data(self):
         return {
-            "Segment_0_X": [
+            "Segment_0 X Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -41,7 +41,7 @@ class PresetIndexSegment0Curves(Preset):
                     "handle_type": "AUTO"
                 }
             ],
-            "Segment_0_Y": [
+            "Segment_0 Y Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -71,14 +71,13 @@ class PresetIndexSegment0Curves(Preset):
         }
 
 
-
 @register_preset_class(name="Index_Segment_1")
 class PresetIndexSegment1Curves(Preset):
     """Preset for Index_Segment_1 curves"""
 
     def get_data(self):
         return {
-            "Segment_1_X": [
+            "Segment_1 X Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -105,7 +104,7 @@ class PresetIndexSegment1Curves(Preset):
                     "handle_type": "AUTO"
                 }
             ],
-            "Segment_1_Y": [
+            "Segment_1 Y Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -135,14 +134,13 @@ class PresetIndexSegment1Curves(Preset):
         }
 
 
-
 @register_preset_class(name="Index_Segment_2")
 class PresetIndexSegment2Curves(Preset):
     """Preset for Index_Segment_2 curves"""
 
     def get_data(self):
         return {
-            "Segment_2_X": [
+            "Segment_2 X Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -154,8 +152,8 @@ class PresetIndexSegment2Curves(Preset):
                     "handle_type": "AUTO"
                 },
                 {
-                    "x": 0.49090901017189026,
-                    "y": 0.26249998807907104,
+                    "x": 0.6499997973442078,
+                    "y": 0.8499998450279236,
                     "handle_type": "AUTO"
                 },
                 {
@@ -169,7 +167,7 @@ class PresetIndexSegment2Curves(Preset):
                     "handle_type": "AUTO"
                 }
             ],
-            "Segment_2_Y": [
+            "Segment_2 Y Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -182,7 +180,7 @@ class PresetIndexSegment2Curves(Preset):
                 },
                 {
                     "x": 0.4681820273399353,
-                    "y": 0.2937496602535248,
+                    "y": 0.34374964237213135,
                     "handle_type": "AUTO"
                 },
                 {
@@ -205,7 +203,7 @@ class PresetIndexSegment0Curves(Preset):
 
     def get_data(self):
         return {
-            "Segment_0_X": [
+            "Segment_0 X Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -232,7 +230,7 @@ class PresetIndexSegment0Curves(Preset):
                     "handle_type": "AUTO"
                 }
             ],
-            "Segment_0_Y": [
+            "Segment_0 Y Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -269,7 +267,7 @@ class PresetIndexSegment1Curves(Preset):
 
     def get_data(self):
         return {
-            "Segment_1_X": [
+            "Segment_1 X Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -296,7 +294,7 @@ class PresetIndexSegment1Curves(Preset):
                     "handle_type": "AUTO"
                 }
             ],
-            "Segment_1_Y": [
+            "Segment_1 Y Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -333,7 +331,7 @@ class PresetIndexSegment2Curves(Preset):
 
     def get_data(self):
         return {
-            "Segment_2_X": [
+            "Segment_2 X Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -345,8 +343,8 @@ class PresetIndexSegment2Curves(Preset):
                     "handle_type": "AUTO"
                 },
                 {
-                    "x": 0.49090901017189026,
-                    "y": 0.26249998807907104,
+                    "x": 0.6772724986076355,
+                    "y": 0.8124998807907104,
                     "handle_type": "AUTO"
                 },
                 {
@@ -360,7 +358,7 @@ class PresetIndexSegment2Curves(Preset):
                     "handle_type": "AUTO"
                 }
             ],
-            "Segment_2_Y": [
+            "Segment_2 Y Profile": [
                 {
                     "x": 0.0,
                     "y": 0.0,
@@ -373,7 +371,7 @@ class PresetIndexSegment2Curves(Preset):
                 },
                 {
                     "x": 0.4681820273399353,
-                    "y": 0.2937496602535248,
+                    "y": 0.34374964237213135,
                     "handle_type": "AUTO"
                 },
                 {
@@ -384,6 +382,161 @@ class PresetIndexSegment2Curves(Preset):
                 {
                     "x": 1.0,
                     "y": 0.0,
+                    "handle_type": "AUTO"
+                }
+            ]
+        }
+
+
+
+@register_preset_class(name="Index_Joint_0")
+class PresetIndexJoint0Curves(Preset):
+    """Preset for Index_Joint_0 curves"""
+
+    def get_data(self):
+        return {
+            "Joint_0 0\u00b0": [
+                {
+                    "x": 0.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Joint_0 90\u00b0": [
+                {
+                    "x": 0.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Joint_0 180\u00b0": [
+                {
+                    "x": 0.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Joint_0 270\u00b0": [
+                {
+                    "x": 0.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                }
+            ]
+        }
+
+
+
+@register_preset_class(name="Index_Joint_1")
+class PresetIndexJoint1Curves(Preset):
+    """Preset for Index_Joint_1 curves"""
+
+    def get_data(self):
+        return {
+            "Joint_1 0\u00b0": [
+                {
+                    "x": 0.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Joint_1 90\u00b0": [
+                {
+                    "x": 0.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Joint_1 180\u00b0": [
+                {
+                    "x": 0.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Joint_1 270\u00b0": [
+                {
+                    "x": 0.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 0.5,
+                    "handle_type": "AUTO"
+                }
+            ]
+        }
+
+
+
+@register_preset_class(name="Index_Attachment_Attachment")
+class PresetIndexAttachmentAttachmentCurves(Preset):
+    """Preset for Index_Attachment_Attachment curves"""
+
+    def get_data(self):
+        return {
+            "Attachment_Attachment Angle Profile": [
+                {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 0.4318181872367859,
+                    "y": 0.6937499046325684,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "handle_type": "AUTO"
+                }
+            ],
+            "Attachment_Attachment Height Profile": [
+                {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "handle_type": "AUTO"
+                },
+                {
+                    "x": 1.0,
+                    "y": 1.0,
                     "handle_type": "AUTO"
                 }
             ]

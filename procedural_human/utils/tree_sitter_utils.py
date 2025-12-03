@@ -837,6 +837,31 @@ class {class_name}(Preset):
     return True
 
 
+def _compact_blank_lines(lines: List[str], max_consecutive: int = 2) -> List[str]:
+    """
+    Compact consecutive blank lines to at most max_consecutive.
+    
+    This prevents blank line accumulation when repeatedly removing and re-adding content.
+    """
+    result = []
+    blank_count = 0
+    
+    for line in lines:
+        if line.strip() == "":
+            blank_count += 1
+            if blank_count <= max_consecutive:
+                result.append(line)
+        else:
+            blank_count = 0
+            result.append(line)
+    
+    # Also trim trailing blank lines
+    while result and result[-1].strip() == "":
+        result.pop()
+    
+    return result
+
+
 def batch_update_preset_classes(
     file_path: str,
     presets: List[Dict],
@@ -876,8 +901,8 @@ def batch_update_preset_classes(
     for start_line, end_line in ranges_to_remove:
         lines = lines[:start_line] + lines[end_line:]
     
-    while lines and lines[-1] == "":
-        lines.pop()
+    # Compact blank lines to prevent accumulation (max 2 consecutive)
+    lines = _compact_blank_lines(lines, max_consecutive=2)
     
     for preset_info in presets:
         preset_name = preset_info["preset_name"]
