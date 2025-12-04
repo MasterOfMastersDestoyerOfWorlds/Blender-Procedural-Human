@@ -132,6 +132,7 @@ class Joint:
             for node in closure.nodes():
                 node.parent = frame
         joint_instance.parent = frame
+        self._apply_preset_to_joint_closures(context, index, closures)
         
         return {
             "index": index,
@@ -143,6 +144,62 @@ class Joint:
             "abs_x": joint_instance.location[0],
             "abs_y": joint_instance.location[1],
         }
+    
+    def _apply_preset_to_joint_closures(
+        self,
+        context: GenerationContext,
+        index: int,
+        closures: List[Any],
+    ) -> bool:
+        """
+        Apply preset curve data to joint closures if a preset exists.
+        
+        Looks up preset by: {instance_name}_Joint_{index}
+        Preset data keys: Joint_{index} 0°, Joint_{index} 90°, Joint_{index} 180°, Joint_{index} 270°
+        """
+        from procedural_human.decorators.curve_preset_decorator import (
+            register_preset_class
+        )
+        from procedural_human.utils.curve_serialization import apply_data_to_float_curve_node
+        from procedural_human.logger import logger
+        
+        preset_name = f"{context.instance_name}_Joint_{index}"
+        
+        all_names = register_preset_class.registry.keys()
+        logger.info(f"[Preset Debug] Looking for joint preset: '{preset_name}'")
+        logger.info(f"[Preset Debug] Available presets in registry: {all_names}")
+        
+        preset_data = register_preset_class.get_preset(preset_name)
+        
+        if preset_data is None:
+            logger.info(f"[Preset Debug] No preset found for '{preset_name}'")
+            return False
+        
+        logger.info(f"[Preset Debug] Found preset '{preset_name}' with keys: {list(preset_data.keys())}")
+        
+        curve_labels = ["0°", "90°", "180°", "270°"]
+        applied = False
+        
+        for closure, angle_label in zip(closures, curve_labels):
+            key = f"Joint_{index} {angle_label}"
+            logger.info(f"[Preset Debug] Checking key '{key}' for closure with label '{closure.label if hasattr(closure, 'label') else 'unknown'}'")
+            
+            if key in preset_data:
+                logger.info(f"[Preset Debug] Key '{key}' found in preset")
+                if closure.curve_node:
+                    logger.info(f"[Preset Debug] Applying {key} to closure")
+                    if apply_data_to_float_curve_node(closure.curve_node, preset_data[key]):
+                        applied = True
+                        logger.info(f"[Preset Debug] Successfully applied {key}")
+                    else:
+                        logger.info(f"[Preset Debug] Failed to apply {key} to curve node")
+                else:
+                    logger.info(f"[Preset Debug] Closure has no curve_node")
+            else:
+                logger.info(f"[Preset Debug] Key '{key}' not in preset")
+        
+        logger.info(f"[Preset Debug] Joint preset application result: {applied}")
+        return applied
 
 @dsl_primitive
 @dataclass

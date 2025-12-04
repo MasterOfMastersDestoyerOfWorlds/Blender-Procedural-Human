@@ -67,7 +67,15 @@ class Finger:
 
 # Finger instances with anatomical measurements (in mm)
 Index = Finger([39.78, 22.38, 15.82])
-Thumb = Finger([46.22, 21.67])
+Thumb = Finger([46.22, 31.57])
 Middle = Finger([44.63, 26.33, 17.40])
 Ring = Finger([41.37, 25.65, 17.30])
 Little = Finger([32.74, 18.11, 15.96])
+"""
+Bone,Estimated Length (mm),Source / Logic
+Thumb Metacarpal,46.22,Taken from your input (matches standard MC1 length).
+Index Metacarpal,66.83,Derived (Ratio ~1.68 : 1 to Proximal Phalanx)
+Middle Metacarpal,64.27,Derived (Ratio ~1.44 : 1 to Proximal Phalanx)
+Ring Metacarpal,57.92,Derived (Ratio ~1.40 : 1 to Proximal Phalanx)
+Little Metacarpal,53.69,Derived (Ratio ~1.64 : 1 to Proximal Phalanx)
+"""
