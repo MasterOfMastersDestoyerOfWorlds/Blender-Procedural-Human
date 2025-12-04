@@ -329,13 +329,8 @@ class PresetIndexAttachmentAttachmentCurves(Preset):
                     "handle_type": "AUTO"
                 },
                 {
-                    "x": 0.4318182170391083,
-                    "y": 0.6000000238418579,
-                    "handle_type": "AUTO"
-                },
-                {
                     "x": 1.0,
-                    "y": 0.0,
+                    "y": 1.0,
                     "handle_type": "AUTO"
                 }
             ],
@@ -346,13 +341,8 @@ class PresetIndexAttachmentAttachmentCurves(Preset):
                     "handle_type": "AUTO"
                 },
                 {
-                    "x": 0.4909091591835022,
-                    "y": 0.45000001788139343,
-                    "handle_type": "AUTO"
-                },
-                {
                     "x": 1.0,
-                    "y": 0.6249999403953552,
+                    "y": 1.0,
                     "handle_type": "AUTO"
                 }
             ]

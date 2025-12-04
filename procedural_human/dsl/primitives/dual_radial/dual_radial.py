@@ -212,7 +212,7 @@ class DualRadial:
         Apply preset curve data to the X and Y closures if a preset exists.
         
         Looks up preset by: {instance_name}_Segment_{index}
-        Preset data keys: Segment_{index}_X, Segment_{index}_Y
+        Preset data keys: Segment_{index} X Profile, Segment_{index} Y Profile
         """
         from procedural_human.decorators.curve_preset_decorator import (
             register_preset_class
@@ -233,8 +233,8 @@ class DualRadial:
         
         logger.info(f"[Preset Debug] Found preset '{preset_name}' with keys: {list(preset_data.keys())}")
         
-        x_key = f"Segment_{index}_X"
-        y_key = f"Segment_{index}_Y"
+        x_key = f"Segment_{index} X Profile"
+        y_key = f"Segment_{index} Y Profile"
         
         applied = False
         

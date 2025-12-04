@@ -411,25 +411,29 @@ def create_fingernail_node_group(
     final_pos_combine.label = "Final Position"
 
     # Map components to axes based on curl direction:
-    # curl_idx = thickness/depth direction (uses sin_angle component)
-    # side_idx = width direction (uses cos_angle component)
-    # length_idx = height direction (uses z_component)
+    # At angle=0 (center), the nail should point toward the curl axis direction
+    # x_component = radial * cos(angle), y_component = radial * sin(angle)
+    # At angle=0: cos=1, sin=0, so x_component=radial, y_component=0
+    # To point toward curl axis at center, curl axis gets cos (=radial), side axis gets sin (=0)
     
     if curl_direction == "X":
-        # curl=X, side=Y, length=Z
-        nail_group.links.new(y_component.outputs["Value"], final_pos_combine.inputs["X"])
-        nail_group.links.new(x_component.outputs["Value"], final_pos_combine.inputs["Y"])
-        nail_group.links.new(z_component.outputs["Value"], final_pos_combine.inputs["Z"])
-    elif curl_direction == "Y":
-        # curl=Y, side=X, length=Z
+        # curl=X (points X+), side=Y, length=Z
+        # At angle=0: X=radial (cos), Y=0 (sin)
         nail_group.links.new(x_component.outputs["Value"], final_pos_combine.inputs["X"])
         nail_group.links.new(y_component.outputs["Value"], final_pos_combine.inputs["Y"])
         nail_group.links.new(z_component.outputs["Value"], final_pos_combine.inputs["Z"])
+    elif curl_direction == "Y":
+        # curl=Y (points Y+), side=X, length=Z
+        # At angle=0: X=0 (sin), Y=radial (cos)
+        nail_group.links.new(y_component.outputs["Value"], final_pos_combine.inputs["X"])
+        nail_group.links.new(x_component.outputs["Value"], final_pos_combine.inputs["Y"])
+        nail_group.links.new(z_component.outputs["Value"], final_pos_combine.inputs["Z"])
     else:  # "Z"
-        # curl=Z, side=X, length=Y
-        nail_group.links.new(x_component.outputs["Value"], final_pos_combine.inputs["X"])
+        # curl=Z (points Z+), side=X, length=Y
+        # At angle=0: X=0 (sin), Z=radial (cos)
+        nail_group.links.new(y_component.outputs["Value"], final_pos_combine.inputs["X"])
         nail_group.links.new(z_component.outputs["Value"], final_pos_combine.inputs["Y"])
-        nail_group.links.new(y_component.outputs["Value"], final_pos_combine.inputs["Z"])
+        nail_group.links.new(x_component.outputs["Value"], final_pos_combine.inputs["Z"])
 
     # === Apply position to grid ===
     set_position = nail_group.nodes.new("GeometryNodeSetPosition")
