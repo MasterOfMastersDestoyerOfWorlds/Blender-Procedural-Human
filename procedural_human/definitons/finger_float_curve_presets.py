@@ -71,195 +71,6 @@ class PresetIndexSegment0Curves(Preset):
         }
 
 
-@register_preset_class(name="Index_Segment_1")
-class PresetIndexSegment1Curves(Preset):
-    """Preset for Index_Segment_1 curves"""
-
-    def get_data(self):
-        return {
-            "Segment_1 X Profile": [
-                {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.045454587787389755,
-                    "y": 0.1812499761581421,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.5,
-                    "y": 0.26250001788139343,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.9590906500816345,
-                    "y": 0.1812499761581421,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 1.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                }
-            ],
-            "Segment_1 Y Profile": [
-                {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.04090910032391548,
-                    "y": 0.19999998807907104,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.5045454502105713,
-                    "y": 0.25624993443489075,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 1.0,
-                    "y": 0.19374997913837433,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 1.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                }
-            ]
-        }
-
-
-@register_preset_class(name="Index_Segment_2")
-class PresetIndexSegment2Curves(Preset):
-    """Preset for Index_Segment_2 curves"""
-
-    def get_data(self):
-        return {
-            "Segment_2 X Profile": [
-                {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.04999998211860657,
-                    "y": 0.21875,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.6499997973442078,
-                    "y": 0.8499998450279236,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.8727272152900696,
-                    "y": 0.19375000894069672,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 1.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                }
-            ],
-            "Segment_2 Y Profile": [
-                {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.059090860188007355,
-                    "y": 0.22499999403953552,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.4681820273399353,
-                    "y": 0.34374964237213135,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.8727272748947144,
-                    "y": 0.22499996423721313,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 1.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                }
-            ]
-        }
-
-
-@register_preset_class(name="Index_Segment_0")
-class PresetIndexSegment0Curves(Preset):
-    """Preset for Index_Segment_0 curves"""
-
-    def get_data(self):
-        return {
-            "Segment_0 X Profile": [
-                {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.10454540699720383,
-                    "y": 0.20624998211860657,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.4681818187236786,
-                    "y": 0.28750017285346985,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.9363634586334229,
-                    "y": 0.16874997317790985,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 1.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                }
-            ],
-            "Segment_0 Y Profile": [
-                {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.05909086763858795,
-                    "y": 0.20624995231628418,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.5,
-                    "y": 0.2937498986721039,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 0.954545259475708,
-                    "y": 0.19374997913837433,
-                    "handle_type": "AUTO"
-                },
-                {
-                    "x": 1.0,
-                    "y": 0.0,
-                    "handle_type": "AUTO"
-                }
-            ]
-        }
-
-
 
 @register_preset_class(name="Index_Segment_1")
 class PresetIndexSegment1Curves(Preset):
@@ -343,8 +154,8 @@ class PresetIndexSegment2Curves(Preset):
                     "handle_type": "AUTO"
                 },
                 {
-                    "x": 0.6772724986076355,
-                    "y": 0.8124998807907104,
+                    "x": 0.49090901017189026,
+                    "y": 0.26249998807907104,
                     "handle_type": "AUTO"
                 },
                 {
@@ -371,7 +182,7 @@ class PresetIndexSegment2Curves(Preset):
                 },
                 {
                     "x": 0.4681820273399353,
-                    "y": 0.34374964237213135,
+                    "y": 0.2937496602535248,
                     "handle_type": "AUTO"
                 },
                 {
@@ -518,13 +329,13 @@ class PresetIndexAttachmentAttachmentCurves(Preset):
                     "handle_type": "AUTO"
                 },
                 {
-                    "x": 0.4318181872367859,
-                    "y": 0.6937499046325684,
+                    "x": 0.4318182170391083,
+                    "y": 0.6000000238418579,
                     "handle_type": "AUTO"
                 },
                 {
                     "x": 1.0,
-                    "y": 1.0,
+                    "y": 0.0,
                     "handle_type": "AUTO"
                 }
             ],
@@ -535,8 +346,13 @@ class PresetIndexAttachmentAttachmentCurves(Preset):
                     "handle_type": "AUTO"
                 },
                 {
+                    "x": 0.5000000596046448,
+                    "y": 0.5062500834465027,
+                    "handle_type": "AUTO"
+                },
+                {
                     "x": 1.0,
-                    "y": 1.0,
+                    "y": 0.0,
                     "handle_type": "AUTO"
                 }
             ]
