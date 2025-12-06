@@ -1,9 +1,13 @@
 import bpy
 import os
 import re
+from pathlib import Path
 from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.decorators.panel_decorator import procedural_panel
+from procedural_human.config import get_codebase_path
 from bpy.types import Operator, Panel
+
+CODEBASE_PATH = get_codebase_path()
 
 def get_next_temp_file_path(base_dir, prefix="temp_"):
     if not os.path.exists(base_dir):
@@ -210,8 +214,23 @@ class NODE_OT_export_active_group_to_python(Operator):
             
         code = generate_python_code(node_group, function_name=f"create_{clean_string(node_group.name).replace(' ', '_').lower()}_group")
         
-        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "temp")
-        file_path = get_next_temp_file_path(base_dir)
+        # Determine export directory
+        if CODEBASE_PATH:
+            base_dir = CODEBASE_PATH / "procedural_human" / "tmp"
+        else:
+            # Fallback to local temp directory if codebase path not found
+            base_dir = Path(os.path.dirname(os.path.dirname(__file__))) / "tmp"
+        
+        # Ensure directory exists
+        try:
+            base_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            self.report({'WARNING'}, f"Could not create directory {base_dir}: {e}. Falling back to default.")
+            base_dir = Path(os.path.dirname(os.path.dirname(__file__))) / "tmp"
+            if not os.path.exists(str(base_dir)):
+                os.makedirs(str(base_dir))
+        
+        file_path = get_next_temp_file_path(str(base_dir))
         
         with open(file_path, "w") as f:
             f.write(code)
@@ -230,4 +249,3 @@ class NODE_PT_node_export(Panel):
     def draw(self, context):
         layout = self.layout
         layout.operator("node.export_active_group_to_python")
-
