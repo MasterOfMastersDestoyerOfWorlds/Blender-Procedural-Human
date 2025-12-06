@@ -5,7 +5,6 @@ Incorporates anatomical muscle group dimensions.
 
 from typing import List
 from procedural_human.dsl.primitives import *
-from procedural_human.dsl.primitives.hex_radial.hex_radial import HexRadial
 from procedural_human.decorators.dsl_definition_decorator import dsl_definition
 
 
@@ -29,7 +28,7 @@ class Torso:
 
     def __init__(self, height: float = 0.53, base_radius: float = 0.14):
         # Use HexRadial for 6-axis sculpting (Front/Back/Sides/Top/Bottom)
-        AnatomicalSegment = HexRadial
+        AnatomicalSegment = DualRadialLoft
 
         self.segments = []
         self.bones = []
@@ -56,8 +55,11 @@ class Torso:
             
             # Create the anatomical segment
             seg = AnatomicalSegment(
-                radius=seg_radius,
-                subdivisions=4  # Higher res for muscle sculpting
+                curve_x=f"Torso_Waist_X_{i}",
+                curve_y=f"Torso_Waist_Y_{i}",
+                height=ratio * height,
+                res_u=4,
+                res_v=4,
             )
             
             # Manually assign length for the rig
@@ -83,15 +85,10 @@ class Torso:
             self.bones.append(bone)
 
         # Chain segments Z-upwards
-        self.spine_chain = Extend(
-            self.segments, 
-            axis="Z", 
-            norm_lengths=self.norm_lengths
-        )
     
 
         self.output = Output([
-            self.spine_chain,
+            self.segments,
         ])
 
 

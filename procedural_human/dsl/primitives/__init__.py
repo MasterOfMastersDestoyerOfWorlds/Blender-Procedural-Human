@@ -9,3 +9,4 @@ from procedural_human.dsl.primitives.extend.extend import *
 from procedural_human.dsl.primitives.join.join import *
 from procedural_human.dsl.primitives.primitives import *
 from procedural_human.dsl.primitives.output.output import *
+from procedural_human.dsl.primitives.dual_radial_loft.dual_radial_loft import *
