@@ -235,7 +235,7 @@ class JoinedStructure:
                 if hasattr(joint, 'generate'):
                     result = joint.generate(context, idx, prev_result, next_result)
                     joint_results.append(result)
-        assert len(joint_results) == len(self.joints), "Number of joint results does not match number of joints"
+        assert len(joint_results) == len(self.joints), f"Number of joint results: {len(joint_results)} does not match number of joints: {len(self.joints)}"
         return {
             "joints": joint_results,
         }

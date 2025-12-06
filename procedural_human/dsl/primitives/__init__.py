@@ -1,5 +1,6 @@
 from procedural_human.dsl.primitives.dual_radial.dual_radial import *
 from procedural_human.dsl.primitives.quad_radial.quad_radial import *
+from procedural_human.dsl.primitives.hex_radial.hex_radial import *
 from procedural_human.dsl.primitives.ik.ik import *
 from procedural_human.dsl.primitives.radial_attachment.radial_attachment import *
 from procedural_human.dsl.primitives.join.join import *

@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from procedural_human.decorators.dsl_primitive_decorator import dsl_primitive
 from procedural_human.dsl.primitives.primitives import GenerationContext, ProfileType
 import bpy
-from procedural_human.geo_node_groups.dual_radial import create_dual_profile_radial_group
+from procedural_human.dsl.primitives.dual_radial.dual_radial_nodes import create_dual_profile_radial_group
 from procedural_human.geo_node_groups.closures import create_float_curve_closure
 from procedural_human.dsl.finger_segment_const import SEGMENT_SAMPLE_COUNT
 from procedural_human.utils import setup_node_group_interface

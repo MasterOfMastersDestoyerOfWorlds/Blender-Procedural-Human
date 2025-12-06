@@ -29,5 +29,5 @@ class QuadRadial:
     
     def generate(self, context: GenerationContext, index: int, suffix: str = "") -> Any:
         """Generate quad radial profile node group."""
-        from procedural_human.geo_node_groups.quad_radial import create_quad_profile_radial_group
+        from procedural_human.dsl.primitives.quad_radial.quad_radial_nodes import create_quad_profile_radial_group
         return create_quad_profile_radial_group(suffix=suffix or f"Joint_{index}")

@@ -9,7 +9,7 @@ Joint segments create organic transitions at knuckle locations by:
 
 from enum import Enum
 import bpy
-from procedural_human.geo_node_groups.quad_radial import create_quad_profile_radial_group
+from procedural_human.dsl.primitives.quad_radial.quad_radial_nodes import create_quad_profile_radial_group
 from procedural_human.dsl.finger_segment_const import (
     SEGMENT_SAMPLE_COUNT,
 )
