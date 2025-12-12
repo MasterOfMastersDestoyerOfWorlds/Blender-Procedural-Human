@@ -59,7 +59,7 @@ class DualRadialLoft:
         loft_instance.location = (x_pos, y_pos)
         obj_info_x.location = (x_pos - 200, y_pos + 100)
         obj_info_y.location = (x_pos - 200, y_pos - 100)
-        
+         
         # Links
         node_group.links.new(obj_info_x.outputs["Geometry"], loft_instance.inputs["Curve X (Front)"])
         node_group.links.new(obj_info_y.outputs["Geometry"], loft_instance.inputs["Curve Y (Side)"])
