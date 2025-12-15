@@ -53,6 +53,7 @@ class GenerationContext:
         self.current_y_offset -= self.node_spacing
         return y
 
+
 @dsl_helper
 def normalize(lengths: List[float]) -> List[float]:
     """Normalize a list of lengths to ratios that sum to 1.0."""

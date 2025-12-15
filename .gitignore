@@ -69,3 +69,4 @@ htmlcov/
 *.tmp
 *.temp
 .temp/
+.cursor/*

@@ -19,14 +19,14 @@ class ProceduralHumanPreferences(AddonPreferences):
         name="Codebase Path",
         description="Path to the Procedural Human development codebase (for exporting modifications)",
         default="",
-        subtype="DIR_PATH", 
+        subtype="DIR_PATH",
     )
 
     def draw(self, context):
         layout = self.layout
-        
+
         from procedural_human import _MISSING_DEPENDENCIES, check_dependencies
-        
+
         missing = check_dependencies()
         if missing:
             dep_box = layout.box()
@@ -133,16 +133,18 @@ class InstallDependencies(Operator):
             ensure_pip,
         )
         import procedural_human
-        
+
         missing = check_dependencies()
         if not missing:
             self.report({"INFO"}, "All dependencies are already installed!")
             return {"FINISHED"}
-        
+
         if not ensure_pip():
-            self.report({"ERROR"}, "Could not ensure pip is available. Run Blender as admin.")
+            self.report(
+                {"ERROR"}, "Could not ensure pip is available. Run Blender as admin."
+            )
             return {"CANCELLED"}
-        
+
         all_success = True
         for import_name, pip_name in missing:
             self.report({"INFO"}, f"Installing {pip_name}...")
@@ -152,17 +154,20 @@ class InstallDependencies(Operator):
             else:
                 self.report({"ERROR"}, message)
                 all_success = False
-        
+
         procedural_human._DEPENDENCIES_CHECKED = False
         procedural_human._DEPENDENCIES_INSTALLED = False
         procedural_human._MISSING_DEPENDENCIES = []
-        
+
         final_missing = check_dependencies()
         if not final_missing:
             self.report({"INFO"}, "All dependencies installed! Please restart Blender.")
         else:
-            self.report({"WARNING"}, "Some dependencies failed. Try running Blender as administrator.")
-        
+            self.report(
+                {"WARNING"},
+                "Some dependencies failed. Try running Blender as administrator.",
+            )
+
         return {"FINISHED"}
 
 

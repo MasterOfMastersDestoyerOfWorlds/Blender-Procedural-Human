@@ -40,9 +40,9 @@ class Torso:
         # Waist: 1.8 (Lumbar L1-L5)
         # Ribcage_Lower: 1.2 (T7-T12)
         # Ribcage_Upper: 1.3 (T1-T6)
-        raw_ratios = [1.0, 1.8, 1.2, 1.3] 
+        raw_ratios = [1.0, 1.8, 1.2, 1.3]
         self.norm_lengths = normalize(raw_ratios)
-        
+
         # Base radii for each segment (approximation of skeletal width + muscle thickness)
         # Pelvis: Wide (Iliac Crest)
         # Waist: Narrower (No ribs, Obliques ~9mm thickness)
@@ -52,7 +52,7 @@ class Torso:
 
         for i, ratio in enumerate(self.norm_lengths):
             seg_radius = base_radius * radii_multipliers[i]
-            
+
             # Create the anatomical segment
             seg = AnatomicalSegment(
                 curve_x=f"Torso_Waist_X_{i}",
@@ -61,10 +61,10 @@ class Torso:
                 res_u=4,
                 res_v=4,
             )
-            
+
             # Manually assign length for the rig
             seg.length = ratio * height
-            
+
             # Unique naming context for looking up specific muscle curves
             # e.g., "Torso_Waist_X+" controls Rectus Abdominis projection
             segment_names = ["Pelvis", "Waist", "LowerChest", "UpperChest"]
@@ -74,22 +74,23 @@ class Torso:
 
             # Create Bone Metadata
             # Waist (Lumbar) allows more flexion than Chest (Thoracic)
-            if i == 1: # Waist/Lumbar
+            if i == 1:  # Waist/Lumbar
                 limits = IKLimits(x=(-30, 45), y=(-20, 20), z=(-15, 15))
-            elif i >= 2: # Thoracic (Ribcage is rigid)
+            elif i >= 2:  # Thoracic (Ribcage is rigid)
                 limits = IKLimits(x=(-5, 10), y=(-5, 5), z=(-5, 5))
-            else: # Pelvis (Fixed base)
+            else:  # Pelvis (Fixed base)
                 limits = IKLimits(x=(0, 0), y=(0, 0), z=(0, 0))
 
             bone = Bone(geometry=seg, ik=limits)
             self.bones.append(bone)
 
         # Chain segments Z-upwards
-    
 
-        self.output = Output([
-            self.segments,
-        ])
+        self.output = Output(
+            [
+                self.segments,
+            ]
+        )
 
 
 # --- Default Instances ---

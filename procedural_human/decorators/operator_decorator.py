@@ -7,13 +7,17 @@ and manages operator registration.
 
 import bpy
 import re
-from procedural_human.decorators.discoverable_decorator import DiscoverableClassDecorator
+from procedural_human.decorators.discoverable_decorator import (
+    DiscoverableClassDecorator,
+)
 from procedural_human.logger import *
+
 
 class procedural_operator(DiscoverableClassDecorator):
     """
     Decorator for operator classes that automatically sets Blender operator attributes.
     """
+
     registry = {}
 
     @staticmethod
@@ -55,8 +59,12 @@ class procedural_operator(DiscoverableClassDecorator):
             try:
                 bpy.utils.register_class(op_cls)
             except Exception as e:
-                logger.info(f"Warning: Failed to register operator {op_cls.__name__}: {e}")
-        logger.info(f"[Operator Registry] Registered: {[op_cls.bl_idname for op_cls in procedural_operator.registry.values()]}")
+                logger.info(
+                    f"Warning: Failed to register operator {op_cls.__name__}: {e}"
+                )
+        logger.info(
+            f"[Operator Registry] Registered: {[op_cls.bl_idname for op_cls in procedural_operator.registry.values()]}"
+        )
 
     @classmethod
     def unregister_all_decorators(cls):
@@ -67,5 +75,7 @@ class procedural_operator(DiscoverableClassDecorator):
             try:
                 bpy.utils.unregister_class(op_cls)
             except Exception as e:
-                logger.info(f"Warning: Failed to unregister operator {op_cls.__name__}: {e}")
+                logger.info(
+                    f"Warning: Failed to unregister operator {op_cls.__name__}: {e}"
+                )
         procedural_operator.registry.clear()

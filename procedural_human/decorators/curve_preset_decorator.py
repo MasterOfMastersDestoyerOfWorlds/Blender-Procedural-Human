@@ -1,8 +1,12 @@
 from typing import Optional
 import inspect
 import os
-from procedural_human.decorators.discoverable_decorator import DiscoverableClassDecorator
+from procedural_human.decorators.discoverable_decorator import (
+    DiscoverableClassDecorator,
+)
 from procedural_human.logger import *
+
+
 class Preset:
     """
     Base class for preset data.
@@ -28,6 +32,7 @@ class register_preset_class(DiscoverableClassDecorator):
     The decorated class should inherit from Preset and implement get_data().
     If name is not provided, it will be derived from the class name.
     """
+
     registry = {}
 
     @staticmethod
@@ -35,7 +40,7 @@ class register_preset_class(DiscoverableClassDecorator):
         for arg in args:
             setattr(cls, arg, arg)
         for key, value in kwargs.items():
-            setattr(cls, key, value) 
+            setattr(cls, key, value)
         name = kwargs.get("name")
         if name:
             display_name = name
@@ -66,7 +71,7 @@ class register_preset_class(DiscoverableClassDecorator):
             del frame
 
         preset_instance = cls()
-        
+
         register_preset_class.registry[display_name] = {
             "instance": preset_instance,
             "location": {
@@ -77,14 +82,16 @@ class register_preset_class(DiscoverableClassDecorator):
         }
 
     @classmethod
-    def register_preset_data(cls, name: str, data: dict, file_path: Optional[str] = None):
+    def register_preset_data(
+        cls, name: str, data: dict, file_path: Optional[str] = None
+    ):
         """
         Directly register preset data without using a decorator.
         @param name: Display name of the preset
         @param data: Preset data dictionary
         @param file_path: Optional file path where this preset is defined
         """
-        register_preset_class.registry[name] = { 
+        register_preset_class.registry[name] = {
             "instance": lambda: data,
             "location": {
                 "file_path": file_path,
@@ -93,25 +100,22 @@ class register_preset_class(DiscoverableClassDecorator):
             },
         }
 
-
-
     @classmethod
     def get_preset_location(cls, preset_name: str) -> Optional[dict]:
         """
         Get the file location information for a preset.
 
-        @param preset_name: Name of the preset 
+        @param preset_name: Name of the preset
         @return: Dictionary with location information or None if not found
         """
         if preset_name not in register_preset_class.registry:
             return None
-        
+
         preset_entry = register_preset_class.registry[preset_name]
         if isinstance(preset_entry, dict) and "location" in preset_entry:
             return preset_entry["location"]
-        
-        return None
 
+        return None
 
     @classmethod
     def get_preset(cls, name: str) -> Optional[dict]:
@@ -123,7 +127,7 @@ class register_preset_class(DiscoverableClassDecorator):
         """
         if name not in register_preset_class.registry:
             return None
-        
+
         preset_entry = register_preset_class.registry[name]
         try:
             if isinstance(preset_entry, dict) and "instance" in preset_entry:
@@ -140,11 +144,12 @@ class register_preset_class(DiscoverableClassDecorator):
         except Exception as e:
             logger.info(f"Warning: Failed to load preset '{name}': {e}")
             return None
+
     @classmethod
     def discover_and_register_all_decorators(cls):
         """
         Discover all modules and register all decorated preset classes.
-        """ 
+        """
         logger.info(
             f"[Preset Registry] Registering {len(register_preset_class.registry.keys())} presets"
         )
@@ -157,4 +162,4 @@ class register_preset_class(DiscoverableClassDecorator):
         """
         Unregister all decorated preset classes in reverse order.
         """
-        register_preset_class.registry.clear() 
+        register_preset_class.registry.clear()

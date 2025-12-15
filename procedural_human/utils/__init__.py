@@ -6,6 +6,7 @@ import bpy
 from mathutils import Vector
 from procedural_human.logger import *
 
+
 def get_property_value(prop_name, default):
     """Get actual value from Blender property"""
     try:

@@ -7,11 +7,11 @@ and handle registration of operators, panels, and other classes.
 Usage:
     from procedural_human.decorators.operator_decorator import procedural_operator
     from procedural_human.decorators.panel_decorator import procedural_panel
-    
+
     @procedural_operator
     class MyOperator(Operator):
         ...
-    
+
     @procedural_panel
     class MyPanel(Panel):
         ...

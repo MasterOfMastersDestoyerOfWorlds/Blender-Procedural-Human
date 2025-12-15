@@ -2,8 +2,10 @@ import bpy
 import math
 from mathutils import Vector, Color, Matrix, Euler
 from procedural_human.utils.node_layout import auto_layout_nodes
+from procedural_human.decorators.geo_node_decorator import geo_node_group
 
 
+@geo_node_group
 def create_rotate_cyclic_curve_group():
     group_name = "RotateCyclicCurve"
     if group_name in bpy.data.node_groups:
@@ -12,24 +14,36 @@ def create_rotate_cyclic_curve_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Curve", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Curve", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Count", in_out="INPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Curve", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Curve", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Count", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 16
     socket.min_value = 2
     socket.max_value = 100000
-    socket = group.interface.new_socket(name="Axis", in_out="INPUT", socket_type="NodeSocketVector")
+    socket = group.interface.new_socket(
+        name="Axis", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 1.0, 0.0]
     socket.min_value = -1.0
     socket.max_value = 1.0
-    socket = group.interface.new_socket(name="Center", in_out="INPUT", socket_type="NodeSocketVector")
+    socket = group.interface.new_socket(
+        name="Center", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 0.0, 0.0]
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Angle", in_out="INPUT", socket_type="NodeSocketFloat")
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Angle", in_out="INPUT", socket_type="NodeSocketFloat"
+    )
     socket.default_value = 0.5026547908782959
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
 
     # --- Nodes ---
     nodes = group.nodes
@@ -78,7 +92,7 @@ def create_rotate_cyclic_curve_group():
     vector_rotate.rotation_type = "AXIS_ANGLE"
     vector_rotate.invert = False
     # Rotation
-    vector_rotate.inputs[4].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    vector_rotate.inputs[4].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # Links for vector_rotate
     links.new(vector_rotate.outputs[0], set_position_001.inputs[2])
     links.new(group_input.outputs[2], vector_rotate.inputs[2])
@@ -145,6 +159,8 @@ def create_rotate_cyclic_curve_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_sample_curve_distances_group():
     group_name = "SampleCurveDistances"
     if group_name in bpy.data.node_groups:
@@ -153,19 +169,31 @@ def create_sample_curve_distances_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Value", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Value", in_out="OUTPUT", socket_type="NodeSocketFloat")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Curve", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Index", in_out="INPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Value", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Value", in_out="OUTPUT", socket_type="NodeSocketFloat"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Curve", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Index", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 0
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Count", in_out="INPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Count", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 64
     socket.min_value = 2
     socket.max_value = 100000
@@ -346,6 +374,8 @@ def create_sample_curve_distances_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_get_center_curve_group():
     group_name = "GetCenterCurve"
     if group_name in bpy.data.node_groups:
@@ -354,10 +384,14 @@ def create_get_center_curve_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Result", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    socket = group.interface.new_socket(
+        name="Result", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
 
     # --- Nodes ---
     nodes = group.nodes
@@ -410,9 +444,9 @@ def create_get_center_curve_group():
     # B
     mix_001.inputs[7].default_value = [0.5, 0.5, 0.5, 1.0]
     # A
-    mix_001.inputs[8].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    mix_001.inputs[8].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # B
-    mix_001.inputs[9].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    mix_001.inputs[9].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # Links for mix_001
     links.new(bounding_box.outputs[2], mix_001.inputs[5])
     links.new(bounding_box.outputs[1], mix_001.inputs[4])
@@ -421,6 +455,8 @@ def create_get_center_curve_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_closest_index_points_group():
     group_name = "ClosestIndexPoints"
     if group_name in bpy.data.node_groups:
@@ -429,12 +465,20 @@ def create_closest_index_points_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Min", in_out="OUTPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Min", in_out="OUTPUT", socket_type="NodeSocketInt"
+    )
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
 
     # --- Nodes ---
     nodes = group.nodes
@@ -522,9 +566,19 @@ def create_closest_index_points_group():
     # B
     compare.inputs[5].default_value = [0.0, 0.0, 0.0]
     # A
-    compare.inputs[6].default_value = [0.800000011920929, 0.800000011920929, 0.800000011920929, 1.0]
+    compare.inputs[6].default_value = [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0,
+    ]
     # B
-    compare.inputs[7].default_value = [0.800000011920929, 0.800000011920929, 0.800000011920929, 1.0]
+    compare.inputs[7].default_value = [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0,
+    ]
     # A
     compare.inputs[8].default_value = ""
     # B
@@ -551,6 +605,8 @@ def create_closest_index_points_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_get_index_offset_group():
     group_name = "GetIndexOffset"
     if group_name in bpy.data.node_groups:
@@ -559,23 +615,41 @@ def create_get_index_offset_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Min", in_out="OUTPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Min", in_out="OUTPUT", socket_type="NodeSocketInt"
+    )
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Index Offset", in_out="OUTPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Index Offset", in_out="OUTPUT", socket_type="NodeSocketInt"
+    )
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Min", in_out="OUTPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Min", in_out="OUTPUT", socket_type="NodeSocketInt"
+    )
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Index Offset", in_out="OUTPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Index Offset", in_out="OUTPUT", socket_type="NodeSocketInt"
+    )
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Value", in_out="INPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Value", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 0
     socket.min_value = -2147483648
     socket.max_value = 2147483647
@@ -693,6 +767,8 @@ def create_get_index_offset_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_morph_curve_to_curve_group():
     group_name = "MorphCurveToCurve"
     if group_name in bpy.data.node_groups:
@@ -701,17 +777,27 @@ def create_morph_curve_to_curve_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Scale", in_out="INPUT", socket_type="NodeSocketFloat")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Scale", in_out="INPUT", socket_type="NodeSocketFloat"
+    )
     socket.default_value = 1.0
     socket.min_value = -10000.0
     socket.max_value = 10000.0
-    socket = group.interface.new_socket(name="Index", in_out="INPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Index", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 0
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Normal", in_out="INPUT", socket_type="NodeSocketVector")
+    socket = group.interface.new_socket(
+        name="Normal", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 0.0, 0.0]
     socket.min_value = -10000.0
     socket.max_value = 10000.0
@@ -796,7 +882,7 @@ def create_morph_curve_to_curve_group():
     # Angle
     vector_rotate_001.inputs[3].default_value = 0.0
     # Rotation
-    vector_rotate_001.inputs[4].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    vector_rotate_001.inputs[4].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # Links for vector_rotate_001
     links.new(vector_rotate_001.outputs[0], set_position_004.inputs[2])
 
@@ -831,6 +917,8 @@ def create_morph_curve_to_curve_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_loop_normal_vector_group():
     group_name = "LoopNormalVector"
     if group_name in bpy.data.node_groups:
@@ -839,14 +927,20 @@ def create_loop_normal_vector_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Vector", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Index", in_out="INPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Vector", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Index", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 0
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
 
     # --- Nodes ---
     nodes = group.nodes
@@ -1063,6 +1157,8 @@ def create_loop_normal_vector_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_perpendicular_vectors_group():
     group_name = "PerpendicularVectors"
     if group_name in bpy.data.node_groups:
@@ -1071,20 +1167,30 @@ def create_perpendicular_vectors_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Center", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="U", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="V", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Normal", in_out="INPUT", socket_type="NodeSocketVector")
+    socket = group.interface.new_socket(
+        name="Center", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="U", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="V", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Normal", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 0.0, 0.0]
     socket.min_value = -10000.0
     socket.max_value = 10000.0
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
 
     # --- Nodes ---
     nodes = group.nodes
@@ -1274,6 +1380,8 @@ def create_perpendicular_vectors_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_vector_angles_group():
     group_name = "VectorAngles"
     if group_name in bpy.data.node_groups:
@@ -1282,29 +1390,47 @@ def create_vector_angles_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Normal", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Inclination", in_out="OUTPUT", socket_type="NodeSocketFloat")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Asimuth", in_out="OUTPUT", socket_type="NodeSocketFloat")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="u", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="v", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="length", in_out="OUTPUT", socket_type="NodeSocketFloat")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="center", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Index", in_out="INPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Normal", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Inclination", in_out="OUTPUT", socket_type="NodeSocketFloat"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Asimuth", in_out="OUTPUT", socket_type="NodeSocketFloat"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="u", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="v", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="length", in_out="OUTPUT", socket_type="NodeSocketFloat"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="center", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Index", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 159
     socket.min_value = -2147483648
     socket.max_value = 2147483647
@@ -1577,6 +1703,8 @@ def create_vector_angles_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_construct_vector_group():
     group_name = "ConstructVector"
     if group_name in bpy.data.node_groups:
@@ -1585,30 +1713,44 @@ def create_construct_vector_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Vector", in_out="OUTPUT", socket_type="NodeSocketVector")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Normal", in_out="INPUT", socket_type="NodeSocketVector")
+    socket = group.interface.new_socket(
+        name="Vector", in_out="OUTPUT", socket_type="NodeSocketVector"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Normal", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 0.0, 0.0]
     socket.min_value = -10000.0
     socket.max_value = 10000.0
-    socket = group.interface.new_socket(name="Inclination", in_out="INPUT", socket_type="NodeSocketFloat")
+    socket = group.interface.new_socket(
+        name="Inclination", in_out="INPUT", socket_type="NodeSocketFloat"
+    )
     socket.default_value = 0.5
     socket.min_value = -10000.0
     socket.max_value = 10000.0
-    socket = group.interface.new_socket(name="Azimuth", in_out="INPUT", socket_type="NodeSocketFloat")
+    socket = group.interface.new_socket(
+        name="Azimuth", in_out="INPUT", socket_type="NodeSocketFloat"
+    )
     socket.default_value = 0.5
     socket.min_value = -10000.0
     socket.max_value = 10000.0
-    socket = group.interface.new_socket(name="u", in_out="INPUT", socket_type="NodeSocketVector")
+    socket = group.interface.new_socket(
+        name="u", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 0.0, 0.0]
     socket.min_value = -10000.0
     socket.max_value = 10000.0
-    socket = group.interface.new_socket(name="v", in_out="INPUT", socket_type="NodeSocketVector")
+    socket = group.interface.new_socket(
+        name="v", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 0.0, 0.0]
     socket.min_value = -10000.0
     socket.max_value = 10000.0
-    socket = group.interface.new_socket(name="length", in_out="INPUT", socket_type="NodeSocketFloat")
+    socket = group.interface.new_socket(
+        name="length", in_out="INPUT", socket_type="NodeSocketFloat"
+    )
     socket.default_value = 1.0
     socket.min_value = -10000.0
     socket.max_value = 10000.0
@@ -1815,6 +1957,8 @@ def create_construct_vector_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_tri_line_group():
     group_name = "TriLine"
     if group_name in bpy.data.node_groups:
@@ -1823,19 +1967,27 @@ def create_tri_line_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Offset", in_out="INPUT", socket_type="NodeSocketVector")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Offset", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 0.0, 1.0]
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Offset", in_out="INPUT", socket_type="NodeSocketVector")
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Offset", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 0.0, 1.0]
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Offset", in_out="INPUT", socket_type="NodeSocketVector")
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Offset", in_out="INPUT", socket_type="NodeSocketVector"
+    )
     socket.default_value = [0.0, 0.0, 1.0]
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
 
     # --- Nodes ---
     nodes = group.nodes
@@ -1917,6 +2069,8 @@ def create_tri_line_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_node_group_group():
     group_name = "NodeGroup"
     if group_name in bpy.data.node_groups:
@@ -1925,28 +2079,44 @@ def create_node_group_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Result", in_out="OUTPUT", socket_type="NodeSocketFloat")
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Factor", in_out="INPUT", socket_type="NodeSocketFloat")
+    socket = group.interface.new_socket(
+        name="Result", in_out="OUTPUT", socket_type="NodeSocketFloat"
+    )
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Factor", in_out="INPUT", socket_type="NodeSocketFloat"
+    )
     socket.default_value = 0.5
     socket.min_value = 0.0
     socket.max_value = 1.0
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Value", in_out="INPUT", socket_type="NodeSocketFloat")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Value", in_out="INPUT", socket_type="NodeSocketFloat"
+    )
     socket.default_value = 0.0
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Index", in_out="INPUT", socket_type="NodeSocketInt")
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Index", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 0
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Value", in_out="INPUT", socket_type="NodeSocketFloat")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Value", in_out="INPUT", socket_type="NodeSocketFloat"
+    )
     socket.default_value = 0.0
-    socket.min_value = -3.4028234663852886e+38
-    socket.max_value = 3.4028234663852886e+38
-    socket = group.interface.new_socket(name="Index", in_out="INPUT", socket_type="NodeSocketInt")
+    socket.min_value = -3.4028234663852886e38
+    socket.max_value = 3.4028234663852886e38
+    socket = group.interface.new_socket(
+        name="Index", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 0
     socket.min_value = -2147483648
     socket.max_value = 2147483647
@@ -1990,9 +2160,9 @@ def create_node_group_group():
     # B
     mix_003.inputs[7].default_value = [0.5, 0.5, 0.5, 1.0]
     # A
-    mix_003.inputs[8].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    mix_003.inputs[8].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # B
-    mix_003.inputs[9].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    mix_003.inputs[9].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # Links for mix_003
     links.new(group_input.outputs[0], mix_003.inputs[0])
     links.new(mix_003.outputs[0], group_output.inputs[0])
@@ -2064,6 +2234,8 @@ def create_node_group_group():
     auto_layout_nodes(group)
     return group
 
+
+@geo_node_group
 def create_male_torso__loft_0__group_group():
     group_name = "MaleTorso_Loft_0_Group"
     if group_name in bpy.data.node_groups:
@@ -2072,14 +2244,24 @@ def create_male_torso__loft_0__group_group():
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
 
     # --- Interface ---
-    socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Curve X (Front)", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Curve Y (Side)", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = group.interface.new_socket(name="Resolution V", in_out="INPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Curve X (Front)", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Curve Y (Side)", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    socket = group.interface.new_socket(
+        name="Resolution V", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 64
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Resolution U", in_out="INPUT", socket_type="NodeSocketInt")
+    socket = group.interface.new_socket(
+        name="Resolution U", in_out="INPUT", socket_type="NodeSocketInt"
+    )
     socket.default_value = 32
     socket.min_value = -2147483648
     socket.max_value = 2147483647
@@ -2196,9 +2378,9 @@ def create_male_torso__loft_0__group_group():
     # B
     mix_001.inputs[7].default_value = [0.5, 0.5, 0.5, 1.0]
     # A
-    mix_001.inputs[8].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    mix_001.inputs[8].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # B
-    mix_001.inputs[9].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    mix_001.inputs[9].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # Links for mix_001
 
     index_001 = nodes.new("GeometryNodeInputIndex")
@@ -2445,9 +2627,9 @@ def create_male_torso__loft_0__group_group():
     # B
     mix_004.inputs[7].default_value = [0.5, 0.5, 0.5, 1.0]
     # A
-    mix_004.inputs[8].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    mix_004.inputs[8].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # B
-    mix_004.inputs[9].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    mix_004.inputs[9].default_value = Euler((0.0, 0.0, 0.0), "XYZ")
     # Links for mix_004
     links.new(vector_angles.outputs[0], mix_004.inputs[4])
     links.new(vector_angles_1.outputs[0], mix_004.inputs[5])

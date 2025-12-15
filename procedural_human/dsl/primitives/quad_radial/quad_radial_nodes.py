@@ -84,33 +84,39 @@ def create_quad_profile_radial_group(suffix=None):
     evaluate_0 = group.nodes.new("NodeEvaluateClosure")
     evaluate_0.label = "Evaluate 0° Curve"
     evaluate_0.define_signature = True
-    evaluate_0.input_items.new(socket_type='FLOAT', name="Value")
-    evaluate_0.output_items.new(socket_type='FLOAT', name="Value")
+    evaluate_0.input_items.new(socket_type="FLOAT", name="Value")
+    evaluate_0.output_items.new(socket_type="FLOAT", name="Value")
     group.links.new(input_node.outputs["0° Float Curve"], evaluate_0.inputs["Closure"])
     group.links.new(length_clamp.outputs["Result"], evaluate_0.inputs["Value"])
 
     evaluate_90 = group.nodes.new("NodeEvaluateClosure")
     evaluate_90.label = "Evaluate 90° Curve"
     evaluate_90.define_signature = True
-    evaluate_90.input_items.new(socket_type='FLOAT', name="Value")
-    evaluate_90.output_items.new(socket_type='FLOAT', name="Value")
-    group.links.new(input_node.outputs["90° Float Curve"], evaluate_90.inputs["Closure"])
+    evaluate_90.input_items.new(socket_type="FLOAT", name="Value")
+    evaluate_90.output_items.new(socket_type="FLOAT", name="Value")
+    group.links.new(
+        input_node.outputs["90° Float Curve"], evaluate_90.inputs["Closure"]
+    )
     group.links.new(length_clamp.outputs["Result"], evaluate_90.inputs["Value"])
 
     evaluate_180 = group.nodes.new("NodeEvaluateClosure")
     evaluate_180.label = "Evaluate 180° Curve"
     evaluate_180.define_signature = True
-    evaluate_180.input_items.new(socket_type='FLOAT', name="Value")
-    evaluate_180.output_items.new(socket_type='FLOAT', name="Value")
-    group.links.new(input_node.outputs["180° Float Curve"], evaluate_180.inputs["Closure"])
+    evaluate_180.input_items.new(socket_type="FLOAT", name="Value")
+    evaluate_180.output_items.new(socket_type="FLOAT", name="Value")
+    group.links.new(
+        input_node.outputs["180° Float Curve"], evaluate_180.inputs["Closure"]
+    )
     group.links.new(length_clamp.outputs["Result"], evaluate_180.inputs["Value"])
 
     evaluate_270 = group.nodes.new("NodeEvaluateClosure")
     evaluate_270.label = "Evaluate 270° Curve"
     evaluate_270.define_signature = True
-    evaluate_270.input_items.new(socket_type='FLOAT', name="Value")
-    evaluate_270.output_items.new(socket_type='FLOAT', name="Value")
-    group.links.new(input_node.outputs["270° Float Curve"], evaluate_270.inputs["Closure"])
+    evaluate_270.input_items.new(socket_type="FLOAT", name="Value")
+    evaluate_270.output_items.new(socket_type="FLOAT", name="Value")
+    group.links.new(
+        input_node.outputs["270° Float Curve"], evaluate_270.inputs["Closure"]
+    )
     group.links.new(length_clamp.outputs["Result"], evaluate_270.inputs["Value"])
 
     cos_node = group.nodes.new("ShaderNodeMath")
@@ -144,7 +150,7 @@ def create_quad_profile_radial_group(suffix=None):
     mix_y.data_type = "FLOAT"
     mix_y.label = "Mix Y Profiles"
     group.links.new(gt_zero_y.outputs["Value"], mix_y.inputs["Factor"])
-    group.links.new(evaluate_270.outputs["Value"], mix_y.inputs["A"])  
+    group.links.new(evaluate_270.outputs["Value"], mix_y.inputs["A"])
     group.links.new(evaluate_90.outputs["Value"], mix_y.inputs["B"])
 
     x_mult = group.nodes.new("ShaderNodeMath")

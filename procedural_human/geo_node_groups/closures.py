@@ -63,7 +63,9 @@ def create_float_curve_closure(nodes, links, label, location) -> FloatCurveClosu
     return FloatCurveClosure(c_in, c_out, curve, c_out.outputs["Closure"])
 
 
-def create_flat_float_curve_closure(nodes, links, label, location, value=0.5) -> FloatCurveClosure:
+def create_flat_float_curve_closure(
+    nodes, links, label, location, value=0.5
+) -> FloatCurveClosure:
     """
     Creates a Closure Zone with a flat horizontal Float Curve at a specified value.
     """

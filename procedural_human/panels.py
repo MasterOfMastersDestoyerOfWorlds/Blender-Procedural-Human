@@ -8,9 +8,7 @@ Simply decorate your panel class with @procedural_panel and it will be registere
 import bpy
 from bpy.types import Panel
 
-from procedural_human.decorators.panel_decorator import (
-    procedural_panel
-)
+from procedural_human.decorators.panel_decorator import procedural_panel
 
 
 @procedural_panel

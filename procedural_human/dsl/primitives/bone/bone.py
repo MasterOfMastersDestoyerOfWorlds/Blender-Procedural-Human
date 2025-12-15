@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from procedural_human.decorators.dsl_primitive_decorator import dsl_primitive
 from procedural_human.dsl.primitives.ik.ik import IKLimits
 
+
 @dsl_primitive
 @dataclass
 class Bone:

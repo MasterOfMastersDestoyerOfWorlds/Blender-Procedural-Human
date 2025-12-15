@@ -20,6 +20,7 @@ _curve_hashes = {}
 _autosave_enabled = True
 _autosave_timer = None
 
+
 def serialize_float_curve_node(node):
     """
     Serializes a ShaderNodeFloatCurve's points into a list of dicts.
@@ -266,6 +267,7 @@ def get_preset_enum_items():
     items = [(k, k, "") for k in sorted(all_presets)]
     return items
 
+
 def _get_curve_hash(node):
     """Get a hash of a float curve node's current state."""
     if node.type != "FLOAT_CURVE" and node.bl_idname != "ShaderNodeFloatCurve":
@@ -343,7 +345,7 @@ def check_curves_for_changes():
 
 def _auto_save_curves(obj, changed_curves):
     """Auto-save changed curves for a DSL object to a separate presets file.
-    
+
     Groups curves by component (extracted from label prefix) and creates
     one preset class per component (e.g., Index_Segment_0, Index_Joint_0).
     """
@@ -366,7 +368,7 @@ def _auto_save_curves(obj, changed_curves):
 
     # Collect ALL float curves and group by component
     all_curves = _get_dsl_object_curves(obj)
-    
+
     # Group curves by component prefix (first token before space)
     # e.g., "Segment_0 X Profile" -> component = "Segment_0"
     # e.g., "Joint_0 0°" -> component = "Joint_0"
@@ -379,7 +381,7 @@ def _auto_save_curves(obj, changed_curves):
             # Extract component from label prefix (first token before space)
             parts = label.split()
             component = parts[0] if parts else label
-            
+
             if component not in components:
                 components[component] = {}
             components[component][label] = data
@@ -394,12 +396,14 @@ def _auto_save_curves(obj, changed_curves):
         preset_name = f"{instance_name}_{component}"
         # Safe class name for Python
         safe_class_name = f"Preset{preset_name.replace('_', '').replace(' ', '')}Curves"
-        
-        presets_to_update.append({
-            "preset_name": preset_name,
-            "class_name": safe_class_name,
-            "curves_data": curves_data,
-        })
+
+        presets_to_update.append(
+            {
+                "preset_name": preset_name,
+                "class_name": safe_class_name,
+                "curves_data": curves_data,
+            }
+        )
 
     success = batch_update_preset_classes(presets_file, presets_to_update)
 
@@ -407,9 +411,7 @@ def _auto_save_curves(obj, changed_curves):
         # Register each component preset
         for preset_info in presets_to_update:
             register_preset_class.register_preset_data(
-                preset_info["preset_name"], 
-                preset_info["curves_data"], 
-                presets_file
+                preset_info["preset_name"], preset_info["curves_data"], presets_file
             )
 
         logger.info(

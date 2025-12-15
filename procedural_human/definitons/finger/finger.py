@@ -18,7 +18,13 @@ class Finger:
     - 1 nail attachment at the distal end (no bone needed)
     """
 
-    def __init__(self, segment_lengths: List[float], radius_taper=0.85, curl_axis="Y", nail_max_thickness_mm=1.0):
+    def __init__(
+        self,
+        segment_lengths: List[float],
+        radius_taper=0.85,
+        curl_axis="Y",
+        nail_max_thickness_mm=1.0,
+    ):
         Segment = DualRadial()
 
         self.norm_lengths = normalize(segment_lengths)
@@ -57,13 +63,17 @@ class Finger:
             self.segments, axis="Z", norm_lengths=self.norm_lengths
         )
         self.finger_joints = Join(self.finger_segment_chain, self.knuckle)
-        self.finger_nail_attachment = AttachRaycast(self.finger_segment_chain[-1], self.nail)
-        self.output = Output([
-            self.finger_segment_chain,
-            self.finger_joints,
-            self.finger_nail_attachment,
-        ])
- 
+        self.finger_nail_attachment = AttachRaycast(
+            self.finger_segment_chain[-1], self.nail
+        )
+        self.output = Output(
+            [
+                self.finger_segment_chain,
+                self.finger_joints,
+                self.finger_nail_attachment,
+            ]
+        )
+
 
 # Finger instances with anatomical measurements (in mm)
 Index = Finger([39.78, 22.38, 15.82])

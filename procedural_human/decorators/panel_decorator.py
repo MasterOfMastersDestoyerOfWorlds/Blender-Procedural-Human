@@ -15,6 +15,7 @@ from procedural_human.decorators.discoverable_decorator import (
 from procedural_human.decorators.module_discovery import import_all_modules
 from procedural_human.logger import *
 
+
 class procedural_panel(DiscoverableClassDecorator):
     registry = {}
     """
@@ -84,7 +85,9 @@ class procedural_panel(DiscoverableClassDecorator):
             try:
                 bpy.utils.register_class(panel_cls)
             except Exception as e:
-                logger.info(f"Warning: Failed to register panel {panel_cls.__name__}: {e}")
+                logger.info(
+                    f"Warning: Failed to register panel {panel_cls.__name__}: {e}"
+                )
 
         logger.info(
             f"[Panel Registry] Registered: {[panel_cls.bl_idname for panel_cls in procedural_panel.registry.values()]}"
@@ -99,5 +102,7 @@ class procedural_panel(DiscoverableClassDecorator):
             try:
                 bpy.utils.unregister_class(panel_cls)
             except Exception as e:
-                logger.info(f"Warning: Failed to unregister panel {panel_cls.__name__}: {e}")
+                logger.info(
+                    f"Warning: Failed to unregister panel {panel_cls.__name__}: {e}"
+                )
         procedural_panel.registry.clear()

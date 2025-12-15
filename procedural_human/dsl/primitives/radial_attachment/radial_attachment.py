@@ -22,7 +22,7 @@ class RadialAttachment:
     Terminal attachment (like fingernail) that attaches to segment end.
 
     Maps to: procedural_human/hand/finger/finger_nail/finger_nail_nodes.py
-    
+
     Args:
         type: The profile type to use for the attachment
         size_ratio: Width ratio of nail relative to segment radius
@@ -55,7 +55,7 @@ class RadialAttachment:
         attr_name: str = "",
     ) -> Dict:
         """Generate attachment geometry using raycast positioning.
-        
+
         Segment radius is determined automatically via raycast on the input geometry.
         Creates Angle Profile and Height Profile closures for shaping.
         """
@@ -96,7 +96,7 @@ class RadialAttachment:
         # Create the nail node group with new parameters
         # Convert max_thickness from mm to world units (meters)
         max_thickness_world = self.max_thickness_mm * 0.001
-        
+
         nail_group = create_fingernail_node_group(
             name=f"{context.instance_name}_{attachment_label}_Group",
             curl_direction=self.curl_axis,
@@ -116,7 +116,9 @@ class RadialAttachment:
         )
 
         # Parent all nodes to the frame
-        for node in [attachment_instance] + angle_closure.nodes() + height_closure.nodes():
+        for node in (
+            [attachment_instance] + angle_closure.nodes() + height_closure.nodes()
+        ):
             node.parent = frame
 
         # Link geometry from segment
@@ -137,9 +139,13 @@ class RadialAttachment:
 
         # Set input values
         attachment_instance.inputs["Nail Width Ratio"].default_value = self.size_ratio
-        attachment_instance.inputs["Attachment Position"].default_value = self.attachment_position
+        attachment_instance.inputs["Attachment Position"].default_value = (
+            self.attachment_position
+        )
         attachment_instance.inputs["Wrap Amount"].default_value = self.wrap_amount
-        attachment_instance.inputs["Height Position"].default_value = self.height_position
+        attachment_instance.inputs["Height Position"].default_value = (
+            self.height_position
+        )
         attachment_instance.inputs["Max Thickness"].default_value = max_thickness_world
 
         # Update context y offset

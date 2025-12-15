@@ -9,15 +9,18 @@ Joint segments create organic transitions at knuckle locations by:
 
 from enum import Enum
 import bpy
-from procedural_human.dsl.primitives.quad_radial.quad_radial_nodes import create_quad_profile_radial_group
+from procedural_human.dsl.primitives.quad_radial.quad_radial_nodes import (
+    create_quad_profile_radial_group,
+)
 from procedural_human.dsl.finger_segment_const import (
     SEGMENT_SAMPLE_COUNT,
 )
 from procedural_human.utils.node_layout import auto_layout_nodes
 
+
 class JointSegmentProperties(Enum):
     PREV_SEGMENT = "Previous Segment"
-    NEXT_SEGMENT = "Next Segment" 
+    NEXT_SEGMENT = "Next Segment"
     PREV_SEGMENT_START = "Prev Segment Start"
     NEXT_SEGMENT_START = "Next Segment Start"
     CURVE_0 = "0° Float Curve"
@@ -25,6 +28,7 @@ class JointSegmentProperties(Enum):
     CURVE_180 = "180° Float Curve"
     CURVE_270 = "270° Float Curve"
     SAMPLE_COUNT = "Sample Count"
+
 
 DEFAULT_PREV_START = 0.8
 DEFAULT_NEXT_START = 0.2
@@ -108,14 +112,14 @@ def create_joint_segment_node_group(
     prev_bbox.label = "Prev Bounds"
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.PREV_SEGMENT.value],
-        prev_bbox.inputs["Geometry"]
+        prev_bbox.inputs["Geometry"],
     )
 
     next_bbox = joint_group.nodes.new("GeometryNodeBoundBox")
     next_bbox.label = "Next Bounds"
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.NEXT_SEGMENT.value],
-        next_bbox.inputs["Geometry"]
+        next_bbox.inputs["Geometry"],
     )
 
     prev_max = joint_group.nodes.new("ShaderNodeSeparateXYZ")
@@ -152,7 +156,7 @@ def create_joint_segment_node_group(
     joint_group.links.new(prev_length.outputs["Value"], prev_sample_z.inputs[0])
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.PREV_SEGMENT_START.value],
-        prev_sample_z.inputs[1]
+        prev_sample_z.inputs[1],
     )
     joint_group.links.new(prev_min.outputs["Z"], prev_sample_z.inputs[2])
 
@@ -162,7 +166,7 @@ def create_joint_segment_node_group(
     joint_group.links.new(next_length.outputs["Value"], next_sample_z.inputs[0])
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.NEXT_SEGMENT_START.value],
-        next_sample_z.inputs[1]
+        next_sample_z.inputs[1],
     )
     joint_group.links.new(next_min.outputs["Z"], next_sample_z.inputs[2])
 
@@ -178,13 +182,17 @@ def create_joint_segment_node_group(
     prev_raycast.inputs["Ray Length"].default_value = 200.0
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.PREV_SEGMENT.value],
-        prev_raycast.inputs["Target Geometry"]
+        prev_raycast.inputs["Target Geometry"],
     )
-    joint_group.links.new(prev_ray_origin.outputs["Vector"], prev_raycast.inputs["Source Position"])
+    joint_group.links.new(
+        prev_ray_origin.outputs["Vector"], prev_raycast.inputs["Source Position"]
+    )
 
     prev_hit_sep = joint_group.nodes.new("ShaderNodeSeparateXYZ")
     prev_hit_sep.label = "Prev Hit X"
-    joint_group.links.new(prev_raycast.outputs["Hit Position"], prev_hit_sep.inputs["Vector"])
+    joint_group.links.new(
+        prev_raycast.outputs["Hit Position"], prev_hit_sep.inputs["Vector"]
+    )
 
     prev_radius = joint_group.nodes.new("ShaderNodeMath")
     prev_radius.label = "Prev Radius"
@@ -203,13 +211,17 @@ def create_joint_segment_node_group(
     next_raycast.inputs["Ray Length"].default_value = 200.0
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.NEXT_SEGMENT.value],
-        next_raycast.inputs["Target Geometry"]
+        next_raycast.inputs["Target Geometry"],
     )
-    joint_group.links.new(next_ray_origin.outputs["Vector"], next_raycast.inputs["Source Position"])
+    joint_group.links.new(
+        next_ray_origin.outputs["Vector"], next_raycast.inputs["Source Position"]
+    )
 
     next_hit_sep = joint_group.nodes.new("ShaderNodeSeparateXYZ")
     next_hit_sep.label = "Next Hit X"
-    joint_group.links.new(next_raycast.outputs["Hit Position"], next_hit_sep.inputs["Vector"])
+    joint_group.links.new(
+        next_raycast.outputs["Hit Position"], next_hit_sep.inputs["Vector"]
+    )
 
     next_radius = joint_group.nodes.new("ShaderNodeMath")
     next_radius.label = "Next Radius"
@@ -229,7 +241,7 @@ def create_joint_segment_node_group(
     grid.inputs["Size Y"].default_value = 1.0
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.SAMPLE_COUNT.value],
-        grid.inputs["Vertices Y"]
+        grid.inputs["Vertices Y"],
     )
 
     grid_pos = joint_group.nodes.new("GeometryNodeInputPosition")
@@ -262,23 +274,27 @@ def create_joint_segment_node_group(
     quad_instance.label = "Quad Radial"
 
     joint_group.links.new(radius_lerp.outputs["Result"], quad_instance.inputs["Radius"])
-    joint_group.links.new(prev_sample_z.outputs["Value"], quad_instance.inputs["Z Position"])
-    joint_group.links.new(joint_length.outputs["Value"], quad_instance.inputs["Segment Length"])
+    joint_group.links.new(
+        prev_sample_z.outputs["Value"], quad_instance.inputs["Z Position"]
+    )
+    joint_group.links.new(
+        joint_length.outputs["Value"], quad_instance.inputs["Segment Length"]
+    )
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.CURVE_0.value],
-        quad_instance.inputs["0° Float Curve"]
+        quad_instance.inputs["0° Float Curve"],
     )
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.CURVE_90.value],
-        quad_instance.inputs["90° Float Curve"]
+        quad_instance.inputs["90° Float Curve"],
     )
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.CURVE_180.value],
-        quad_instance.inputs["180° Float Curve"]
+        quad_instance.inputs["180° Float Curve"],
     )
     joint_group.links.new(
         input_node.outputs[JointSegmentProperties.CURVE_270.value],
-        quad_instance.inputs["270° Float Curve"]
+        quad_instance.inputs["270° Float Curve"],
     )
 
     set_pos = joint_group.nodes.new("GeometryNodeSetPosition")

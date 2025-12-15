@@ -24,11 +24,12 @@ from procedural_human.dsl.primitives import (
     Bone,
 )
 
+
 @dataclass
 class GenerationResult:
     """Result from recursive generation."""
 
-    segments: List[Dict] = field(default_factory=list) 
+    segments: List[Dict] = field(default_factory=list)
     joints: List[Dict] = field(default_factory=list)
     attachments: List[Dict] = field(default_factory=list)
     geometry_outputs: List[Any] = field(default_factory=list)
@@ -211,7 +212,6 @@ class DSLGenerator:
             generation_result=gen_result,
         )
 
-
     def _generate_recursive(
         self,
         obj: Any,
@@ -257,20 +257,14 @@ class DSLGenerator:
                     kwargs["prev_segment_result"] = context.segment_results[index]
                 elif context.segment_results:
                     first_idx = min(context.segment_results.keys())
-                    kwargs["prev_segment_result"] = context.segment_results[
-                        first_idx
-                    ]
+                    kwargs["prev_segment_result"] = context.segment_results[first_idx]
             if "next_segment_result" in params and context.segment_results:
                 next_idx = index + 1
                 if next_idx in context.segment_results:
-                    kwargs["next_segment_result"] = context.segment_results[
-                        next_idx
-                    ]
+                    kwargs["next_segment_result"] = context.segment_results[next_idx]
                 elif context.segment_results:
                     last_idx = max(context.segment_results.keys())
-                    kwargs["next_segment_result"] = context.segment_results[
-                        last_idx
-                    ]
+                    kwargs["next_segment_result"] = context.segment_results[last_idx]
             try:
                 gen_result = generate_method(**kwargs)
             except TypeError as e:
@@ -345,11 +339,11 @@ class DSLGenerator:
         if self._is_dsl_instance(obj):
             output_attr = None
             for att in dir(obj):
-                attr = getattr(obj,att)
+                attr = getattr(obj, att)
                 if hasattr(attr, "_type") and attr._type == Output.__name__:
                     assert output_attr is None, "Multiple Output declarations found"
                     output_attr = attr
-            if output_attr is not None: 
+            if output_attr is not None:
                 # Use Output's ordered items instead of auto-discovering attrs
                 items_to_generate = output_attr.get_ordered_items()
                 for item in items_to_generate:
@@ -372,10 +366,14 @@ class DSLGenerator:
             else:
                 # Fall back to auto-discovery for backward compatibility
                 for attribute in self._get_generatable_attrs(obj):
-                    attr_value = getattr(obj, attribute, None) 
+                    attr_value = getattr(obj, attribute, None)
                     if attr_value is not None:
                         sub_result = self._generate_recursive(
-                            attr_value, context, prev_geometry, depth + 1, attr_name=attribute
+                            attr_value,
+                            context,
+                            prev_geometry,
+                            depth + 1,
+                            attr_name=attribute,
                         )
                         result.merge(sub_result)
 
@@ -391,7 +389,7 @@ class DSLGenerator:
                         elif sub_result.geometry_outputs:
                             prev_geometry = sub_result.geometry_outputs[-1]
 
-        return result 
+        return result
 
     def _is_dsl_instance(self, obj: Any) -> bool:
         """Check if an object is a DSL instance (user-defined class from DSL file)."""
@@ -421,7 +419,6 @@ class DSLGenerator:
         Note: 'bones' lists are skipped - they're metadata for armature creation,
         not geometry generation.
         """
-
 
         segment_chain_attr = None
         joined_structure_attr = None

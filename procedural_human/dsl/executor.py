@@ -15,12 +15,13 @@ from procedural_human.logger import *
 @dataclass
 class DSLExecutionResult:
     """Result of executing a DSL file."""
+
     file_path: str
     naming_env: NamingEnvironment
     definitions: Dict[str, type]
     instances: Dict[str, Any]
     errors: List[str] = field(default_factory=list)
-    
+
     @property
     def success(self) -> bool:
         return len(self.errors) == 0
@@ -29,6 +30,7 @@ class DSLExecutionResult:
 @dataclass
 class DSLInstance:
     """A DSL instance created during execution."""
+
     name: str
     definition_name: str
     instance: Any
@@ -39,18 +41,19 @@ class DSLInstance:
 
 class DSLExecutor:
     """Executes DSL files in a sandboxed environment."""
-    
+
     def __init__(self):
         self.naming_env: Optional[NamingEnvironment] = None
         self.current_file: Optional[str] = None
         self._definitions: Dict[str, type] = {}
         self._instances: Dict[str, Any] = {}
-    
+
     def execute_file(self, file_path: str) -> DSLExecutionResult:
         """Execute a DSL file and extract definitions and instances."""
         import traceback
+
         errors = []
-        
+
         try:
             self.naming_env = build_naming_environment(file_path)
         except Exception as e:
@@ -58,7 +61,9 @@ class DSLExecutor:
             error_lines = [f"Failed to parse DSL file: {type(e).__name__}: {e}"]
             for frame in tb:
                 if "procedural_human" in frame.filename or file_path in frame.filename:
-                    error_lines.append(f"  at {frame.filename}:{frame.lineno} in {frame.name}()")
+                    error_lines.append(
+                        f"  at {frame.filename}:{frame.lineno} in {frame.name}()"
+                    )
             errors.append("\n".join(error_lines))
             return DSLExecutionResult(
                 file_path=file_path,
@@ -67,11 +72,11 @@ class DSLExecutor:
                 instances={},
                 errors=errors,
             )
-        
+
         self.current_file = file_path
-        
+
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 source_code = f.read()
         except Exception as e:
             errors.append(f"Failed to read file: {e}")
@@ -82,18 +87,19 @@ class DSLExecutor:
                 instances={},
                 errors=errors,
             )
-        
+
         namespace = self._create_namespace()
-        
+
         try:
-            exec(compile(source_code, file_path, 'exec'), namespace)
+            exec(compile(source_code, file_path, "exec"), namespace)
         except Exception as e:
             errors.append(f"Failed to execute DSL: {e}")
             import traceback
+
             errors.append(traceback.format_exc())
-        
+
         self._extract_results(namespace)
-        
+
         return DSLExecutionResult(
             file_path=file_path,
             naming_env=self.naming_env,
@@ -101,26 +107,26 @@ class DSLExecutor:
             instances=self._instances,
             errors=errors,
         )
-    
+
     def _create_namespace(self) -> Dict[str, Any]:
         """Create the sandboxed namespace with DSL primitives from registry."""
-        return get_dsl_namespace({'__naming_env__': self.naming_env})
-    
+        return get_dsl_namespace({"__naming_env__": self.naming_env})
+
     def _extract_results(self, namespace: Dict[str, Any]) -> None:
         """Extract definitions and instances from executed namespace."""
         self._definitions.clear()
         self._instances.clear()
-        
+
         skip_names = get_all_dsl_names()
-        
+
         for name, value in namespace.items():
-            if name.startswith('_'):
+            if name.startswith("_"):
                 continue
             if isinstance(value, type) and name not in skip_names:
                 self._definitions[name] = value
-        
+
         for name, value in namespace.items():
-            if name.startswith('_'):
+            if name.startswith("_"):
                 continue
             if name in skip_names:
                 continue
@@ -147,4 +153,3 @@ def get_dsl_instances(file_path: str) -> List[str]:
     if result.errors:
         logger.info(f"[DSL] Errors: {result.errors}")
     return list(result.instances.keys())
-

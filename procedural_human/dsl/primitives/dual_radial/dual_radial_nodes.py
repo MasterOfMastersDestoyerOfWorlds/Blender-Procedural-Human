@@ -75,21 +75,24 @@ def create_dual_profile_radial_group(suffix=None):
     theta_node.inputs[1].default_value = 2 * math.pi
     group.links.new(angle_clamp.outputs["Result"], theta_node.inputs[0])
 
-
     evaluate_x_curve = group.nodes.new("NodeEvaluateClosure")
     evaluate_x_curve.label = "Evaluate X Float Curve"
     evaluate_x_curve.define_signature = True
-    evaluate_x_curve.input_items.new(socket_type='FLOAT', name="Value")
-    evaluate_x_curve.output_items.new(socket_type='FLOAT', name="Value")
-    group.links.new(input_node.outputs["X Float Curve"], evaluate_x_curve.inputs["Closure"])
+    evaluate_x_curve.input_items.new(socket_type="FLOAT", name="Value")
+    evaluate_x_curve.output_items.new(socket_type="FLOAT", name="Value")
+    group.links.new(
+        input_node.outputs["X Float Curve"], evaluate_x_curve.inputs["Closure"]
+    )
     group.links.new(length_clamp.outputs["Result"], evaluate_x_curve.inputs["Value"])
 
     evaluate_y_curve = group.nodes.new("NodeEvaluateClosure")
     evaluate_y_curve.label = "Evaluate Y Float Curve"
     evaluate_y_curve.define_signature = True
-    evaluate_y_curve.input_items.new(socket_type='FLOAT', name="Value")
-    evaluate_y_curve.output_items.new(socket_type='FLOAT', name="Value")
-    group.links.new(input_node.outputs["Y Float Curve"], evaluate_y_curve.inputs["Closure"])
+    evaluate_y_curve.input_items.new(socket_type="FLOAT", name="Value")
+    evaluate_y_curve.output_items.new(socket_type="FLOAT", name="Value")
+    group.links.new(
+        input_node.outputs["Y Float Curve"], evaluate_y_curve.inputs["Closure"]
+    )
     group.links.new(length_clamp.outputs["Result"], evaluate_y_curve.inputs["Value"])
 
     cos_node = group.nodes.new("ShaderNodeMath")
