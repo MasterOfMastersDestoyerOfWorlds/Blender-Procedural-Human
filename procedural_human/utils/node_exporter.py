@@ -410,6 +410,15 @@ class NODE_OT_export_active_group_to_python(Operator):
             if not os.path.exists(str(base_dir)):
                 os.makedirs(str(base_dir))
 
+        # Ensure __init__.py exists so the directory is treated as a package
+        init_path = base_dir / "__init__.py"
+        if not init_path.exists():
+            try:
+                with open(init_path, "w") as f:
+                    pass
+            except Exception as e:
+                self.report({"WARNING"}, f"Could not create __init__.py: {e}")
+
         file_path = get_next_temp_file_path(str(base_dir))
 
         with open(file_path, "w") as f:

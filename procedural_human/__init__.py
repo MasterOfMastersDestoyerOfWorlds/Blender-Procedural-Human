@@ -13,7 +13,6 @@ from procedural_human.logger import *
 from procedural_human.decorators.curve_preset_decorator import register_preset_class
 from procedural_human.decorators.panel_decorator import procedural_panel
 from procedural_human.decorators.operator_decorator import procedural_operator
-from procedural_human.utils.curve_serialization import unregister_autosave_handlers
 from procedural_human.decorators.module_discovery import (
     clear_discovered,
     import_all_modules,
@@ -217,9 +216,11 @@ def register():
     register_preset_class.discover_and_register_all_decorators()
     geo_node_group.discover_and_register_all_decorators()
 
+    logger.info(f"Node group registry: {geo_node_group.registry}")
     # Ensure all registered node groups exist
     for func in geo_node_group.registry.values():
         try:
+            logger.info(f"Creating node group {func.__name__}")
             func()
         except Exception as e:
             logger.info(f"Error creating node group {func.__name__}: {e}")
@@ -238,6 +239,7 @@ def register():
 
 def unregister():
     try:
+        from procedural_human.utils.curve_serialization import unregister_autosave_handlers
         unregister_autosave_handlers()
     except ImportError:
         pass
