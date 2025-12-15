@@ -211,6 +211,7 @@ def register():
         )
 
     import_all_modules()
+
     procedural_panel.discover_and_register_all_decorators()
     procedural_operator.discover_and_register_all_decorators()
     register_preset_class.discover_and_register_all_decorators()

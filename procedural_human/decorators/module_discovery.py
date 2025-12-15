@@ -77,6 +77,11 @@ def import_all_modules() -> Set[str]:
     for module_name in sorted(modules):
         if module_name in _discovered_modules:
             continue
+        
+        # Don't reload decorators, as this clears their registry
+        if "decorators" in module_name:
+             if module_name in sys.modules:
+                 continue
 
         try:
             if module_name in sys.modules:
