@@ -128,10 +128,10 @@ class NodeGroupExporter:
         # Interface
         lines.append("    # --- Interface ---")
         for item in node_group.interface.items_tree:
-            socket_type = item.socket_type
-            name = clean_string(item.name)
             if item.item_type == "PANEL":
                 continue
+            socket_type = item.socket_type
+            name = clean_string(item.name)
 
             io_type = item.in_out
 

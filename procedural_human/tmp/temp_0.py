@@ -24,7 +24,7 @@ def create_rotate_cyclic_curve_group():
         name="Count", in_out="INPUT", socket_type="NodeSocketInt"
     )
     socket.default_value = 16
-    socket.min_value = 2
+    socket.min_value = 2 
     socket.max_value = 100000
     socket = group.interface.new_socket(
         name="Axis", in_out="INPUT", socket_type="NodeSocketVector"
@@ -50,7 +50,7 @@ def create_rotate_cyclic_curve_group():
     links = group.links
     group_output = nodes.new("NodeGroupOutput")
     group_output.name = "Group Output"
-    group_output.label = ""
+    group_output.label = "re"
     group_output.location = (906.801025390625, 0.0)
     group_output.bl_label = "Group Output"
     group_output.is_active_output = True
@@ -86,7 +86,7 @@ def create_rotate_cyclic_curve_group():
 
     vector_rotate = nodes.new("ShaderNodeVectorRotate")
     vector_rotate.name = "Vector Rotate"
-    vector_rotate.label = ""
+    vector_rotate.label = "re"
     vector_rotate.location = (308.85302734375, -35.797454833984375)
     vector_rotate.bl_label = "Vector Rotate"
     vector_rotate.rotation_type = "AXIS_ANGLE"
@@ -143,7 +143,6 @@ def create_rotate_cyclic_curve_group():
     set_spline_cyclic.inputs[2].default_value = True
     # Links for set_spline_cyclic
     links.new(points_to_curves.outputs[0], set_spline_cyclic.inputs[0])
-    links.new(set_spline_cyclic.outputs[0], viewer.inputs[0])
     links.new(set_spline_cyclic.outputs[0], group_output.inputs[0])
 
     frame = nodes.new("NodeFrame")

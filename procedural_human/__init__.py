@@ -218,13 +218,18 @@ def register():
     geo_node_group.discover_and_register_all_decorators()
 
     logger.info(f"Node group registry: {geo_node_group.registry}")
-    # Ensure all registered node groups exist
-    for func in geo_node_group.registry.values():
-        try:
-            logger.info(f"Creating node group {func.__name__}")
-            func()
-        except Exception as e:
-            logger.info(f"Error creating node group {func.__name__}: {e}")
+    
+    def create_registered_node_groups():
+        logger.info("Initializing registered node groups...")
+        for func in geo_node_group.registry.values():
+            try:
+                func()
+            except Exception as e:
+                logger.info(f"Error creating node group {func.__name__}: {e}")
+        logger.info("Node group initialization complete.")
+        return None
+
+    bpy.app.timers.register(create_registered_node_groups, first_interval=0.1)
 
     menus.register()
 
