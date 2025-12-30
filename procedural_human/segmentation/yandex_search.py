@@ -186,10 +186,11 @@ class YandexImageSearch:
         """
         Search using direct HTTP requests to Yandex Images.
         
-        Note: This is a simplified implementation. Web scraping may
-        be blocked by Yandex. For production use, consider using
-        the official Yandex Search API.
+        Parses the HTML response to extract image URLs using regex patterns.
         """
+        import re
+        import json
+        
         results = []
         
         # Build search URL
@@ -211,21 +212,86 @@ class YandexImageSearch:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
+            "Referer": "https://yandex.com/images/",
         }
         
         try:
             response = requests.get(base_url, params=params, headers=headers, timeout=30)
             response.raise_for_status()
             
-            # Parse the response
-            # Note: This is a simplified parser. Real implementation would use
-            # BeautifulSoup or similar to parse the HTML/JSON response
-            # For now, return placeholder results
-            
             logger.info(f"Yandex search returned status {response.status_code}")
+            html_content = response.text
             
-            # The actual parsing would extract image URLs from the response
-            # This is a placeholder that shows the structure
+            # Try to find JSON data embedded in the page
+            # Yandex embeds image data in a script tag or as JSON objects
+            
+            # Method 1: Look for data-bem JSON attributes
+            bem_pattern = r'data-bem=\'({[^\']+})\''
+            bem_matches = re.findall(bem_pattern, html_content)
+            
+            for match in bem_matches:
+                try:
+                    data = json.loads(match)
+                    # Look for serp-item data
+                    if "serp-item" in data:
+                        item = data["serp-item"]
+                        if "img_href" in item and "thumb" in item:
+                            result = SearchResult(
+                                url=item.get("img_href", ""),
+                                thumbnail_url=item.get("thumb", {}).get("url", item.get("img_href", "")),
+                                title=item.get("alt", item.get("snippet", {}).get("title", "")),
+                                width=item.get("dups", [{}])[0].get("w", 0) if item.get("dups") else 0,
+                                height=item.get("dups", [{}])[0].get("h", 0) if item.get("dups") else 0,
+                            )
+                            if result.url and result.thumbnail_url:
+                                results.append(result)
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    continue
+            
+            # Method 2: Look for img-href and thumb in scripts
+            if not results:
+                # Pattern for image URLs in the HTML
+                url_pattern = r'"url"\s*:\s*"(https?://[^"]+(?:\.jpg|\.jpeg|\.png|\.webp)[^"]*)"'
+                url_matches = re.findall(url_pattern, html_content)
+                
+                # Pattern for thumb URLs
+                thumb_pattern = r'"thumb"\s*:\s*\{\s*"url"\s*:\s*"(https?://[^"]+)"'
+                thumb_matches = re.findall(thumb_pattern, html_content)
+                
+                # Combine URLs
+                seen_urls = set()
+                for url in url_matches[:per_page]:
+                    if url not in seen_urls and "yandex" not in url.lower():
+                        seen_urls.add(url)
+                        results.append(SearchResult(
+                            url=url,
+                            thumbnail_url=url,
+                            title="",
+                        ))
+            
+            # Method 3: Look for img tags with data-src or src attributes
+            if not results:
+                img_pattern = r'<img[^>]+(?:data-src|src)=["\']([^"\']+(?:\.jpg|\.jpeg|\.png|\.webp)[^"\']*)["\']'
+                img_matches = re.findall(img_pattern, html_content, re.IGNORECASE)
+                
+                seen_urls = set()
+                for url in img_matches:
+                    # Skip Yandex internal assets and small icons
+                    if "yastatic" in url or "favicon" in url or url in seen_urls:
+                        continue
+                    if url.startswith("//"):
+                        url = "https:" + url
+                    if url.startswith("http") and url not in seen_urls:
+                        seen_urls.add(url)
+                        results.append(SearchResult(
+                            url=url,
+                            thumbnail_url=url,
+                            title="",
+                        ))
+                        if len(results) >= per_page:
+                            break
+            
+            logger.info(f"Found {len(results)} images from Yandex search")
             
         except requests.RequestException as e:
             logger.error(f"Yandex search request failed: {e}")

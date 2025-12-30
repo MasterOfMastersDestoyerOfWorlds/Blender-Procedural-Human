@@ -3,6 +3,8 @@ Yandex Search operators for the segmentation workflow.
 """
 
 import bpy
+import os
+import tempfile
 from bpy.types import Operator
 from bpy.props import StringProperty, EnumProperty, IntProperty
 
@@ -21,6 +23,48 @@ def get_search_instance():
         from procedural_human.segmentation.yandex_search import YandexImageSearch
         _search_instance = YandexImageSearch()
     return _search_instance
+
+
+def download_and_add_asset(result, index: int) -> bool:
+    """
+    Download a search result and add it as an asset.
+    
+    Args:
+        result: SearchResult object
+        index: Result index for naming
+        
+    Returns:
+        True if successful
+    """
+    from procedural_human.segmentation.search_asset_manager import SearchAssetManager
+    
+    try:
+        # Download the thumbnail (faster than full image)
+        img = result.download_thumbnail()
+        if img is None:
+            logger.warning(f"Failed to download thumbnail for result {index}")
+            return False
+        
+        # Save to temp file
+        temp_dir = SearchAssetManager.get_temp_dir()
+        filename = f"result_{index:03d}.jpg"
+        filepath = temp_dir / filename
+        
+        # Save the image
+        img.save(str(filepath), "JPEG", quality=90)
+        
+        # Create a clean name from the title or URL
+        name = result.title[:30] if result.title else f"result_{index}"
+        name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
+        
+        # Add as asset
+        asset = SearchAssetManager.add_image_asset(str(filepath), f"{index:03d}_{name}")
+        
+        return asset is not None
+        
+    except Exception as e:
+        logger.error(f"Failed to process result {index}: {e}")
+        return False
 
 
 @procedural_operator
@@ -77,6 +121,13 @@ class YandexImageSearchOperator(Operator):
         search = get_search_instance()
         
         try:
+            # Import the asset manager
+            from procedural_human.segmentation.search_asset_manager import SearchAssetManager
+            
+            # Clear previous search results
+            SearchAssetManager.clear_assets()
+            
+            # Perform the search
             results = search.search(
                 query=self.query,
                 orientation=self.orientation,
@@ -84,41 +135,56 @@ class YandexImageSearchOperator(Operator):
                 page=self.page
             )
             
-            # Store results in scene properties for UI access
-            context.scene["yandex_search_results"] = len(results)
-            context.scene["yandex_search_query"] = self.query
+            if not results:
+                self.report({'WARNING'}, f"No results found for '{self.query}'")
+                return {'CANCELLED'}
             
-            self.report({'INFO'}, f"Found {len(results)} images for '{self.query}'")
+            # Download and add each result as an asset
+            success_count = 0
+            for i, result in enumerate(results[:20]):  # Limit to first 20 results
+                if download_and_add_asset(result, i):
+                    success_count += 1
+                    
+            # Refresh asset browser
+            SearchAssetManager.refresh_asset_browser()
+            
+            # Store results in scene properties for UI access
+            context.scene["yandex_search_results"] = success_count
+            context.scene["yandex_search_query_last"] = self.query
+            
+            self.report({'INFO'}, f"Added {success_count} images to Asset Browser for '{self.query}'")
             return {'FINISHED'}
             
         except Exception as e:
             logger.error(f"Search failed: {e}")
+            import traceback
+            traceback.print_exc()
             self.report({'ERROR'}, f"Search failed: {e}")
             return {'CANCELLED'}
-    
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
-    
-    def draw(self, context):
-        layout = self.layout
-        layout.prop(self, "query")
-        layout.prop(self, "orientation")
-        layout.prop(self, "size")
 
 
 @procedural_operator
 class ClearSearchHistoryOperator(Operator):
-    """Clear the Yandex search history"""
+    """Clear the Yandex search history and downloaded assets"""
     
     bl_idname = "segmentation.clear_search_history"
     bl_label = "Clear Search History"
-    bl_description = "Clear all saved search queries"
+    bl_description = "Clear all saved search queries and downloaded assets"
     bl_options = {'REGISTER'}
     
     def execute(self, context):
         search = get_search_instance()
         search.clear_history()
-        self.report({'INFO'}, "Search history cleared")
+        
+        # Also clear downloaded assets
+        try:
+            from procedural_human.segmentation.search_asset_manager import SearchAssetManager
+            SearchAssetManager.clear_assets()
+            SearchAssetManager.refresh_asset_browser()
+        except Exception as e:
+            logger.warning(f"Could not clear assets: {e}")
+        
+        self.report({'INFO'}, "Search history and assets cleared")
         return {'FINISHED'}
 
 

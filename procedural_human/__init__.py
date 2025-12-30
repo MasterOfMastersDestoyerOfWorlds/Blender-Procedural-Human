@@ -3,11 +3,20 @@ Procedural Human Generator
 A Blender add-on for creating procedural human characters using Geometry Nodes
 """
 
+import sys
+from pathlib import Path
+
+# Add addon parent directory to sys.path for absolute imports
+# This ensures "from procedural_human.xxx import yyy" works regardless of
+# how Blender loads the addon (legacy addon vs extension system)
+_addon_dir = Path(__file__).parent
+_addon_parent = _addon_dir.parent
+if str(_addon_parent) not in sys.path:
+    sys.path.insert(0, str(_addon_parent))
+
 import bpy
 import subprocess
-import sys
 import tomllib
-from pathlib import Path
 from procedural_human.dsl.finger_segment_const import SEGMENT_SAMPLE_COUNT
 from procedural_human.logger import *
 
@@ -21,7 +30,7 @@ from procedural_human.decorators.module_discovery import (
 )
 
 # Addon root directory (where this __init__.py lives)
-_ADDON_ROOT = Path(__file__).parent.parent
+_ADDON_ROOT = Path(__file__).parent
 
 # Mapping from pip package names to import names
 # Only needed for packages where the import name differs from the pip name
@@ -50,7 +59,8 @@ def _get_required_packages() -> list[tuple[str, str]]:
     Parse pyproject.toml to get required packages.
     Returns list of (import_name, pip_name) tuples.
     """
-    pyproject_path = _ADDON_ROOT / "pyproject.toml"
+    # pyproject.toml is in the repository root (parent of addon folder)
+    pyproject_path = _ADDON_ROOT.parent / "pyproject.toml"
     
     if not pyproject_path.exists():
         logger.warning(f"pyproject.toml not found at {pyproject_path}")
@@ -312,6 +322,14 @@ def register():
     except ImportError as e:
         logger.info(f"[Procedural Human] Could not register segmentation properties: {e}")
 
+    # Register the search asset manager (for Yandex search results in Asset Browser)
+    try:
+        from procedural_human.segmentation.search_asset_manager import SearchAssetManager
+        SearchAssetManager.register_asset_library()
+        logger.info("[Procedural Human] Registered search asset library")
+    except Exception as e:
+        logger.info(f"[Procedural Human] Could not register search asset manager: {e}")
+
 
 def unregister():
     try:
@@ -325,6 +343,13 @@ def unregister():
         from procedural_human.segmentation import unregister_segmentation_properties
         unregister_segmentation_properties()
     except ImportError:
+        pass
+
+    # Cleanup search asset manager
+    try:
+        from procedural_human.segmentation.search_asset_manager import SearchAssetManager
+        SearchAssetManager.cleanup()
+    except Exception:
         pass
 
     menus.unregister()

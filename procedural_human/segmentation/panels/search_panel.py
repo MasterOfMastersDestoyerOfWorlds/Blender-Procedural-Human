@@ -92,6 +92,30 @@ def register_search_properties():
         default=""
     )
     
+    bpy.types.Scene.yandex_search_orientation = EnumProperty(
+        name="Orientation",
+        description="Image orientation filter",
+        items=[
+            ('any', "Any", "All orientations"),
+            ('horizontal', "Horizontal", "Landscape images"),
+            ('vertical', "Vertical", "Portrait images"),
+            ('square', "Square", "Square images"),
+        ],
+        default='any'
+    )
+    
+    bpy.types.Scene.yandex_search_size = EnumProperty(
+        name="Size",
+        description="Image size filter",
+        items=[
+            ('any', "Any", "All sizes"),
+            ('large', "Large", "Large images (recommended)"),
+            ('medium', "Medium", "Medium sized images"),
+            ('wallpaper', "Wallpaper", "Very large images"),
+        ],
+        default='large'
+    )
+    
     bpy.types.Scene.yandex_search_thumbnails = EnumProperty(
         name="Search Results",
         description="Click to select an image from search results",
@@ -108,6 +132,8 @@ def unregister_search_properties():
     """Unregister scene properties."""
     try:
         del bpy.types.Scene.yandex_search_query
+        del bpy.types.Scene.yandex_search_orientation
+        del bpy.types.Scene.yandex_search_size
         del bpy.types.Scene.yandex_search_thumbnails
         del bpy.types.Scene.yandex_search_selected_index
     except:
@@ -125,10 +151,9 @@ class SegmentationSearchPanel(Panel):
     
     bl_label = "Image Search"
     bl_idname = "PROCEDURAL_PT_segmentation_search"
-    bl_space_type = 'PROPERTIES'
-    bl_region_type = 'WINDOW'
-    bl_context = "scene"
-    bl_category = "Segmentation"
+    bl_space_type = 'IMAGE_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = "Search"
     
     def draw(self, context):
         layout = self.layout
@@ -142,11 +167,20 @@ class SegmentationSearchPanel(Panel):
         row = box.row(align=True)
         row.prop(scene, "yandex_search_query", text="", icon='VIEWZOOM')
         
+        # Orientation and size filters (directly visible)
+        row = box.row(align=True)
+        row.prop(scene, "yandex_search_orientation", text="")
+        row.prop(scene, "yandex_search_size", text="")
+        
         # Search and clear buttons
         row = box.row(align=True)
         op = row.operator("segmentation.yandex_search", text="Search", icon='VIEWZOOM')
         if hasattr(scene, "yandex_search_query"):
             op.query = scene.yandex_search_query
+        if hasattr(scene, "yandex_search_orientation"):
+            op.orientation = scene.yandex_search_orientation
+        if hasattr(scene, "yandex_search_size"):
+            op.size = scene.yandex_search_size
         row.operator("segmentation.clear_search_history", text="", icon='X')
         
         # Show search results info
@@ -196,58 +230,14 @@ class SegmentationSearchPanel(Panel):
 
 
 @procedural_panel
-class SegmentationSearchFiltersPanel(Panel):
-    """Search filters sub-panel"""
-    
-    bl_label = "Search Filters"
-    bl_idname = "PROCEDURAL_PT_segmentation_search_filters"
-    bl_space_type = 'PROPERTIES'
-    bl_region_type = 'WINDOW'
-    bl_context = "scene"
-    bl_category = "Segmentation"
-    bl_parent_id = "PROCEDURAL_PT_segmentation_search"
-    bl_options = {'DEFAULT_CLOSED'}
-    
-    def draw(self, context):
-        layout = self.layout
-        scene = context.scene
-        
-        layout.label(text="Quick Filters:")
-        
-        # Get current query
-        query = scene.get("yandex_search_query", "")
-        
-        row = layout.row(align=True)
-        op = row.operator("segmentation.yandex_search", text="Portrait")
-        op.query = query
-        op.orientation = 'vertical'
-        op.size = 'large'
-        
-        op = row.operator("segmentation.yandex_search", text="Landscape")
-        op.query = query
-        op.orientation = 'horizontal'
-        op.size = 'large'
-        
-        row = layout.row(align=True)
-        op = row.operator("segmentation.yandex_search", text="Large")
-        op.query = query
-        op.size = 'large'
-        
-        op = row.operator("segmentation.yandex_search", text="Wallpaper")
-        op.query = query
-        op.size = 'wallpaper'
-
-
-@procedural_panel
 class SegmentationSearchHistoryPanel(Panel):
     """Search history sub-panel"""
     
     bl_label = "Search History"
     bl_idname = "PROCEDURAL_PT_segmentation_search_history"
-    bl_space_type = 'PROPERTIES'
-    bl_region_type = 'WINDOW'
-    bl_context = "scene"
-    bl_category = "Segmentation"
+    bl_space_type = 'IMAGE_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = "Search"
     bl_parent_id = "PROCEDURAL_PT_segmentation_search"
     bl_options = {'DEFAULT_CLOSED'}
     

@@ -20,11 +20,9 @@ license = ["SPDX:MIT"]
 # website = "https://github.com/procedural-human/blender-addon"
 
 # Permissions required by this addon
-[permissions]
-# Required for Yandex image search
-network = true
-# Required for file operations (loading images, saving curves)
-files = true
+# - "network": Required for Yandex image search
+# - "files": Required for file operations (loading images, saving curves)
+permissions = ["network", "files"]
 
 # Python dependencies
 # These packages will be installed automatically by Blender's extension system

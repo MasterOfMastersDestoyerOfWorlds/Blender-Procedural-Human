@@ -7,6 +7,7 @@ and manages workspace registration.
 
 import bpy
 import re
+from pathlib import Path
 from bpy.app.handlers import persistent
 from procedural_human.decorators.discoverable_decorator import (
     DiscoverableClassDecorator,
@@ -92,14 +93,22 @@ class procedural_workspace(DiscoverableClassDecorator):
         for workspace_cls in procedural_workspace.registry.values():
             logger.info(f"  - {workspace_cls.name}")
         
-        # Register the generic workspace opener operator
+        # Register the generic workspace opener operator (unregister first for hot-reload)
         try:
+            try:
+                bpy.utils.unregister_class(OpenProceduralWorkspaceOperator)
+            except RuntimeError:
+                pass
             bpy.utils.register_class(OpenProceduralWorkspaceOperator)
         except Exception as e:
             logger.warning(f"Could not register workspace operator: {e}")
         
-        # Add to workspace add menu (directly, no submenu)
+        # Add to workspace add menu (remove first if exists, for hot-reload)
         try:
+            try:
+                bpy.types.TOPBAR_MT_workspace_menu.remove(workspace_add_menu_draw)
+            except ValueError:
+                pass
             bpy.types.TOPBAR_MT_workspace_menu.append(workspace_add_menu_draw)
         except Exception as e:
             logger.warning(f"Could not append to workspace menu: {e}")
@@ -133,14 +142,22 @@ class procedural_workspace(DiscoverableClassDecorator):
                     original_workspace = context.window.workspace
                     
                     try:
-                        # Create a fresh new workspace (not a duplicate)
-                        bpy.ops.workspace.add()
+                        # Duplicate the current workspace
+                        bpy.ops.workspace.duplicate()
                         
                         # Rename the new workspace
                         new_workspace = context.window.workspace
                         new_workspace.name = workspace_cls.name
                         
-                        # Apply the layout
+                        # Join all areas into one to get a clean slate
+                        logger.info("Joining all areas to create clean workspace...")
+                        main_area = join_all_areas_to_one(context)
+                        
+                        if main_area:
+                            # Set it to VIEW_3D as a base
+                            main_area.type = 'VIEW_3D'
+                        
+                        # Apply the custom layout (this will split and configure areas)
                         workspace_cls.create_layout(context)
                         
                         # Switch back to original workspace
@@ -149,6 +166,8 @@ class procedural_workspace(DiscoverableClassDecorator):
                         logger.info(f"Created workspace: {workspace_cls.name}")
                     except Exception as e:
                         logger.error(f"Failed to auto-create workspace '{workspace_cls.name}': {e}")
+                        import traceback
+                        traceback.print_exc()
                 else:
                     logger.info(f"Workspace '{workspace_cls.name}' already exists")
         except Exception as e:
@@ -207,12 +226,20 @@ class procedural_workspace(DiscoverableClassDecorator):
             return True
         
         try:
-            # Create a fresh new workspace (not a duplicate)
-            bpy.ops.workspace.add()
+            # Duplicate the current workspace
+            bpy.ops.workspace.duplicate()
             
             # Rename the new workspace
             new_workspace = context.window.workspace
             new_workspace.name = workspace_cls.name
+            
+            # Join all areas into one to get a clean slate
+            logger.info("Joining all areas to create clean workspace...")
+            main_area = join_all_areas_to_one(context)
+            
+            if main_area:
+                # Set it to VIEW_3D as a base
+                main_area.type = 'VIEW_3D'
             
             # Call the class's layout creation method
             workspace_cls.create_layout(context)
@@ -222,6 +249,8 @@ class procedural_workspace(DiscoverableClassDecorator):
             
         except Exception as e:
             logger.error(f"Failed to create workspace '{workspace_cls.name}': {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     @classmethod
@@ -303,6 +332,89 @@ def set_area_type(area, area_type: str):
         area_type: One of 'VIEW_3D', 'IMAGE_EDITOR', 'NODE_EDITOR', etc.
     """
     area.type = area_type
+
+
+def join_all_areas_to_one(context):
+    """
+    Join all areas in the current screen into a single area.
+    This provides a clean slate for creating a custom workspace layout.
+    
+    Args:
+        context: Blender context
+        
+    Returns:
+        The remaining single area, or None if failed
+    """
+    screen = context.screen
+    max_attempts = 20  # Prevent infinite loops
+    attempts = 0
+    
+    while len(screen.areas) > 1 and attempts < max_attempts:
+        attempts += 1
+        joined = False
+        
+        # Get all areas sorted by position (bottom-left to top-right)
+        areas = sorted(screen.areas, key=lambda a: (a.y, a.x))
+        
+        # Try to find two adjacent areas to join
+        for i, area in enumerate(areas):
+            if joined:
+                break
+                
+            # Try to join with areas to the right or above
+            for other_area in areas[i+1:]:
+                if joined:
+                    break
+                    
+                # Check if areas are horizontally adjacent (share vertical edge)
+                if (abs(area.x + area.width - other_area.x) < 5 and
+                    area.y < other_area.y + other_area.height and
+                    area.y + area.height > other_area.y):
+                    # Join horizontally - cursor on the shared edge
+                    cursor_x = area.x + area.width
+                    cursor_y = max(area.y, other_area.y) + min(area.height, other_area.height) // 2
+                    try:
+                        with context.temp_override(area=area):
+                            bpy.ops.screen.area_join(cursor=(cursor_x, cursor_y))
+                        joined = True
+                    except Exception:
+                        pass
+                        
+                # Check if areas are vertically adjacent (share horizontal edge)
+                elif (abs(area.y + area.height - other_area.y) < 5 and
+                      area.x < other_area.x + other_area.width and
+                      area.x + area.width > other_area.x):
+                    # Join vertically - cursor on the shared edge
+                    cursor_x = max(area.x, other_area.x) + min(area.width, other_area.width) // 2
+                    cursor_y = area.y + area.height
+                    try:
+                        with context.temp_override(area=area):
+                            bpy.ops.screen.area_join(cursor=(cursor_x, cursor_y))
+                        joined = True
+                    except Exception:
+                        pass
+        
+        if not joined:
+            # If no join was successful, try a simpler approach
+            # Just try to join the first two areas
+            if len(screen.areas) >= 2:
+                area1 = screen.areas[0]
+                area2 = screen.areas[1]
+                try:
+                    # Try joining at the boundary
+                    cursor_x = (area1.x + area1.width + area2.x) // 2
+                    cursor_y = (area1.y + area1.height + area2.y) // 2
+                    with context.temp_override(area=area1):
+                        bpy.ops.screen.area_join(cursor=(cursor_x, cursor_y))
+                except Exception:
+                    break  # Give up if we can't join
+    
+    if len(screen.areas) == 1:
+        return screen.areas[0]
+    elif len(screen.areas) > 0:
+        # Return the largest remaining area
+        return max(screen.areas, key=lambda a: a.width * a.height)
+    return None
 
 
 class OpenProceduralWorkspaceOperator(bpy.types.Operator):

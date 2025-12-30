@@ -83,6 +83,11 @@ class procedural_panel(DiscoverableClassDecorator):
         )
         for panel_cls in procedural_panel.registry.values():
             try:
+                # Unregister first if already registered (hot-reload support)
+                try:
+                    bpy.utils.unregister_class(panel_cls)
+                except RuntimeError:
+                    pass
                 bpy.utils.register_class(panel_cls)
             except Exception as e:
                 logger.info(
