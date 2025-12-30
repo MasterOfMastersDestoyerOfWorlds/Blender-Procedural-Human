@@ -134,42 +134,62 @@ class procedural_workspace(DiscoverableClassDecorator):
             context = bpy.context
             
             for class_name, workspace_cls in cls.registry.items():
-                # Check if workspace already exists
-                if workspace_cls.name not in bpy.data.workspaces:
-                    logger.info(f"Auto-creating workspace: {workspace_cls.name}")
-                    
-                    # Store the current workspace to return to it
-                    original_workspace = context.window.workspace
-                    
+                # Check if workspace already exists - if so, recreate it
+                if workspace_cls.name in bpy.data.workspaces:
+                    # Delete existing workspace and recreate for fresh layout
                     try:
-                        # Duplicate the current workspace
-                        bpy.ops.workspace.duplicate()
-                        
-                        # Rename the new workspace
-                        new_workspace = context.window.workspace
-                        new_workspace.name = workspace_cls.name
-                        
-                        # Join all areas into one to get a clean slate
-                        logger.info("Joining all areas to create clean workspace...")
-                        main_area = join_all_areas_to_one(context)
-                        
-                        if main_area:
-                            # Set it to VIEW_3D as a base
-                            main_area.type = 'VIEW_3D'
-                        
-                        # Apply the custom layout (this will split and configure areas)
-                        workspace_cls.create_layout(context)
-                        
-                        # Switch back to original workspace
-                        context.window.workspace = original_workspace
-                        
-                        logger.info(f"Created workspace: {workspace_cls.name}")
+                        logger.info(f"Recreating existing workspace: {workspace_cls.name}")
+                        bpy.data.workspaces.remove(bpy.data.workspaces[workspace_cls.name])
                     except Exception as e:
-                        logger.error(f"Failed to auto-create workspace '{workspace_cls.name}': {e}")
-                        import traceback
-                        traceback.print_exc()
-                else:
-                    logger.info(f"Workspace '{workspace_cls.name}' already exists")
+                        logger.warning(f"Could not remove existing workspace: {e}")
+                        continue
+                
+                logger.info(f"Auto-creating workspace: {workspace_cls.name}")
+                
+                # Store the current workspace to return to it
+                original_workspace = context.window.workspace
+                
+                try:
+                    # Use append from a template workspace for clean slate
+                    # First try to find the "Layout" workspace as a base
+                    base_workspace = None
+                    for ws in bpy.data.workspaces:
+                        if ws.name == "Layout":
+                            base_workspace = ws
+                            break
+                    
+                    if base_workspace is None and len(bpy.data.workspaces) > 0:
+                        base_workspace = bpy.data.workspaces[0]
+                    
+                    if base_workspace:
+                        context.window.workspace = base_workspace
+                    
+                    # Duplicate the current workspace
+                    bpy.ops.workspace.duplicate()
+                    
+                    # Rename the new workspace
+                    new_workspace = context.window.workspace
+                    new_workspace.name = workspace_cls.name
+                    
+                    # Join all areas into one to get a clean slate
+                    logger.info("Joining all areas to create clean workspace...")
+                    main_area = join_all_areas_to_one(context)
+                    
+                    if main_area:
+                        # Set it to VIEW_3D as a base
+                        main_area.type = 'VIEW_3D'
+                    
+                    # Apply the custom layout (this will split and configure areas)
+                    workspace_cls.create_layout(context)
+                    
+                    # Switch back to original workspace
+                    context.window.workspace = original_workspace
+                    
+                    logger.info(f"Created workspace: {workspace_cls.name}")
+                except Exception as e:
+                    logger.error(f"Failed to auto-create workspace '{workspace_cls.name}': {e}")
+                    import traceback
+                    traceback.print_exc()
         except Exception as e:
             logger.error(f"Error in auto-create workspaces: {e}")
         
@@ -202,13 +222,14 @@ class procedural_workspace(DiscoverableClassDecorator):
         procedural_workspace.registry.clear()
 
     @classmethod
-    def create_workspace(cls, workspace_class_name: str, context) -> bool:
+    def create_workspace(cls, workspace_class_name: str, context, force_recreate: bool = False) -> bool:
         """
         Create a workspace by its class name.
         
         Args:
             workspace_class_name: The name of the registered workspace class
             context: The Blender context
+            force_recreate: If True, delete existing workspace and recreate it
             
         Returns:
             True if workspace was created successfully, False otherwise
@@ -221,9 +242,14 @@ class procedural_workspace(DiscoverableClassDecorator):
         
         # Check if workspace already exists
         if workspace_cls.name in bpy.data.workspaces:
-            # Switch to existing workspace
-            context.window.workspace = bpy.data.workspaces[workspace_cls.name]
-            return True
+            if force_recreate:
+                # Delete existing workspace
+                logger.info(f"Force recreating workspace: {workspace_cls.name}")
+                bpy.data.workspaces.remove(bpy.data.workspaces[workspace_cls.name])
+            else:
+                # Switch to existing workspace
+                context.window.workspace = bpy.data.workspaces[workspace_cls.name]
+                return True
         
         try:
             # Duplicate the current workspace

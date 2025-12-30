@@ -125,30 +125,46 @@ def _configure_asset_browser(area):
                 if hasattr(space, 'browse_mode'):
                     space.browse_mode = 'ASSETS'
                 
-                # Configure params if available
-                params = space.params
-                if params is not None:
-                    # Set display to thumbnails
-                    if hasattr(params, 'display_type'):
-                        params.display_type = 'THUMBNAIL'
-                    
-                    # Set thumbnail size
-                    if hasattr(params, 'display_size'):
-                        params.display_size = 96
-                    
-                    # Try to set the asset library reference
-                    if hasattr(params, 'asset_library_reference'):
-                        params.asset_library_reference = SearchAssetManager.LIBRARY_NAME
-                    elif hasattr(params, 'asset_library_ref'):
-                        params.asset_library_ref = SearchAssetManager.LIBRARY_NAME
-                    
-                    # Filter to show only images
-                    if hasattr(params, 'use_filter'):
-                        params.use_filter = True
-                    if hasattr(params, 'use_filter_image'):
-                        params.use_filter_image = True
+                # Configure params - needs a delay for params to be ready
+                def configure_params():
+                    try:
+                        params = space.params
+                        if params is None:
+                            return 0.1  # Retry
                         
-                logger.info("Configured Asset Browser for search results")
+                        # Set display to thumbnails
+                        if hasattr(params, 'display_type'):
+                            params.display_type = 'THUMBNAIL'
+                        
+                        # Set thumbnail size
+                        if hasattr(params, 'display_size'):
+                            params.display_size = 96
+                        
+                        # Set the asset library reference to our library
+                        # Use the exact library name as registered
+                        lib_name = SearchAssetManager.LIBRARY_NAME
+                        if hasattr(params, 'asset_library_reference'):
+                            try:
+                                params.asset_library_reference = lib_name
+                                logger.info(f"Set Asset Browser to library: {lib_name}")
+                            except Exception as e:
+                                # If the library doesn't exist yet, fall back to LOCAL
+                                logger.warning(f"Could not set to {lib_name}, using LOCAL: {e}")
+                                params.asset_library_reference = 'LOCAL'
+                        
+                        # Filter to show materials (our assets are materials)
+                        if hasattr(params, 'use_filter'):
+                            params.use_filter = True
+                        if hasattr(params, 'use_filter_material'):
+                            params.use_filter_material = True
+                            
+                        logger.info("Configured Asset Browser for search results")
+                    except Exception as e:
+                        logger.warning(f"Error configuring params: {e}")
+                    return None  # Don't repeat timer
+                
+                # Schedule delayed configuration to ensure params is ready
+                bpy.app.timers.register(configure_params, first_interval=0.2)
                 
             except Exception as e:
                 logger.warning(f"Could not fully configure Asset Browser: {e}")
@@ -168,12 +184,19 @@ class OpenCurveSegmentationWorkspace(Operator):
     bl_label = "Open Curve Segmentation Workspace"
     bl_description = "Open or create the Curve Segmentation workspace with image search and segmentation panels"
     
+    force_recreate: bpy.props.BoolProperty(
+        name="Force Recreate",
+        description="Delete existing workspace and create fresh",
+        default=False
+    )
+    
     def execute(self, context):
         from procedural_human.decorators.workspace_decorator import procedural_workspace
         
         success = procedural_workspace.create_workspace(
             "CurveSegmentationWorkspace",
-            context
+            context,
+            force_recreate=self.force_recreate
         )
         
         if success:

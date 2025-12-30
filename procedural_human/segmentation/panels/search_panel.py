@@ -84,6 +84,49 @@ def get_search_thumbnails_items(self, context):
     return items
 
 
+def _on_thumbnail_selection_changed(self, context):
+    """Callback when the user selects a different thumbnail - auto-load the image."""
+    selected = self.yandex_search_thumbnails
+    if not selected or selected == "NONE":
+        return
+    
+    # Find the cached result info
+    cached_results = self.get("yandex_search_cached_results", [])
+    result_info = None
+    for result in cached_results:
+        if result.get("name") == selected:
+            result_info = result
+            break
+    
+    if not result_info:
+        return
+    
+    filepath = result_info.get("filepath", "")
+    if not filepath or not os.path.exists(filepath):
+        return
+    
+    try:
+        # Load image into Blender
+        image = bpy.data.images.load(filepath)
+        
+        # Store reference for segmentation
+        self["segmentation_image"] = image.name
+        
+        # Show in all IMAGE_EDITOR areas
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type == 'IMAGE_EDITOR':
+                    for space in area.spaces:
+                        if space.type == 'IMAGE_EDITOR':
+                            space.image = image
+                            area.tag_redraw()
+                            break
+        
+        logger.info(f"Auto-loaded image: {image.name}")
+    except Exception as e:
+        logger.error(f"Failed to auto-load image: {e}")
+
+
 def register_search_properties():
     """Register scene properties for search functionality."""
     bpy.types.Scene.yandex_search_query = StringProperty(
@@ -119,7 +162,8 @@ def register_search_properties():
     bpy.types.Scene.yandex_search_thumbnails = EnumProperty(
         name="Search Results",
         description="Click to select an image from search results",
-        items=get_search_thumbnails_items
+        items=get_search_thumbnails_items,
+        update=_on_thumbnail_selection_changed  # Auto-load on selection change
     )
     
     bpy.types.Scene.yandex_search_selected_index = IntProperty(
@@ -189,31 +233,18 @@ class SegmentationSearchPanel(Panel):
             query = scene.get("yandex_search_query_last", "")
             box.label(text=f"Found {result_count} results for '{query}'")
         
-        # Thumbnail grid
+        # Thumbnail grid - click to auto-load
         layout.separator()
         box = layout.box()
-        box.label(text="Search Results", icon='IMAGE_DATA')
+        box.label(text="Click to Load", icon='IMAGE_DATA')
         
         # Display thumbnail grid using template_icon_view
         pcoll = get_search_preview_collection()
         if len(pcoll) > 0:
             box.template_icon_view(scene, "yandex_search_thumbnails", show_labels=True)
-            
-            # Show selected image info
-            selected = scene.yandex_search_thumbnails
-            if selected and selected != "NONE":
-                box.label(text=f"Selected: {selected}")
-                row = box.row(align=True)
-                row.operator("segmentation.load_selected_result", text="Load Image", icon='IMPORT')
         else:
             box.label(text="No search results yet")
             box.label(text="Enter a query above and click Search")
-        
-        # Load from disk section
-        layout.separator()
-        box = layout.box()
-        box.label(text="Load from Disk", icon='FILE_IMAGE')
-        box.operator("segmentation.load_image", text="Open Image", icon='FILE_FOLDER')
         
         # Current image info
         for area in context.screen.areas:
@@ -227,6 +258,44 @@ class SegmentationSearchPanel(Panel):
                         info_box.label(text=f"  {space.image.size[0]} x {space.image.size[1]}")
                         break
                 break
+
+
+@procedural_panel
+class AssetBrowserSegmentationPanel(Panel):
+    """Panel in Asset Browser with segmentation info"""
+    
+    bl_label = "Segmentation"
+    bl_idname = "PROCEDURAL_PT_asset_browser_segmentation"
+    bl_space_type = 'FILE_BROWSER'
+    bl_region_type = 'TOOL_PROPS'
+    bl_category = "Segmentation"
+    
+    @classmethod
+    def poll(cls, context):
+        # Only show in Asset Browser mode
+        if context.area and context.area.type == 'FILE_BROWSER':
+            for space in context.area.spaces:
+                if space.type == 'FILE_BROWSER':
+                    return getattr(space, 'browse_mode', '') == 'ASSETS'
+        return False
+    
+    def draw(self, context):
+        layout = self.layout
+        
+        # Instructions
+        box = layout.box()
+        box.label(text="Double-click to load", icon='MOUSE_LMB_DRAG')
+        box.label(text="Drag to apply material", icon='MATERIAL')
+        
+        layout.separator()
+        
+        # Show current segmentation image
+        seg_image = context.scene.get("segmentation_image", "")
+        if seg_image and seg_image in bpy.data.images:
+            layout.label(text="Current Image:", icon='IMAGE_DATA')
+            layout.label(text=f"  {seg_image[:25]}...")
+        else:
+            layout.label(text="No image loaded", icon='INFO')
 
 
 @procedural_panel
