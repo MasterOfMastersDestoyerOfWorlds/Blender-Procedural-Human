@@ -6,6 +6,7 @@ A Blender add-on for creating procedural human characters using Geometry Nodes
 import bpy
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from procedural_human.dsl.finger_segment_const import SEGMENT_SAMPLE_COUNT
 from procedural_human.logger import *
@@ -13,15 +14,75 @@ from procedural_human.logger import *
 from procedural_human.decorators.curve_preset_decorator import register_preset_class
 from procedural_human.decorators.panel_decorator import procedural_panel
 from procedural_human.decorators.operator_decorator import procedural_operator
+from procedural_human.decorators.workspace_decorator import procedural_workspace
 from procedural_human.decorators.module_discovery import (
     clear_discovered,
     import_all_modules,
 )
 
-REQUIRED_PACKAGES = [
-    ("tree_sitter", "tree-sitter"),
-    ("tree_sitter_python", "tree-sitter-python"),
-]
+# Addon root directory (where this __init__.py lives)
+_ADDON_ROOT = Path(__file__).parent.parent
+
+# Mapping from pip package names to import names
+# Only needed for packages where the import name differs from the pip name
+_PIP_TO_IMPORT = {
+    "tree-sitter": "tree_sitter",
+    "tree-sitter-python": "tree_sitter_python",
+    "opencv-python": "cv2",
+    "pillow": "PIL",
+    "scikit-image": "skimage",
+    "huggingface_hub": "huggingface_hub",
+}
+
+# Packages to skip during dependency checking (dev tools, already in Blender, etc.)
+_SKIP_PACKAGES = {
+    "pytest",
+    "black",
+    "flake8",
+    "mypy",
+    "fake-bpy-module",
+    "filemover",  # Git dependency, special handling needed
+}
+
+
+def _get_required_packages() -> list[tuple[str, str]]:
+    """
+    Parse pyproject.toml to get required packages.
+    Returns list of (import_name, pip_name) tuples.
+    """
+    pyproject_path = _ADDON_ROOT / "pyproject.toml"
+    
+    if not pyproject_path.exists():
+        logger.warning(f"pyproject.toml not found at {pyproject_path}")
+        return []
+    
+    try:
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+        
+        dependencies = data.get("project", {}).get("dependencies", [])
+        packages = []
+        
+        for dep in dependencies:
+            # Parse dependency string (e.g., "opencv-python>=4.8.0" -> "opencv-python")
+            # Handle various formats: pkg, pkg>=ver, pkg[extra], pkg @ url
+            pip_name = dep.split(">=")[0].split("<=")[0].split("==")[0]
+            pip_name = pip_name.split("[")[0].split("@")[0].strip()
+            
+            # Skip dev/excluded packages
+            if any(pip_name.startswith(skip) for skip in _SKIP_PACKAGES):
+                continue
+            
+            # Get import name (use mapping or convert dashes to underscores)
+            import_name = _PIP_TO_IMPORT.get(pip_name, pip_name.replace("-", "_"))
+            
+            packages.append((import_name, pip_name))
+        
+        return packages
+        
+    except Exception as e:
+        logger.error(f"Failed to parse pyproject.toml: {e}")
+        return []
 
 
 def check_dependencies() -> list[tuple[str, str]]:
@@ -29,8 +90,9 @@ def check_dependencies() -> list[tuple[str, str]]:
     Check which required packages are missing.
     Returns list of (import_name, pip_name) tuples for missing packages.
     """
+    required_packages = _get_required_packages()
     missing = []
-    for import_name, pip_name in REQUIRED_PACKAGES:
+    for import_name, pip_name in required_packages:
         try:
             __import__(import_name)
         except ImportError:
@@ -216,6 +278,7 @@ def register():
     procedural_operator.discover_and_register_all_decorators()
     register_preset_class.discover_and_register_all_decorators()
     geo_node_group.discover_and_register_all_decorators()
+    procedural_workspace.discover_and_register_all_decorators()
 
     logger.info(f"Node group registry: {geo_node_group.registry}")
     
@@ -242,6 +305,13 @@ def register():
     except ImportError as e:
         logger.info(f"[Procedural Human] Could not register curve autosave: {e}")
 
+    # Register segmentation properties (search input, thumbnails, etc.)
+    try:
+        from procedural_human.segmentation import register_segmentation_properties
+        register_segmentation_properties()
+    except ImportError as e:
+        logger.info(f"[Procedural Human] Could not register segmentation properties: {e}")
+
 
 def unregister():
     try:
@@ -250,11 +320,19 @@ def unregister():
     except ImportError:
         pass
 
+    # Unregister segmentation properties
+    try:
+        from procedural_human.segmentation import unregister_segmentation_properties
+        unregister_segmentation_properties()
+    except ImportError:
+        pass
+
     menus.unregister()
     procedural_panel.unregister_all_decorators()
     procedural_operator.unregister_all_decorators()
     register_preset_class.unregister_all_decorators()
     geo_node_group.unregister_all_decorators()
+    procedural_workspace.unregister_all_decorators()
     preferences.unregister()
     clear_discovered()
 

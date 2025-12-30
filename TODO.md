@@ -348,3 +348,76 @@ This document lists all tasks from `PlanOfTheWork.md` that are not yet implement
 8 an apple and its core, how do we define concavity in terms of simple curves.
 
 **Note**: This TODO list is based on the comprehensive plan in `PlanOfTheWork.md`. Items are organized by section to match the original document structure. Current implementation has basic functionality but lacks many of the advanced procedural techniques described in the plan.
+
+
+## Section 8: Segmentation Workflow
+
+Create a custom Blender workspace with Yandex image search, SAM3 segmentation, and curve extraction capabilities.
+
+### 8.1 Pre-requisites
+- [x] Move LoftSpheriod node group from `tmp/temp_25.py` to `geo_node_groups/loft_spheroid.py`
+- [x] Fix node_exporter.py to skip built-in/bundled Blender node groups
+- [x] Update pyproject.toml with SAM3 dependencies (torch, transformers, timm, etc.)
+- [x] Add segmentation dependencies to REQUIRED_PACKAGES in `__init__.py`
+
+### 8.2 Workspace Decorator
+- [x] Create `workspace_decorator.py` following DiscoverableClassDecorator pattern
+- [x] Implement workspace registration and unregistration methods
+- [x] Add workspace creation via area splitting
+
+### 8.3 Segmentation Module Structure
+- [x] Create `segmentation/` module with `__init__.py`
+- [x] Create `segmentation/operators/` submodule
+- [x] Create `segmentation/panels/` submodule
+
+### 8.4 SAM3 Integration
+- [x] Implement SAM3Manager singleton class with lazy loading
+- [x] Wrap existing SAM3 from `C:\Code\SAM\src\sam_image.py`
+- [x] Support point-based segmentation
+- [x] Support box-based segmentation
+- [x] Support text prompt segmentation
+
+### 8.5 Yandex Image Search
+- [x] Implement YandexImageSearch class using yandex-image-scraper
+- [x] Add search history tracking
+- [x] Add filter support (quality, orientation)
+- [x] Add image download functionality
+
+### 8.6 Mask to Curve Conversion
+- [x] Implement contour extraction from binary masks (OpenCV)
+- [x] Simplify contours using Douglas-Peucker algorithm
+- [x] Create Blender curve objects from contour points
+
+### 8.7 Search Panel (Bottom 1/3 of workspace)
+- [x] Create search input field and search button
+- [x] Add filter dropdowns (quality, orientation)
+- [x] Create scrollable tiled image grid
+- [x] Add search history sidebar
+
+### 8.8 Segmentation Panel (IMAGE_EDITOR sidebar)
+- [x] Add "Open Image" button
+- [x] Add text prompt input and "Segment by Prompt" button
+- [x] Add click-to-segment instructions
+- [x] Add "Convert Masks to Curves" button
+- [x] Add mask visibility toggles
+
+### 8.9 Curve Insertion Panel (VIEW_3D sidebar)
+- [x] Add toggle: New Object / Existing Object mode
+- [x] Add rotation offset slider (default 90 degrees)
+- [x] Add target object selector
+- [x] Add "Insert Curve" button
+
+### 8.10 Curve Operators
+- [x] Create InsertCurveAsNewObject operator (with LoftSpheriod modifier)
+- [x] Create InsertCurveOnExistingObject operator (with rotation offset)
+
+### 8.11 Workspace Layout
+- [x] Implement CurveSegmentationWorkspace class
+- [x] Create 2/3 - 1/3 horizontal split layout
+- [x] Set up IMAGE_EDITOR (left), VIEW_3D (right), Search Panel (bottom)
+
+### 8.12 Integration Testing
+- [ ] Test full workflow: search -> select -> segment -> convert -> insert
+- [ ] Verify SAM3 model loading and inference
+- [ ] Test mask to curve conversion accuracy
+- [ ] Validate curve insertion with LoftSpheriod

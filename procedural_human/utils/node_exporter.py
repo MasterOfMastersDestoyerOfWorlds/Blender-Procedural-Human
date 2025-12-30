@@ -105,6 +105,11 @@ class NodeGroupExporter:
         # 1. Discover and process dependencies recursively
         for node in node_group.nodes:
             if hasattr(node, "node_tree") and node.node_tree:
+                # Skip built-in/bundled node groups
+                if node.node_tree.library is not None:
+                    continue  # Linked from external file
+                if hasattr(node.node_tree, "asset_data") and node.node_tree.asset_data:
+                    continue  # It's a bundled asset
                 self.process_group(node.node_tree)
 
         # 2. Generate code for this group

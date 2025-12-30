@@ -70,3 +70,6 @@ htmlcov/
 *.temp
 .temp/
 .cursor/*
+
+*.safetensors
+*.pt

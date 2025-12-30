@@ -1,0 +1,63 @@
+# Blender Extension Manifest
+# See: https://docs.blender.org/manual/en/latest/extensions/index.html
+
+schema_version = "1.0.0"
+
+id = "procedural_human"
+version = "1.0.0"
+name = "Procedural Human"
+tagline = "Procedural Human Generator using Geometry Nodes with SAM3 segmentation"
+maintainer = "Procedural Human Team"
+type = "add-on"
+
+# Blender version requirements
+blender_version_min = "4.2.0"
+
+# License 
+license = ["SPDX:MIT"]
+
+# Website (optional)
+# website = "https://github.com/procedural-human/blender-addon"
+
+# Permissions required by this addon
+[permissions]
+# Required for Yandex image search
+network = true
+# Required for file operations (loading images, saving curves)
+files = true
+
+# Python dependencies
+# These packages will be installed automatically by Blender's extension system
+# Note: Heavy ML packages like torch need manual installation due to CUDA requirements
+[build]
+# Paths to exclude from the built extension
+paths_exclude_pattern = [
+    "__pycache__/",
+    "*.pyc",
+    ".git/",
+    ".gitignore",
+    "*.md",
+    "tests/",
+    "tmp/",
+]
+
+# Optional: Specify wheel files to bundle with the addon
+# wheels = [
+#     "./wheels/opencv_python-*.whl",
+#     "./wheels/Pillow-*.whl",
+# ]
+
+# Documentation for manual dependency installation
+# Users must install these packages manually for full functionality:
+#
+# Core dependencies (can be auto-installed):
+#   pip install opencv-python pillow requests
+#
+# SAM3/ML dependencies (require manual CUDA setup):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#   pip install transformers timm
+#
+# Tree-sitter (for code analysis):
+#   pip install tree-sitter tree-sitter-python
+
+

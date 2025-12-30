@@ -29,6 +29,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    # Development tools
     "pytest>=7.0.0",
     "black>=22.0.0",
     "flake8>=4.0.0",
@@ -36,8 +37,31 @@ dependencies = [
     "fake-bpy-module>=20251003",
     "tree-sitter>=0.20.0",
     "tree-sitter-python>=0.20.0",
-    "filemover @ git+https://github.com/plex1/filemover"
+    "filemover @ git+https://github.com/plex1/filemover",
+    
+    # SAM3 core dependencies
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "transformers>=4.35.0",
+    "timm>=1.0.17",
+    "numpy>=1.26,<2",
+    "tqdm",
+    "ftfy==6.1.1",
+    "regex",
+    "iopath>=0.1.10",
+    "huggingface_hub",
+    
+    # Segmentation workflow dependencies
+    "opencv-python>=4.8.0",
+    "scikit-image>=0.21.0",
+    "pillow>=10.0.0",
+    "requests>=2.31.0",
 ]
+
+[project.optional-dependencies]
+# Note: PyTorch with CUDA requires manual installation matching user's CUDA version
+# Example for CUDA 12.1: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+cuda = []
 
 [project.urls]
 Homepage = "https://github.com/procedural-human/blender-addon"
