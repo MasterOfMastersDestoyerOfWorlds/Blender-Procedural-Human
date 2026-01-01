@@ -6,7 +6,7 @@ schema_version = "1.0.0"
 id = "procedural_human"
 version = "1.0.0"
 name = "Procedural Human"
-tagline = "Procedural Human Generator using Geometry Nodes with SAM3 segmentation"
+tagline = "Procedural human models with Geometry Nodes and SAM3"
 maintainer = "Procedural Human Team"
 type = "add-on"
 
@@ -16,17 +16,77 @@ blender_version_min = "4.2.0"
 # License 
 license = ["SPDX:MIT"]
 
-# Website (optional)
-# website = "https://github.com/procedural-human/blender-addon"
+# Supported platforms
+platforms = ["windows-x64", "linux-x64"]
 
-# Permissions required by this addon
-# - "network": Required for Yandex image search
-# - "files": Required for file operations (loading images, saving curves)
-permissions = ["network", "files"]
+# Python wheel dependencies
+# These are bundled with the extension and automatically installed by Blender
+wheels = [
+    "./wheels/black-25.12.0-cp311-cp311-win_amd64.whl",
+    "./wheels/certifi-2025.11.12-py3-none-any.whl",
+    "./wheels/charset_normalizer-3.4.4-cp311-cp311-win_amd64.whl",
+    "./wheels/click-8.3.1-py3-none-any.whl",
+    "./wheels/colorama-0.4.6-py2.py3-none-any.whl",
+    "./wheels/fake_bpy_module-20251003-py3-none-any.whl",
+    "./wheels/filelock-3.20.1-py3-none-any.whl",
+    "./wheels/flake8-7.3.0-py2.py3-none-any.whl",
+    "./wheels/fsspec-2025.12.0-py3-none-any.whl",
+    "./wheels/ftfy-6.1.1-py3-none-any.whl",
+    "./wheels/huggingface_hub-0.36.0-py3-none-any.whl",
+    "./wheels/idna-3.11-py3-none-any.whl",
+    "./wheels/imageio-2.37.2-py3-none-any.whl",
+    "./wheels/iniconfig-2.3.0-py3-none-any.whl",
+    "./wheels/iopath-0.1.9-py3-none-any.whl",
+    "./wheels/jinja2-3.1.6-py3-none-any.whl",
+    "./wheels/lazy_loader-0.4-py3-none-any.whl",
+    "./wheels/librt-0.7.5-cp311-cp311-win_amd64.whl",
+    "./wheels/markupsafe-3.0.3-cp311-cp311-win_amd64.whl",
+    "./wheels/mccabe-0.7.0-py2.py3-none-any.whl",
+    "./wheels/mpmath-1.3.0-py3-none-any.whl",
+    "./wheels/mypy_extensions-1.1.0-py3-none-any.whl",
+    "./wheels/mypy-1.19.1-cp311-cp311-win_amd64.whl",
+    "./wheels/networkx-3.6.1-py3-none-any.whl",
+    "./wheels/numpy-1.26.4-cp311-cp311-win_amd64.whl",
+    "./wheels/opencv_python-4.11.0.86-cp37-abi3-win_amd64.whl",
+    "./wheels/packaging-25.0-py3-none-any.whl",
+    "./wheels/pathspec-0.12.1-py3-none-any.whl",
+    "./wheels/pillow-12.0.0-cp311-cp311-win_amd64.whl",
+    "./wheels/platformdirs-4.5.1-py3-none-any.whl",
+    "./wheels/pluggy-1.6.0-py3-none-any.whl",
+    "./wheels/portalocker-3.2.0-py3-none-any.whl",
+    "./wheels/pycodestyle-2.14.0-py2.py3-none-any.whl",
+    "./wheels/pyflakes-3.4.0-py2.py3-none-any.whl",
+    "./wheels/pygments-2.19.2-py3-none-any.whl",
+    "./wheels/pytest-9.0.2-py3-none-any.whl",
+    "./wheels/pytokens-0.3.0-py3-none-any.whl",
+    "./wheels/pywin32-311-cp311-cp311-win_amd64.whl",
+    "./wheels/pyyaml-6.0.3-cp311-cp311-win_amd64.whl",
+    "./wheels/regex-2025.11.3-cp311-cp311-win_amd64.whl",
+    "./wheels/requests-2.32.5-py3-none-any.whl",
+    "./wheels/safetensors-0.7.0-cp38-abi3-win_amd64.whl",
+    "./wheels/scikit_image-0.26.0-cp311-cp311-win_amd64.whl",
+    "./wheels/scipy-1.16.3-cp311-cp311-win_amd64.whl",
+    "./wheels/setuptools-80.9.0-py3-none-any.whl",
+    "./wheels/sympy-1.14.0-py3-none-any.whl",
+    "./wheels/tifffile-2025.12.20-py3-none-any.whl",
+    "./wheels/timm-1.0.22-py3-none-any.whl",
+    "./wheels/tokenizers-0.22.1-cp39-abi3-win_amd64.whl",
+    "./wheels/torch-2.9.1-cp311-cp311-win_amd64.whl",
+    "./wheels/torchvision-0.24.1-cp311-cp311-win_amd64.whl",
+    "./wheels/tqdm-4.67.1-py3-none-any.whl",
+    "./wheels/transformers-4.57.3-py3-none-any.whl",
+    "./wheels/tree_sitter_python-0.25.0-cp310-abi3-win_amd64.whl",
+    "./wheels/tree_sitter-0.25.2-cp311-cp311-win_amd64.whl",
+    "./wheels/typing_extensions-4.15.0-py3-none-any.whl",
+    "./wheels/urllib3-2.6.2-py3-none-any.whl",
+    "./wheels/wcwidth-0.2.14-py2.py3-none-any.whl"
+]
 
-# Python dependencies
-# These packages will be installed automatically by Blender's extension system
-# Note: Heavy ML packages like torch need manual installation due to CUDA requirements
+# Permissions required by this addon (table sections must come after all top-level keys)
+[permissions]
+network = "Required for image search"
+files = "Required for file operations"
+
 [build]
 # Paths to exclude from the built extension
 paths_exclude_pattern = [
@@ -37,25 +97,8 @@ paths_exclude_pattern = [
     "*.md",
     "tests/",
     "tmp/",
+    ".venv/",
+    "venv/",
+    "pyproject.toml",
+    "uv.lock",
 ]
-
-# Optional: Specify wheel files to bundle with the addon
-# wheels = [
-#     "./wheels/opencv_python-*.whl",
-#     "./wheels/Pillow-*.whl",
-# ]
-
-# Documentation for manual dependency installation
-# Users must install these packages manually for full functionality:
-#
-# Core dependencies (can be auto-installed):
-#   pip install opencv-python pillow requests
-#
-# SAM3/ML dependencies (require manual CUDA setup):
-#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-#   pip install transformers timm
-#
-# Tree-sitter (for code analysis):
-#   pip install tree-sitter tree-sitter-python
-
-

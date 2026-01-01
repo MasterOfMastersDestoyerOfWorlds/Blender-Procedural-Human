@@ -134,15 +134,11 @@ class procedural_workspace(DiscoverableClassDecorator):
             context = bpy.context
             
             for class_name, workspace_cls in cls.registry.items():
-                # Check if workspace already exists - if so, recreate it
+                # Check if workspace already exists - skip if it does
+                # (Don't try to recreate - just use existing one)
                 if workspace_cls.name in bpy.data.workspaces:
-                    # Delete existing workspace and recreate for fresh layout
-                    try:
-                        logger.info(f"Recreating existing workspace: {workspace_cls.name}")
-                        bpy.data.workspaces.remove(bpy.data.workspaces[workspace_cls.name])
-                    except Exception as e:
-                        logger.warning(f"Could not remove existing workspace: {e}")
-                        continue
+                    logger.info(f"Workspace '{workspace_cls.name}' already exists, skipping auto-create")
+                    continue
                 
                 logger.info(f"Auto-creating workspace: {workspace_cls.name}")
                 
@@ -150,12 +146,12 @@ class procedural_workspace(DiscoverableClassDecorator):
                 original_workspace = context.window.workspace
                 
                 try:
-                    # Use append from a template workspace for clean slate
-                    # First try to find the "Layout" workspace as a base
+                    # Use a workspace without animation timeline as base
+                    # "Modeling" workspace doesn't have the animation timeline
                     base_workspace = None
-                    for ws in bpy.data.workspaces:
-                        if ws.name == "Layout":
-                            base_workspace = ws
+                    for ws_name in ["Modeling", "Sculpting", "UV Editing", "Layout"]:
+                        if ws_name in bpy.data.workspaces:
+                            base_workspace = bpy.data.workspaces[ws_name]
                             break
                     
                     if base_workspace is None and len(bpy.data.workspaces) > 0:
@@ -163,6 +159,7 @@ class procedural_workspace(DiscoverableClassDecorator):
                     
                     if base_workspace:
                         context.window.workspace = base_workspace
+                        logger.info(f"Using '{base_workspace.name}' as base workspace")
                     
                     # Duplicate the current workspace
                     bpy.ops.workspace.duplicate()
@@ -243,15 +240,36 @@ class procedural_workspace(DiscoverableClassDecorator):
         # Check if workspace already exists
         if workspace_cls.name in bpy.data.workspaces:
             if force_recreate:
-                # Delete existing workspace
+                # Delete existing workspace using operator
                 logger.info(f"Force recreating workspace: {workspace_cls.name}")
-                bpy.data.workspaces.remove(bpy.data.workspaces[workspace_cls.name])
+                try:
+                    # Switch to the workspace we want to delete
+                    ws_to_delete = bpy.data.workspaces[workspace_cls.name]
+                    context.window.workspace = ws_to_delete
+                    # Delete it (this switches to another workspace)
+                    bpy.ops.workspace.delete()
+                    logger.info(f"Deleted workspace: {workspace_cls.name}")
+                except Exception as e:
+                    logger.warning(f"Could not delete workspace: {e}")
+                    return False
             else:
                 # Switch to existing workspace
                 context.window.workspace = bpy.data.workspaces[workspace_cls.name]
                 return True
         
         try:
+            # Use a workspace without animation timeline as base
+            # "Modeling" workspace doesn't have the animation timeline
+            base_workspace = None
+            for ws_name in ["Modeling", "Sculpting", "UV Editing", "Layout"]:
+                if ws_name in bpy.data.workspaces:
+                    base_workspace = bpy.data.workspaces[ws_name]
+                    break
+            
+            if base_workspace:
+                context.window.workspace = base_workspace
+                logger.info(f"Using '{base_workspace.name}' as base workspace")
+            
             # Duplicate the current workspace
             bpy.ops.workspace.duplicate()
             

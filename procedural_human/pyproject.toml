@@ -3,7 +3,7 @@ name = "procedural-human"
 version = "1.0.0"
 description = "Procedural Human Generator for Blender - Create realistic human models using Geometry Nodes"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = "==3.11.*"
 authors = [
     { name = "Procedural Human Team", email = "info@proceduralhuman.dev" },
 ]
@@ -22,9 +22,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Topic :: Multimedia :: Graphics :: 3D Modeling",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -48,7 +46,7 @@ dependencies = [
     "tqdm",
     "ftfy==6.1.1",
     "regex",
-    "iopath>=0.1.10",
+    "iopath>=0.1.9",
     "huggingface_hub",
     
     # Segmentation workflow dependencies
@@ -104,3 +102,6 @@ python_files = ["test_*.py"]
 
 [tool.hatch.metadata]
 allow-direct-references= true
+
+[tool.hatch.build.targets.wheel]
+      packages = ["."]

@@ -379,6 +379,76 @@ class LoadSelectedResultOperator(Operator):
 
 
 @procedural_operator
+class ActivateAssetOperator(Operator):
+    """Operator called when an asset is double-clicked in the Asset Browser/Shelf"""
+    
+    bl_idname = "segmentation.activate_asset"
+    bl_label = "Activate Asset"
+    bl_description = "Load the asset's image into the Image Editor"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        # Get the active asset from context
+        asset = getattr(context, 'asset', None)
+        
+        if asset is None:
+            # Try to get from active_file
+            active_file = getattr(context, 'active_file', None)
+            if active_file:
+                asset_name = getattr(active_file, 'name', '')
+                if asset_name:
+                    mat = bpy.data.materials.get(asset_name)
+                    if mat:
+                        return self._load_material_image(context, mat)
+            
+            self.report({'WARNING'}, "No asset selected")
+            return {'CANCELLED'}
+        
+        # Try to find the material by asset name
+        mat = bpy.data.materials.get(asset.name)
+        if mat:
+            return self._load_material_image(context, mat)
+        
+        self.report({'WARNING'}, f"Material not found: {asset.name}")
+        return {'CANCELLED'}
+    
+    def _load_material_image(self, context, mat):
+        """Load the image from a material into the Image Editor."""
+        if mat.node_tree is None:
+            self.report({'WARNING'}, "Material has no node tree")
+            return {'CANCELLED'}
+        
+        # Find the image texture node
+        for node in mat.node_tree.nodes:
+            if node.type == 'TEX_IMAGE' and node.image:
+                image = node.image
+                
+                # Store reference for segmentation
+                context.scene["segmentation_image"] = image.name
+                
+                # Load into all Image Editors
+                loaded = False
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type == 'IMAGE_EDITOR':
+                            for space in area.spaces:
+                                if space.type == 'IMAGE_EDITOR':
+                                    space.image = image
+                                    area.tag_redraw()
+                                    loaded = True
+                
+                if loaded:
+                    self.report({'INFO'}, f"Loaded: {image.name}")
+                    return {'FINISHED'}
+                else:
+                    self.report({'WARNING'}, "No Image Editor found")
+                    return {'CANCELLED'}
+        
+        self.report({'WARNING'}, "No image texture found in material")
+        return {'CANCELLED'}
+
+
+@procedural_operator
 class LoadAssetToSegmentation(Operator):
     """Load the active asset's image into the Image Editor for segmentation"""
     

@@ -38,11 +38,12 @@ def discover_modules(
 
     modules = set()
 
-    skip_dirs = {"__pycache__", ".git", "masonry"}
+    skip_dirs = {"__pycache__", ".git", "masonry", ".venv", "venv", "node_modules", "image_seg", "tmp"}
     skip_files = {"__init__.py"}
 
     for dirpath, dirnames, filenames in os.walk(root_path):
-        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+        # Filter out skip_dirs and any hidden directories (starting with .)
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs and not d.startswith('.')]
 
         rel_path = Path(dirpath).relative_to(root_path)
 

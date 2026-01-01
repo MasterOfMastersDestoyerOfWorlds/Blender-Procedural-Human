@@ -362,16 +362,92 @@ VERSION 1
         cls._registered = False
 
 
-_last_active_material = None
+_last_active_asset = None
+_asset_watch_timer_running = False
+
+
+def _load_material_image_to_editor(mat_name: str) -> bool:
+    """
+    Load the image from a material into all Image Editors.
+    Returns True if successful.
+    """
+    mat = bpy.data.materials.get(mat_name)
+    if not mat or not mat.node_tree:
+        return False
+    
+    for node in mat.node_tree.nodes:
+        if node.type == 'TEX_IMAGE' and node.image:
+            image = node.image
+            
+            # Store reference for segmentation
+            try:
+                bpy.context.scene["segmentation_image"] = image.name
+            except Exception:
+                pass
+            
+            # Load into all Image Editors
+            for window in bpy.context.window_manager.windows:
+                for area in window.screen.areas:
+                    if area.type == 'IMAGE_EDITOR':
+                        for space in area.spaces:
+                            if space.type == 'IMAGE_EDITOR':
+                                space.image = image
+                                area.tag_redraw()
+            
+            logger.info(f"Loaded image from material: {image.name}")
+            return True
+    
+    return False
+
+
+def _watch_asset_selection():
+    """
+    Timer callback to watch for asset selection changes in the Asset Browser.
+    When a yandex asset is selected, load its image into the Image Editor.
+    """
+    global _last_active_asset, _asset_watch_timer_running
+    
+    try:
+        # Only run in the segmentation workspace
+        if not bpy.context.window or bpy.context.window.workspace.name != "Curve Segmentation":
+            return 0.5  # Keep checking
+        
+        # Find the Asset Browser area
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type == 'FILE_BROWSER':
+                    for space in area.spaces:
+                        if space.type == 'FILE_BROWSER' and getattr(space, 'browse_mode', '') == 'ASSETS':
+                            # Try to get active file through context override
+                            try:
+                                with bpy.context.temp_override(window=window, area=area, space_data=space):
+                                    active_file = getattr(bpy.context, 'active_file', None)
+                                    if active_file:
+                                        asset_name = getattr(active_file, 'name', '')
+                                        
+                                        # Only process yandex materials and if it changed
+                                        if asset_name and asset_name.startswith("yandex_") and asset_name != _last_active_asset:
+                                            _last_active_asset = asset_name
+                                            logger.info(f"Asset selected: {asset_name}")
+                                            _load_material_image_to_editor(asset_name)
+                            except Exception as e:
+                                # Context override may fail, try direct access
+                                pass
+        
+        return 0.2  # Check every 200ms
+        
+    except Exception as e:
+        logger.debug(f"Asset watch error: {e}")
+        return 0.5
 
 
 def _on_depsgraph_update(scene, depsgraph):
     """
-    Handler to detect when a yandex material is applied/used.
-    When a yandex material is applied (e.g., by double-clicking in Asset Browser),
+    Handler to detect when a yandex material is applied to an object.
+    When a yandex material is applied (e.g., by drag-drop in Asset Browser),
     automatically load its image into the Image Editor.
     """
-    global _last_active_material
+    global _last_active_asset
     
     try:
         # Check if we're in the segmentation workspace
@@ -392,10 +468,10 @@ def _on_depsgraph_update(scene, depsgraph):
             return
         
         # Avoid processing the same material multiple times
-        if mat.name == _last_active_material:
+        if mat.name == _last_active_asset:
             return
         
-        _last_active_material = mat.name
+        _last_active_asset = mat.name
         
         # Find the image in the material's node tree
         if mat.node_tree is None:
@@ -427,17 +503,36 @@ def _on_depsgraph_update(scene, depsgraph):
 
 def register():
     """Register the search asset manager."""
+    global _asset_watch_timer_running
+    
     SearchAssetManager.register_asset_library()
     
     # Add depsgraph handler to detect material applications
     if _on_depsgraph_update not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update)
+    
+    # Start the asset selection watcher timer
+    if not _asset_watch_timer_running:
+        bpy.app.timers.register(_watch_asset_selection, first_interval=1.0, persistent=True)
+        _asset_watch_timer_running = True
+        logger.info("Started asset selection watcher timer")
 
 
 def unregister():
     """Unregister and clean up."""
+    global _asset_watch_timer_running
+    
+    # Stop the asset selection watcher timer
+    if _asset_watch_timer_running:
+        try:
+            bpy.app.timers.unregister(_watch_asset_selection)
+        except Exception:
+            pass
+        _asset_watch_timer_running = False
+    
     # Remove depsgraph handler
     if _on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update)
     
     SearchAssetManager.cleanup()
+

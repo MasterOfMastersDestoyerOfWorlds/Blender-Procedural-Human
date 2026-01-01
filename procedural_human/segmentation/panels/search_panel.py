@@ -284,8 +284,8 @@ class AssetBrowserSegmentationPanel(Panel):
         
         # Instructions
         box = layout.box()
-        box.label(text="Double-click to load", icon='MOUSE_LMB_DRAG')
-        box.label(text="Drag to apply material", icon='MATERIAL')
+        box.label(text="Click to select & load", icon='RESTRICT_SELECT_OFF')
+        box.label(text="to Image Editor", icon='IMAGE_DATA')
         
         layout.separator()
         
