@@ -46,6 +46,8 @@ uv tool run pip download . `
     --dest $WheelsDir `
     --only-binary=:all: `
     --python-version $PythonVersion `
+
+Remove-Item -Path "$WheelsDir\numpy*" -Recurse -Force
     
 Write-Host "Updating blender_manifest.toml with wheel list..."
 

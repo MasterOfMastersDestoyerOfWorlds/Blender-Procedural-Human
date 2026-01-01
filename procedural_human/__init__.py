@@ -4,10 +4,16 @@ A Blender add-on for creating procedural human characters using Geometry Nodes
 
 Dependencies are bundled as Python wheels in the ./wheels/ directory.
 Blender automatically extracts and installs them when the extension is loaded.
+For development mode (VS Code), wheels are installed on first run.
 """
 
 import sys
+import subprocess
 from pathlib import Path
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"    
+import os
+import ctypes
 
 # Add addon parent directory to sys.path for absolute imports
 # This ensures "from procedural_human.xxx import yyy" works regardless of
@@ -17,6 +23,97 @@ _addon_parent = _addon_dir.parent
 if str(_addon_parent) not in sys.path:
     sys.path.insert(0, str(_addon_parent))
 
+# Fix DLL loading for PyTorch on Windows in Blender's embedded Python
+def _setup_torch_dll_path():
+    """Add PyTorch DLL directory to search path before importing."""
+
+    if sys.platform != "win32":
+        return
+    
+    # Find torch installation in site-packages
+    torch_lib = None
+    for path in sys.path:
+        candidate = Path(path) / "torch" / "lib"
+        if candidate.exists():
+            torch_lib = candidate
+            break
+    
+    if not torch_lib:
+        return
+    
+    # Add to DLL search path (Windows 10+)
+    if hasattr(os, 'add_dll_directory'):
+        os.add_dll_directory(str(torch_lib))
+    
+    # Also add to PATH
+    os.environ["PATH"] = str(torch_lib) + os.pathsep + os.environ.get("PATH", "")
+    
+    # Pre-load critical DLLs in correct order to avoid initialization failures
+    dll_load_order = [
+        "fbgemm.dll",
+        "asmjit.dll", 
+        "uv.dll",
+        "libiomp5md.dll",
+        "libiompstubs5md.dll",
+        "c10.dll",
+        "torch_cpu.dll",
+    ]
+    
+    for dll_name in dll_load_order:
+        dll_path = torch_lib / dll_name
+        if dll_path.exists():
+            try:
+                ctypes.CDLL(str(dll_path))
+            except OSError:
+                pass  # Some DLLs may fail, that's okay
+
+_setup_torch_dll_path()
+
+# Install wheels for development mode if torch is not available
+def _ensure_wheels_installed():
+    """Install wheels from ./wheels/ directory if dependencies are missing."""
+    try:
+        import torch
+        return  # Already installed and working
+    except ImportError:
+        needs_install = True
+    except OSError as e:
+        # DLL loading error - torch is installed but broken, skip reinstall
+        print(f"[Procedural Human] PyTorch DLL error: {e}")
+        print("[Procedural Human] Try installing Visual C++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe")
+        return
+    
+    if not needs_install:
+        return
+    
+    wheels_dir = _addon_dir / "wheels"
+    if not wheels_dir.exists():
+        print(f"[Procedural Human] Wheels directory not found: {wheels_dir}")
+        return
+    
+    wheel_files = list(wheels_dir.glob("*.whl"))
+    if not wheel_files:
+        print("[Procedural Human] No wheel files found")
+        return
+    
+    print(f"[Procedural Human] Installing {len(wheel_files)} wheels for development mode...")
+    
+    # Install all wheels using pip
+    try:
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install",
+            "--no-deps",  # Dependencies are already in wheels
+            "--quiet",
+            *[str(whl) for whl in wheel_files]
+        ])
+        print("[Procedural Human] Wheels installed successfully")
+        # Setup DLL path for the newly installed torch
+        _setup_torch_dll_path()
+    except subprocess.CalledProcessError as e:
+        print(f"[Procedural Human] Failed to install wheels: {e}")
+
+_ensure_wheels_installed()
+ 
 import bpy
 from procedural_human.dsl.finger_segment_const import SEGMENT_SAMPLE_COUNT
 from procedural_human.logger import *

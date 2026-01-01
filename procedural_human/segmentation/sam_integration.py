@@ -7,9 +7,12 @@ The model is loaded on first use and kept in memory until Blender quits.
 """
 
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 from typing import Optional, List, Tuple
 import numpy as np
 from PIL import Image
+import torch
+from transformers import Sam3Processor, Sam3Model
 
 from procedural_human.logger import logger
 
@@ -62,8 +65,6 @@ class SAM3Manager:
         logger.info("Loading SAM3 model...")
         
         try:
-            import torch
-            from transformers import Sam3Processor, Sam3Model
             
             # Determine device
             if torch.cuda.is_available():
@@ -114,7 +115,6 @@ class SAM3Manager:
         Returns:
             List of binary mask arrays
         """
-        import torch
         
         self.ensure_loaded()
         
@@ -169,7 +169,6 @@ class SAM3Manager:
         Returns:
             List of binary mask arrays
         """
-        import torch
         
         self.ensure_loaded()
         
@@ -229,7 +228,6 @@ class SAM3Manager:
         Returns:
             List of binary mask arrays
         """
-        import torch
         
         self.ensure_loaded()
         
@@ -266,7 +264,6 @@ class SAM3Manager:
     def unload(cls):
         """Unload the model from memory."""
         if cls._model is not None:
-            import torch
             del cls._model
             del cls._processor
             cls._model = None
