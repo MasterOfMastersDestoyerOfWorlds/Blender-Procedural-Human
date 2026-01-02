@@ -11,9 +11,11 @@ import sys
 import subprocess
 from pathlib import Path
 import os
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"    
-import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+os.environ["HF_HUB_DISABLE_EXPERIMENTAL_WARNING"] = "1"
 import ctypes
+
 
 # Add addon parent directory to sys.path for absolute imports
 # This ensures "from procedural_human.xxx import yyy" works regardless of
@@ -69,44 +71,102 @@ def _setup_torch_dll_path():
 
 _setup_torch_dll_path()
 
-# Install wheels for development mode if torch is not available
-def _ensure_wheels_installed():
-    """Install wheels from ./wheels/ directory if dependencies are missing."""
+# Install wheels for development mode, with version tracking
+def _get_wheels_hash():
+    """Get a hash of wheel filenames to detect changes."""
+    import hashlib
+    wheels_dir = _addon_dir / "wheels"
+    if not wheels_dir.exists():
+        return ""
+    wheel_names = sorted([f.name for f in wheels_dir.glob("*.whl")])
+    return hashlib.md5("|".join(wheel_names).encode()).hexdigest()[:16]
+
+def _check_packages_installed():
+    """Check if required packages are already importable."""
     try:
         import torch
-        return  # Already installed and working
+        import transformers
+        return True
     except ImportError:
-        needs_install = True
+        return False
     except OSError as e:
-        # DLL loading error - torch is installed but broken, skip reinstall
         print(f"[Procedural Human] PyTorch DLL error: {e}")
         print("[Procedural Human] Try installing Visual C++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe")
-        return
-    
-    if not needs_install:
-        return
-    
+        return False
+
+def _ensure_wheels_installed():
+    """Install wheels from ./wheels/ directory if dependencies are missing or changed."""
     wheels_dir = _addon_dir / "wheels"
     if not wheels_dir.exists():
         print(f"[Procedural Human] Wheels directory not found: {wheels_dir}")
         return
     
-    wheel_files = list(wheels_dir.glob("*.whl"))
-    if not wheel_files:
-        print("[Procedural Human] No wheel files found")
+    # Check if wheels have changed since last install
+    marker_file = Path(sys.prefix) / ".procedural_human_wheels_hash"
+    current_hash = _get_wheels_hash()
+    needs_install = False
+    
+    # First check: do packages already import successfully?
+    packages_already_installed = _check_packages_installed()
+    
+    if marker_file.exists():
+        stored_hash = marker_file.read_text().strip()
+        if stored_hash != current_hash:
+            # Hash changed, but if packages are loaded we can't reinstall safely
+            if packages_already_installed:
+                print(f"[Procedural Human] Wheels changed but packages are already loaded. Restart Blender to update.")
+                # Update the marker anyway to avoid repeated warnings
+                try:
+                    marker_file.write_text(current_hash)
+                except Exception:
+                    pass
+                return
+            else:
+                print(f"[Procedural Human] Wheels changed (hash: {stored_hash} -> {current_hash}), reinstalling...")
+                needs_install = True
+    else:
+        # No marker file exists
+        if packages_already_installed:
+            # Packages are already installed, just write the marker and skip
+            print("[Procedural Human] Packages already installed, creating marker file...")
+            try:
+                marker_file.write_text(current_hash)
+            except Exception:
+                pass
+            return
+        else:
+            # Packages not installed, need to install
+            needs_install = True
+    
+    if not needs_install:
         return
     
-    print(f"[Procedural Human] Installing {len(wheel_files)} wheels for development mode...")
+    wheel_files = list(wheels_dir.glob("*.whl"))
+    zip_files = list(wheels_dir.glob("*.zip"))
+    all_packages = wheel_files + zip_files
     
-    # Install all wheels using pip
+    if not all_packages:
+        print("[Procedural Human] No wheel/zip files found")
+        return
+    
+    print(f"[Procedural Human] Installing {len(all_packages)} packages for development mode...")
+    
+    # Install wheels - don't use --force-reinstall to avoid removing locked DLLs
+    # Use --ignore-installed instead to install even if already present
     try:
         subprocess.check_call([
             sys.executable, "-m", "pip", "install",
-            "--no-deps",  # Dependencies are already in wheels
+            "--no-deps",
+            "--ignore-installed",
             "--quiet",
-            *[str(whl) for whl in wheel_files]
+            *[str(pkg) for pkg in all_packages]
         ])
         print("[Procedural Human] Wheels installed successfully")
+        # Save the hash marker
+        try:
+            marker_file.write_text(current_hash)
+        except Exception:
+            pass  # Ignore if we can't write marker
         # Setup DLL path for the newly installed torch
         _setup_torch_dll_path()
     except subprocess.CalledProcessError as e:

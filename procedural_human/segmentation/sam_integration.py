@@ -8,6 +8,23 @@ The model is loaded on first use and kept in memory until Blender quits.
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+# Patch transformers version check before importing
+# The 5.0.0.dev0 version has outdated deps check requiring huggingface_hub<1.0
+# but actually needs >=1.2 at runtime
+def _patch_transformers_deps():
+    import sys
+    import types
+    
+    # Create a fake dependency_versions_check module with all expected exports
+    if 'transformers.dependency_versions_check' not in sys.modules:
+        fake_module = types.ModuleType('transformers.dependency_versions_check')
+        # Add the function that deepspeed.py imports
+        fake_module.dep_version_check = lambda *args, **kwargs: None
+        sys.modules['transformers.dependency_versions_check'] = fake_module
+
+_patch_transformers_deps()
+
 from typing import Optional, List, Tuple
 import numpy as np
 from PIL import Image
@@ -177,33 +194,50 @@ class SAM3Manager:
         
         logger.info(f"Segmenting by {len(points)} points")
         
-        # Convert points to numpy arrays
-        input_points = np.array(points)
-        input_labels = np.array(labels)
-        
-        # Prepare inputs with point prompts
+        # Process image first (without points - new API)
         inputs = self._processor(
             images=image,
-            input_points=[input_points.tolist()],
-            input_labels=[input_labels.tolist()],
             return_tensors="pt"
         ).to(self._device)
         
-        # Run inference
+        # Create point and label tensors separately
+        # Shape: (batch_size, num_points, 2) for points
+        # Shape: (batch_size, num_points) for labels
+        input_points = torch.tensor([points], dtype=torch.float32, device=self._device)
+        input_labels = torch.tensor([labels], dtype=torch.int64, device=self._device)
+        
+        # Run inference with points passed directly to model
         with torch.no_grad():
-            outputs = self._model(**inputs)
+            outputs = self._model(
+                **inputs,
+                input_points=input_points,
+                input_labels=input_labels,
+            )
         
-        # Post-process results
-        results = self._processor.post_process_instance_segmentation(
-            outputs,
-            threshold=threshold,
-            mask_threshold=mask_threshold,
-            target_sizes=[[image.height, image.width]]
-        )[0]
-        
+        # Post-process results using mask output
+        # SAM3 returns pred_masks of shape (batch, num_masks, H, W)
         masks = []
-        for mask_tensor in results.get("masks", []):
-            mask_np = mask_tensor.cpu().numpy().astype(bool)
+        if hasattr(outputs, 'pred_masks') and outputs.pred_masks is not None:
+            pred_masks = outputs.pred_masks
+            # Get scores if available
+            scores = outputs.iou_scores if hasattr(outputs, 'iou_scores') else None
+            
+            # Select best mask based on IoU score
+            if scores is not None and len(scores.shape) > 1:
+                best_idx = scores[0].argmax().item()
+                mask = pred_masks[0, best_idx]
+            else:
+                mask = pred_masks[0, 0]
+            
+            # Resize mask to original image size and threshold
+            mask_resized = torch.nn.functional.interpolate(
+                mask.unsqueeze(0).unsqueeze(0).float(),
+                size=(image.height, image.width),
+                mode='bilinear',
+                align_corners=False
+            )[0, 0]
+            
+            mask_np = (mask_resized > mask_threshold).cpu().numpy().astype(bool)
             masks.append(mask_np)
         
         logger.info(f"Found {len(masks)} segments.")
@@ -233,28 +267,45 @@ class SAM3Manager:
         
         logger.info(f"Segmenting by box: {box}")
         
-        # Prepare inputs with box prompt
+        # Process image first (without boxes - new API)
         inputs = self._processor(
             images=image,
-            input_boxes=[[list(box)]],
             return_tensors="pt"
         ).to(self._device)
         
-        # Run inference
+        # Create box tensor separately
+        # Shape: (batch_size, num_boxes, 4) - format is (x_min, y_min, x_max, y_max)
+        input_boxes = torch.tensor([[list(box)]], dtype=torch.float32, device=self._device)
+        
+        # Run inference with boxes passed directly to model
         with torch.no_grad():
-            outputs = self._model(**inputs)
+            outputs = self._model(
+                **inputs,
+                input_boxes=input_boxes,
+            )
         
-        # Post-process results
-        results = self._processor.post_process_instance_segmentation(
-            outputs,
-            threshold=threshold,
-            mask_threshold=mask_threshold,
-            target_sizes=[[image.height, image.width]]
-        )[0]
-        
+        # Post-process results using mask output
         masks = []
-        for mask_tensor in results.get("masks", []):
-            mask_np = mask_tensor.cpu().numpy().astype(bool)
+        if hasattr(outputs, 'pred_masks') and outputs.pred_masks is not None:
+            pred_masks = outputs.pred_masks
+            scores = outputs.iou_scores if hasattr(outputs, 'iou_scores') else None
+            
+            # Select best mask based on IoU score
+            if scores is not None and len(scores.shape) > 1:
+                best_idx = scores[0].argmax().item()
+                mask = pred_masks[0, best_idx]
+            else:
+                mask = pred_masks[0, 0]
+            
+            # Resize mask to original image size and threshold
+            mask_resized = torch.nn.functional.interpolate(
+                mask.unsqueeze(0).unsqueeze(0).float(),
+                size=(image.height, image.width),
+                mode='bilinear',
+                align_corners=False
+            )[0, 0]
+            
+            mask_np = (mask_resized > mask_threshold).cpu().numpy().astype(bool)
             masks.append(mask_np)
         
         logger.info(f"Found {len(masks)} segments.")

@@ -11,9 +11,10 @@ from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.logger import logger
 
 
-# Global storage for current masks
+# Global storage for current masks and original image
 _current_masks = []
 _current_image = None
+_original_image_pixels = None  # Store original pixels for reset
 
 
 def get_current_masks():
@@ -26,6 +27,76 @@ def set_current_masks(masks, image):
     global _current_masks, _current_image
     _current_masks = masks
     _current_image = image
+
+
+def store_original_image(image):
+    """Store the original image pixels for later restoration."""
+    global _original_image_pixels
+    if image is not None:
+        _original_image_pixels = np.array(image.pixels[:]).copy()
+
+
+def get_original_image_pixels():
+    """Get the stored original image pixels."""
+    return _original_image_pixels
+
+
+def restore_original_image(image):
+    """Restore the image to its original pixels."""
+    global _original_image_pixels
+    if _original_image_pixels is not None and image is not None:
+        image.pixels[:] = _original_image_pixels.tolist()
+        image.update()
+
+
+def apply_mask_overlay(image, masks, color=(0.0, 0.8, 0.3), alpha=0.5):
+    """
+    Apply a colored mask overlay onto a Blender image.
+    
+    Args:
+        image: Blender image to modify
+        masks: List of boolean numpy mask arrays (H, W)
+        color: RGB tuple for mask color (0-1 range)
+        alpha: Opacity of the mask overlay (0-1)
+    """
+    if not masks or image is None:
+        return
+    
+    width, height = image.size
+    
+    # Get current pixels as numpy array
+    pixels = np.array(image.pixels[:]).reshape((height, width, 4))
+    
+    # Process each mask
+    for mask in masks:
+        # Ensure mask matches image dimensions
+        if mask.shape[0] != height or mask.shape[1] != width:
+            # Resize mask if needed
+            from PIL import Image as PILImage
+            mask_pil = PILImage.fromarray(mask.astype(np.uint8) * 255)
+            mask_pil = mask_pil.resize((width, height), PILImage.NEAREST)
+            mask = np.array(mask_pil) > 127
+        
+        # Flip mask vertically to match Blender's coordinate system (origin at bottom-left)
+        mask_flipped = np.flipud(mask)
+        
+        # Apply color overlay where mask is True
+        for c in range(3):
+            pixels[:, :, c] = np.where(
+                mask_flipped,
+                pixels[:, :, c] * (1 - alpha) + color[c] * alpha,
+                pixels[:, :, c]
+            )
+    
+    # Update the image
+    image.pixels[:] = pixels.flatten().tolist()
+    image.update()
+    
+    # Redraw Image Editors
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'IMAGE_EDITOR':
+                area.tag_redraw()
 
 
 def get_active_image(context):
@@ -93,7 +164,14 @@ class SegmentByPromptOperator(Operator):
             return {'CANCELLED'}
         
         try:
-            # Convert to PIL
+            # Store original image pixels before any modification
+            if get_original_image_pixels() is None:
+                store_original_image(image)
+            else:
+                # Restore original before new segmentation
+                restore_original_image(image)
+            
+            # Convert to PIL (from original, not overlaid)
             pil_image = blender_image_to_pil(image)
             
             # Get SAM3 manager
@@ -113,6 +191,10 @@ class SegmentByPromptOperator(Operator):
             
             # Update scene property
             context.scene["segmentation_mask_count"] = len(masks)
+            
+            # Apply mask overlay to display the segmentation result
+            if masks:
+                apply_mask_overlay(image, masks, color=(0.0, 0.8, 0.3), alpha=0.5)
             
             self.report({'INFO'}, f"Found {len(masks)} segments")
             return {'FINISHED'}
@@ -188,12 +270,19 @@ class SegmentByPointOperator(Operator):
             return
         
         try:
+            # Store original image pixels before any modification
+            if get_original_image_pixels() is None:
+                store_original_image(image)
+            else:
+                # Restore original before new segmentation
+                restore_original_image(image)
+            
             # Convert click to pixel coordinates
             width, height = image.size
             point_x = int(self.click_x * width)
             point_y = int((1 - self.click_y) * height)  # Flip Y
             
-            # Convert to PIL
+            # Convert to PIL (from original, not overlaid)
             pil_image = blender_image_to_pil(image)
             
             # Get SAM3 manager
@@ -211,6 +300,10 @@ class SegmentByPointOperator(Operator):
             # Store masks
             set_current_masks(masks, image)
             context.scene["segmentation_mask_count"] = len(masks)
+            
+            # Apply mask overlay to display the segmentation result
+            if masks:
+                apply_mask_overlay(image, masks, color=(0.0, 0.8, 0.3), alpha=0.5)
             
             self.report({'INFO'}, f"Found {len(masks)} segments at ({point_x}, {point_y})")
             
@@ -310,17 +403,38 @@ class ConvertMasksToCurvesOperator(Operator):
 
 @procedural_operator
 class ClearSegmentationMasksOperator(Operator):
-    """Clear the current segmentation masks"""
+    """Clear the current segmentation masks and restore original image"""
     
     bl_idname = "segmentation.clear_masks"
     bl_label = "Clear Masks"
-    bl_description = "Clear all current segmentation masks"
+    bl_description = "Clear all current segmentation masks and restore original image"
     bl_options = {'REGISTER'}
     
     def execute(self, context):
+        # Restore the original image before clearing
+        image = get_active_image(context)
+        if image is not None and get_original_image_pixels() is not None:
+            restore_original_image(image)
+        
         set_current_masks([], None)
         context.scene["segmentation_mask_count"] = 0
-        self.report({'INFO'}, "Segmentation masks cleared")
+        self.report({'INFO'}, "Segmentation masks cleared, image restored")
+        return {'FINISHED'}
+
+
+@procedural_operator
+class ResetOriginalImageOperator(Operator):
+    """Reset the stored original image (use when loading a new image)"""
+    
+    bl_idname = "segmentation.reset_original"
+    bl_label = "Reset Original"
+    bl_description = "Clear the stored original image reference (use after loading a new image)"
+    bl_options = {'REGISTER'}
+    
+    def execute(self, context):
+        global _original_image_pixels
+        _original_image_pixels = None
+        self.report({'INFO'}, "Original image reference cleared")
         return {'FINISHED'}
 
 

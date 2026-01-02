@@ -141,7 +141,8 @@ def contour_to_curve(
     for i, point in enumerate(normalized):
         bp = spline.bezier_points[i]
         bp.co = Vector((point[0], point[1], 0.0))
-        bp.handle_type = 'AUTO'
+        bp.handle_left_type = 'AUTO'
+        bp.handle_right_type = 'AUTO'
     
     # Create the curve object
     curve_obj = bpy.data.objects.new(name, curve_data)
