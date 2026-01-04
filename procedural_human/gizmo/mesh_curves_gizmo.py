@@ -301,8 +301,9 @@ def _set_handle_at_vertex(edge, handle_type, handle_vec, layers):
 
 def _make_handles_coplanar_at_vertex(vert, layers):
     """
-    Project all handles at a vertex onto their best-fit plane using PCA.
-    The plane passes through the vertex (origin for handle offsets).
+    Project all handles at a vertex onto their best-fit plane using PCA on EDGE TANGENTS.
+    The plane is defined by the edges emanating from the vertex, not the handles themselves.
+    This preserves angular spacing of handles after projection.
     
     Args:
         vert: The BMesh vertex
@@ -315,12 +316,21 @@ def _make_handles_coplanar_at_vertex(vert, layers):
     if len(handles) <= 2:
         return
     
-    # Collect handle vectors as numpy array
-    handle_vectors = [h[2] for h in handles]
-    points = np.array([[v.x, v.y, v.z] for v in handle_vectors])
+    # Collect EDGE TANGENTS (not handle vectors) for PCA
+    # Edge tangents define the natural plane that edges lie in
+    edge_tangents = []
+    for edge in vert.link_edges:
+        other_vert = edge.other_vert(vert)
+        tangent = (other_vert.co - vert.co).normalized()
+        edge_tangents.append(tangent)
     
-    # Compute covariance matrix (handles are relative to vertex, so origin is already 0)
-    # PCA: find the plane that minimizes squared distances
+    if len(edge_tangents) < 2:
+        return  # Need at least 2 edges to define a plane
+    
+    # PCA on edge tangents to find the plane they lie in
+    points = np.array([[t.x, t.y, t.z] for t in edge_tangents])
+    
+    # Compute covariance matrix
     cov_matrix = np.cov(points.T)
     
     # Find eigenvalues and eigenvectors
@@ -335,7 +345,8 @@ def _make_handles_coplanar_at_vertex(vert, layers):
     
     plane_normal.normalize()
     
-    # Project each handle onto the plane and preserve original length
+    # Project each handle onto the plane by removing the component parallel to the normal
+    # This preserves angular spacing because we only remove the off-plane component
     for edge, handle_type, handle_vec in handles:
         original_length = handle_vec.length
         if original_length < 0.0001:

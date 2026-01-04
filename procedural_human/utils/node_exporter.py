@@ -398,10 +398,10 @@ class NODE_OT_export_active_group_to_python(Operator):
 
         # Determine export directory
         if CODEBASE_PATH:
-            base_dir = CODEBASE_PATH / "procedural_human" / "tmp"
+            base_dir = CODEBASE_PATH / "tmp"
         else:
             # Fallback to local temp directory if codebase path not found
-            base_dir = Path(os.path.dirname(os.path.dirname(__file__))) / "tmp"
+            base_dir = Path(os.path.dirname(__file__)).parent / "tmp"
 
         # Ensure directory exists
         try:
@@ -411,7 +411,7 @@ class NODE_OT_export_active_group_to_python(Operator):
                 {"WARNING"},
                 f"Could not create directory {base_dir}: {e}. Falling back to default.",
             )
-            base_dir = Path(os.path.dirname(os.path.dirname(__file__))) / "tmp"
+            base_dir = Path(os.path.dirname(__file__)).parent / "tmp"
             if not os.path.exists(str(base_dir)):
                 os.makedirs(str(base_dir))
 
@@ -433,6 +433,28 @@ class NODE_OT_export_active_group_to_python(Operator):
         return {"FINISHED"}
 
 
+def get_tmp_base_dir():
+    """Get the tmp directory path for exports."""
+    if CODEBASE_PATH:
+        base_dir = CODEBASE_PATH / "tmp"
+    else:
+        base_dir = Path(os.path.dirname(__file__)).parent / "tmp"
+    
+    # Ensure directory exists
+    base_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Ensure __init__.py exists
+    init_path = base_dir / "__init__.py"
+    if not init_path.exists():
+        try:
+            init_path.touch()
+        except Exception:
+            pass
+    
+    return base_dir
+
+
+
 @procedural_panel
 class NODE_PT_node_export(Panel):
     bl_label = "Node Export"
@@ -444,3 +466,4 @@ class NODE_PT_node_export(Panel):
     def draw(self, context):
         layout = self.layout
         layout.operator("node.export_active_group_to_python")
+        layout.operator("curve.export_curve_to_csv")

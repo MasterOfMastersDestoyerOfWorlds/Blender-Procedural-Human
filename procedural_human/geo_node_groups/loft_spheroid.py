@@ -4123,3 +4123,205 @@ def create_loft_spheriod_group():
 
     auto_layout_nodes(group)
     return group
+
+
+@geo_node_group
+def create_recreate_curves_from_mesh_group():
+    """
+    Recreate Bezier curves from a mesh with handle attributes stored on edges.
+    
+    The mesh has per-edge attributes: handle_start_x/y/z (for edge.verts[0])
+    and handle_end_x/y/z (for edge.verts[1]).
+    
+    Strategy:
+    1. Capture handle vectors from edge domain BEFORE mesh-to-curve conversion
+    2. Convert mesh edges to Bezier curves
+    3. Use captured values (now on curve points) to set handle positions
+    """
+    group_name = "RecreateCurvesFromMesh"
+    if group_name in bpy.data.node_groups:
+        return bpy.data.node_groups[group_name]
+
+    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+
+    # --- Interface ---
+    group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+
+    # --- Nodes ---
+    nodes = group.nodes
+    links = group.links
+    
+    # Input/Output
+    group_input = nodes.new("NodeGroupInput")
+    group_input.name = "Group Input"
+    group_input.location = (-1200.0, 0.0)
+
+    group_output = nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.location = (1400.0, 0.0)
+    group_output.is_active_output = True
+
+    # ============================================================
+    # STEP 1: Read handle attributes from mesh edges (BEFORE conversion)
+    # ============================================================
+    
+    # --- Named Attributes for handle_start (x, y, z) ---
+    named_attr_start_x = nodes.new("GeometryNodeInputNamedAttribute")
+    named_attr_start_x.name = "Named Attr Start X"
+    named_attr_start_x.location = (-1000.0, 400.0)
+    named_attr_start_x.data_type = "FLOAT"
+    named_attr_start_x.inputs[0].default_value = "handle_start_x"
+
+    named_attr_start_y = nodes.new("GeometryNodeInputNamedAttribute")
+    named_attr_start_y.name = "Named Attr Start Y"
+    named_attr_start_y.location = (-1000.0, 300.0)
+    named_attr_start_y.data_type = "FLOAT"
+    named_attr_start_y.inputs[0].default_value = "handle_start_y"
+
+    named_attr_start_z = nodes.new("GeometryNodeInputNamedAttribute")
+    named_attr_start_z.name = "Named Attr Start Z"
+    named_attr_start_z.location = (-1000.0, 200.0)
+    named_attr_start_z.data_type = "FLOAT"
+    named_attr_start_z.inputs[0].default_value = "handle_start_z"
+
+    # Combine handle_start into vector
+    combine_start = nodes.new("ShaderNodeCombineXYZ")
+    combine_start.name = "Combine Start"
+    combine_start.location = (-800.0, 300.0)
+    links.new(named_attr_start_x.outputs[0], combine_start.inputs[0])
+    links.new(named_attr_start_y.outputs[0], combine_start.inputs[1])
+    links.new(named_attr_start_z.outputs[0], combine_start.inputs[2])
+
+    # --- Named Attributes for handle_end (x, y, z) ---
+    named_attr_end_x = nodes.new("GeometryNodeInputNamedAttribute")
+    named_attr_end_x.name = "Named Attr End X"
+    named_attr_end_x.location = (-1000.0, -100.0)
+    named_attr_end_x.data_type = "FLOAT"
+    named_attr_end_x.inputs[0].default_value = "handle_end_x"
+
+    named_attr_end_y = nodes.new("GeometryNodeInputNamedAttribute")
+    named_attr_end_y.name = "Named Attr End Y"
+    named_attr_end_y.location = (-1000.0, -200.0)
+    named_attr_end_y.data_type = "FLOAT"
+    named_attr_end_y.inputs[0].default_value = "handle_end_y"
+
+    named_attr_end_z = nodes.new("GeometryNodeInputNamedAttribute")
+    named_attr_end_z.name = "Named Attr End Z"
+    named_attr_end_z.location = (-1000.0, -300.0)
+    named_attr_end_z.data_type = "FLOAT"
+    named_attr_end_z.inputs[0].default_value = "handle_end_z"
+
+    # Combine handle_end into vector
+    combine_end = nodes.new("ShaderNodeCombineXYZ")
+    combine_end.name = "Combine End"
+    combine_end.location = (-800.0, -200.0)
+    links.new(named_attr_end_x.outputs[0], combine_end.inputs[0])
+    links.new(named_attr_end_y.outputs[0], combine_end.inputs[1])
+    links.new(named_attr_end_z.outputs[0], combine_end.inputs[2])
+
+    # ============================================================
+    # STEP 2: Capture handle vectors on EDGE domain before conversion
+    # This preserves the data through the mesh-to-curve conversion
+    # ============================================================
+    
+    # Capture handle_start vector
+    # In Blender 4.x, we need to add capture_items to define the data type
+    capture_start = nodes.new("GeometryNodeCaptureAttribute")
+    capture_start.name = "Capture Start"
+    capture_start.location = (-600.0, 200.0)
+    capture_start.domain = "EDGE"
+    # Add a capture item for vector data (enum is 'VECTOR' not 'FLOAT_VECTOR')
+    capture_start.capture_items.new('VECTOR', "HandleStart")
+    # inputs[0]=Geometry, inputs[1]=Value (vector); outputs[0]=Geometry, outputs[1]=Attribute
+    links.new(group_input.outputs[0], capture_start.inputs[0])  # Geometry
+    links.new(combine_start.outputs[0], capture_start.inputs[1])  # Value (vector)
+    
+    # Capture handle_end vector (chained from capture_start)
+    capture_end = nodes.new("GeometryNodeCaptureAttribute")
+    capture_end.name = "Capture End"
+    capture_end.location = (-400.0, 100.0)
+    capture_end.domain = "EDGE"
+    # Add a capture item for vector data (enum is 'VECTOR' not 'FLOAT_VECTOR')
+    capture_end.capture_items.new('VECTOR', "HandleEnd")
+    links.new(capture_start.outputs[0], capture_end.inputs[0])  # Geometry from previous capture
+    links.new(combine_end.outputs[0], capture_end.inputs[1])  # Value (vector)
+
+    # ============================================================
+    # STEP 3: Convert mesh edges to Bezier curves
+    # The captured attributes will transfer to curve points
+    # ============================================================
+    
+    mesh_to_curve = nodes.new("GeometryNodeMeshToCurve")
+    mesh_to_curve.name = "Mesh to Curve"
+    mesh_to_curve.location = (-200.0, 0.0)
+    mesh_to_curve.mode = "EDGES"
+    mesh_to_curve.inputs[1].default_value = True  # Selection
+    links.new(capture_end.outputs[0], mesh_to_curve.inputs[0])
+
+    # Set Spline Type to BEZIER
+    set_spline_type = nodes.new("GeometryNodeCurveSplineType")
+    set_spline_type.name = "Set Spline Type"
+    set_spline_type.location = (0.0, 0.0)
+    set_spline_type.spline_type = "BEZIER"
+    set_spline_type.inputs[1].default_value = True
+    links.new(mesh_to_curve.outputs[0], set_spline_type.inputs[0])
+
+    # Set Handle Type to FREE (so we can set positions manually)
+    set_handle_type = nodes.new("GeometryNodeCurveSetHandles")
+    set_handle_type.name = "Set Handle Type"
+    set_handle_type.location = (200.0, 0.0)
+    set_handle_type.handle_type = "FREE"
+    set_handle_type.mode = {'LEFT', 'RIGHT'}
+    set_handle_type.inputs[1].default_value = True
+    links.new(set_spline_type.outputs[0], set_handle_type.inputs[0])
+
+    # ============================================================
+    # STEP 4: Select first/last points of each spline
+    # ============================================================
+    
+    # Endpoint Selection for FIRST point (start_size=1, end_size=0)
+    endpoint_first = nodes.new("GeometryNodeCurveEndpointSelection")
+    endpoint_first.name = "Endpoint First"
+    endpoint_first.location = (400.0, 200.0)
+    endpoint_first.inputs[0].default_value = 1  # start_size
+    endpoint_first.inputs[1].default_value = 0  # end_size
+
+    # Endpoint Selection for LAST point (start_size=0, end_size=1)
+    endpoint_last = nodes.new("GeometryNodeCurveEndpointSelection")
+    endpoint_last.name = "Endpoint Last"
+    endpoint_last.location = (400.0, -200.0)
+    endpoint_last.inputs[0].default_value = 0  # start_size
+    endpoint_last.inputs[1].default_value = 1  # end_size
+
+    # ============================================================
+    # STEP 5: Set handle positions using captured values
+    # - First point's RIGHT handle = handle_start (pointing toward 2nd point)
+    # - Last point's LEFT handle = handle_end (pointing toward 1st point)
+    # ============================================================
+    
+    # Set Handle Positions for FIRST point (handle_start → RIGHT handle)
+    set_handle_first = nodes.new("GeometryNodeSetCurveHandlePositions")
+    set_handle_first.name = "Set Handle First"
+    set_handle_first.location = (700.0, 100.0)
+    set_handle_first.mode = "RIGHT"
+    set_handle_first.inputs[3].default_value = Vector((0.0, 0.0, 0.0))  # Offset
+    links.new(set_handle_type.outputs[0], set_handle_first.inputs[0])  # Curve
+    links.new(endpoint_first.outputs[0], set_handle_first.inputs[1])  # Selection
+    links.new(capture_start.outputs[1], set_handle_first.inputs[2])  # Position = captured handle_start
+
+    # Set Handle Positions for LAST point (handle_end → LEFT handle)
+    set_handle_last = nodes.new("GeometryNodeSetCurveHandlePositions")
+    set_handle_last.name = "Set Handle Last"
+    set_handle_last.location = (1000.0, 0.0)
+    set_handle_last.mode = "LEFT"
+    set_handle_last.inputs[3].default_value = Vector((0.0, 0.0, 0.0))  # Offset
+    links.new(set_handle_first.outputs[0], set_handle_last.inputs[0])  # Curve (chained)
+    links.new(endpoint_last.outputs[0], set_handle_last.inputs[1])  # Selection
+    links.new(capture_end.outputs[1], set_handle_last.inputs[2])  # Position = captured handle_end
+
+    # --- Final output ---
+    links.new(set_handle_last.outputs[0], group_output.inputs[0])
+
+    auto_layout_nodes(group)
+    return group
