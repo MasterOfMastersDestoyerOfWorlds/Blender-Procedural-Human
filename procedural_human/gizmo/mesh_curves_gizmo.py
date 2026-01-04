@@ -20,6 +20,7 @@ from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.logger import logger
 
 import time
+import numpy as np
 
 # Gizmo drag state management
 # Stores baseline handle values at drag start, keyed by (edge_index, "start"|"end")
@@ -27,6 +28,7 @@ _drag_start_baselines = {}
 _last_set_fn_time = 0  # Timestamp for detecting new drag sessions
 _DRAG_GAP_THRESHOLD_MS = 50  # Time gap to consider as potential new drag
 _NEW_DRAG_VALUE_THRESHOLD = 0.15  # Value magnitude threshold - new drags start near zero
+_undo_pushed_this_drag = False  # Track if undo was already pushed for current drag session
 
 # --- CONFIGURATION ---
 # BMesh EDGE layer names for storing handle offsets (6 floats per edge)
@@ -258,6 +260,190 @@ def _calculate_handle_for_vertex(edge, vert, mesh_center, handle_len):
     return Vector((0, 0, 1)) * handle_len
 
 
+def _get_handles_at_vertex(vert, layers):
+    """
+    Get all handle offsets at a vertex from connected edges.
+    
+    Returns:
+        List of (edge, handle_type, handle_vector) tuples where:
+        - edge: the BMesh edge
+        - handle_type: "start" if vert == edge.verts[0], "end" if vert == edge.verts[1]
+        - handle_vector: the handle offset Vector
+    """
+    handles = []
+    for edge in vert.link_edges:
+        if edge.verts[0] == vert:
+            # This vertex is the start of the edge
+            start_x, start_y, start_z, _, _, _ = layers
+            handle = Vector((edge[start_x], edge[start_y], edge[start_z]))
+            handles.append((edge, "start", handle))
+        else:
+            # This vertex is the end of the edge
+            _, _, _, end_x, end_y, end_z = layers
+            handle = Vector((edge[end_x], edge[end_y], edge[end_z]))
+            handles.append((edge, "end", handle))
+    return handles
+
+
+def _set_handle_at_vertex(edge, handle_type, handle_vec, layers):
+    """Set a handle vector for a specific edge and handle type."""
+    if handle_type == "start":
+        start_x, start_y, start_z, _, _, _ = layers
+        edge[start_x] = handle_vec.x
+        edge[start_y] = handle_vec.y
+        edge[start_z] = handle_vec.z
+    else:
+        _, _, _, end_x, end_y, end_z = layers
+        edge[end_x] = handle_vec.x
+        edge[end_y] = handle_vec.y
+        edge[end_z] = handle_vec.z
+
+
+def _make_handles_coplanar_at_vertex(vert, layers):
+    """
+    Project all handles at a vertex onto their best-fit plane using PCA.
+    The plane passes through the vertex (origin for handle offsets).
+    
+    Args:
+        vert: The BMesh vertex
+        layers: The BMesh edge layers tuple
+    """
+    handles = _get_handles_at_vertex(vert, layers)
+    
+    # Need at least 3 handles for a meaningful plane fit
+    # With 2 or fewer handles, they already define a plane (or line)
+    if len(handles) <= 2:
+        return
+    
+    # Collect handle vectors as numpy array
+    handle_vectors = [h[2] for h in handles]
+    points = np.array([[v.x, v.y, v.z] for v in handle_vectors])
+    
+    # Compute covariance matrix (handles are relative to vertex, so origin is already 0)
+    # PCA: find the plane that minimizes squared distances
+    cov_matrix = np.cov(points.T)
+    
+    # Find eigenvalues and eigenvectors
+    eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+    
+    # The eigenvector with smallest eigenvalue is the plane normal
+    # eigh returns eigenvalues in ascending order, so first one is smallest
+    plane_normal = Vector(eigenvectors[:, 0])
+    
+    if plane_normal.length < 0.0001:
+        return  # Degenerate case
+    
+    plane_normal.normalize()
+    
+    # Project each handle onto the plane and preserve original length
+    for edge, handle_type, handle_vec in handles:
+        original_length = handle_vec.length
+        if original_length < 0.0001:
+            continue
+        
+        # Project onto plane: h_proj = h - (h . normal) * normal
+        projection = handle_vec - plane_normal * handle_vec.dot(plane_normal)
+        
+        # Preserve original length
+        if projection.length > 0.0001:
+            projection = projection.normalized() * original_length
+        else:
+            # Handle was parallel to normal, keep original
+            continue
+        
+        # Write back to BMesh
+        _set_handle_at_vertex(edge, handle_type, projection, layers)
+
+
+def _capture_all_handles_at_vertex(vert, layers, baselines_dict):
+    """
+    Capture baselines for all handles at a vertex if they don't already exist.
+    
+    Args:
+        vert: The BMesh vertex
+        layers: The BMesh edge layers tuple
+        baselines_dict: The global _drag_start_baselines dictionary
+    """
+    handles = _get_handles_at_vertex(vert, layers)
+    for edge, h_type, handle_vec in handles:
+        key = (edge.index, h_type)
+        if key not in baselines_dict:
+            baselines_dict[key] = handle_vec.copy()
+
+
+def _rotate_coplanar_handles(vert, moved_edge_index, handle_type, old_handle, new_handle, bm, layers, baselines_dict):
+    """
+    Rotate all other handles at this vertex to maintain coplanarity.
+    Uses the rotation from old_handle to new_handle direction to tilt the shared plane.
+    IMPORTANT: Uses baseline values (not current BMesh values) to avoid cumulative rotation.
+    
+    Args:
+        vert: The BMesh vertex
+        moved_edge_index: Index of the edge whose handle was moved
+        handle_type: "start" or "end" indicating which handle on the edge was moved
+        old_handle: The original handle vector (at drag start)
+        new_handle: The new handle vector after movement
+        bm: The BMesh object
+        layers: The BMesh edge layers tuple
+        baselines_dict: The global _drag_start_baselines dictionary
+    """
+    # Skip if handles are too small or identical
+    if old_handle.length < 0.0001 or new_handle.length < 0.0001:
+        return
+    
+    old_dir = old_handle.normalized()
+    new_dir = new_handle.normalized()
+    
+    # Compute rotation axis (perpendicular to both old and new direction)
+    axis = old_dir.cross(new_dir)
+    
+    if axis.length < 0.0001:
+        # Vectors are parallel (same or opposite direction), no rotation needed
+        return
+    
+    axis.normalize()
+    
+    # Compute rotation angle
+    dot = old_dir.dot(new_dir)
+    dot = max(-1.0, min(1.0, dot))  # Clamp for numerical stability
+    angle = math.acos(dot)
+    
+    if abs(angle) < 0.0001:
+        return  # No significant rotation
+    
+    # Create rotation matrix
+    rotation_matrix = Matrix.Rotation(angle, 3, axis)
+    
+    # Get all handles at this vertex
+    handles = _get_handles_at_vertex(vert, layers)
+    
+    for edge, h_type, _ in handles:
+        # Skip the handle that was directly moved
+        if edge.index == moved_edge_index and h_type == handle_type:
+            continue
+        
+        # Get the BASELINE value for this handle (captured at drag start)
+        key = (edge.index, h_type)
+        if key not in baselines_dict:
+            continue  # Should not happen if _capture_all_handles_at_vertex was called
+        
+        baseline_handle = baselines_dict[key]
+        
+        # Skip zero-length handles
+        original_length = baseline_handle.length
+        if original_length < 0.0001:
+            continue
+        
+        # Apply rotation to the BASELINE (not current value)
+        rotated = rotation_matrix @ baseline_handle
+        
+        # Preserve original length
+        rotated = rotated.normalized() * original_length
+        
+        # Write back to BMesh
+        _set_handle_at_vertex(edge, h_type, rotated, layers)
+
+
 def calculate_auto_handles_bmesh(bm):
     """
     Calculate per-edge Bezier handles for smooth curve lofting.
@@ -303,6 +489,10 @@ def calculate_auto_handles_bmesh(bm):
         end_handle = _calculate_handle_for_vertex(edge, v1, mesh_center, handle_len)
         
         set_edge_handles(edge, layers, start_handle, end_handle)
+    
+    # Post-process: make handles coplanar at each vertex using PCA
+    for vert in bm.verts:
+        _make_handles_coplanar_at_vertex(vert, layers)
 
 
 def calculate_auto_handles(obj):
@@ -705,7 +895,7 @@ class LoftHandleGizmoGroup(GizmoGroup):
                     return Vector((0, 0, 0))
                 
                 def set_fn(value):
-                    global _drag_start_baselines, _last_set_fn_time
+                    global _drag_start_baselines, _last_set_fn_time, _undo_pushed_this_drag
                     
                     # Detect new drag session using timestamps AND value magnitude
                     # A TRUE new drag has: time gap > threshold AND value near zero
@@ -720,10 +910,12 @@ class LoftHandleGizmoGroup(GizmoGroup):
                     )
                     if is_new_drag:
                         _drag_start_baselines.clear()
+                        _undo_pushed_this_drag = False  # Reset undo flag for new drag
                     _last_set_fn_time = current_time
                     
                     bm_fresh = bmesh.from_edit_mesh(mesh_data)
                     bm_fresh.edges.ensure_lookup_table()
+                    bm_fresh.verts.ensure_lookup_table()
                     edge_fresh = bm_fresh.edges[edge_index]
                     lyrs = get_edge_layers(bm_fresh)
                     if lyrs:
@@ -736,8 +928,18 @@ class LoftHandleGizmoGroup(GizmoGroup):
                         
                         # On first call for this edge/handle, capture current BMesh value as baseline
                         baseline_key = (edge_index, "start")
-                        if baseline_key not in _drag_start_baselines:
+                        is_new_drag_start = baseline_key not in _drag_start_baselines
+                        
+                        if is_new_drag_start:
+                            # Push undo state BEFORE making any changes (only once per drag)
+                            if not _undo_pushed_this_drag:
+                                bpy.ops.ed.undo_push(message="Move Loft Handle")
+                                _undo_pushed_this_drag = True
                             _drag_start_baselines[baseline_key] = current_handle.copy()
+                            
+                            # Capture baselines for ALL handles at this vertex
+                            vert = edge_fresh.verts[0]
+                            _capture_all_handles_at_vertex(vert, lyrs, _drag_start_baselines)
                         
                         baseline = _drag_start_baselines[baseline_key]
                         
@@ -748,6 +950,11 @@ class LoftHandleGizmoGroup(GizmoGroup):
                         # Apply delta to the baseline
                         new_handle = baseline + local_delta
                         
+                        # Rotate other handles at this vertex to maintain coplanarity
+                        vert = edge_fresh.verts[0]  # Start handle is at verts[0]
+                        _rotate_coplanar_handles(vert, edge_index, "start", baseline, new_handle, bm_fresh, lyrs, _drag_start_baselines)
+                        
+                        # Write the new handle value
                         edge_fresh[start_x_layer] = new_handle.x
                         edge_fresh[start_y_layer] = new_handle.y
                         edge_fresh[start_z_layer] = new_handle.z
@@ -764,7 +971,7 @@ class LoftHandleGizmoGroup(GizmoGroup):
                     return Vector((0, 0, 0))
                 
                 def set_fn(value):
-                    global _drag_start_baselines, _last_set_fn_time
+                    global _drag_start_baselines, _last_set_fn_time, _undo_pushed_this_drag
                     
                     # Detect new drag session using timestamps AND value magnitude
                     current_time = int(time.time() * 1000)
@@ -778,10 +985,12 @@ class LoftHandleGizmoGroup(GizmoGroup):
                     )
                     if is_new_drag:
                         _drag_start_baselines.clear()
+                        _undo_pushed_this_drag = False  # Reset undo flag for new drag
                     _last_set_fn_time = current_time
                     
                     bm_fresh = bmesh.from_edit_mesh(mesh_data)
                     bm_fresh.edges.ensure_lookup_table()
+                    bm_fresh.verts.ensure_lookup_table()
                     edge_fresh = bm_fresh.edges[edge_index]
                     lyrs = get_edge_layers(bm_fresh)
                     if lyrs:
@@ -794,8 +1003,18 @@ class LoftHandleGizmoGroup(GizmoGroup):
                         
                         # On first call for this edge/handle, capture current BMesh value as baseline
                         baseline_key = (edge_index, "end")
-                        if baseline_key not in _drag_start_baselines:
+                        is_new_drag_start = baseline_key not in _drag_start_baselines
+                        
+                        if is_new_drag_start:
+                            # Push undo state BEFORE making any changes (only once per drag)
+                            if not _undo_pushed_this_drag:
+                                bpy.ops.ed.undo_push(message="Move Loft Handle")
+                                _undo_pushed_this_drag = True
                             _drag_start_baselines[baseline_key] = current_handle.copy()
+                            
+                            # Capture baselines for ALL handles at this vertex
+                            vert = edge_fresh.verts[1]
+                            _capture_all_handles_at_vertex(vert, lyrs, _drag_start_baselines)
                         
                         baseline = _drag_start_baselines[baseline_key]
                         
@@ -806,6 +1025,11 @@ class LoftHandleGizmoGroup(GizmoGroup):
                         # Apply delta to the baseline
                         new_handle = baseline + local_delta
                         
+                        # Rotate other handles at this vertex to maintain coplanarity
+                        vert = edge_fresh.verts[1]  # End handle is at verts[1]
+                        _rotate_coplanar_handles(vert, edge_index, "end", baseline, new_handle, bm_fresh, lyrs, _drag_start_baselines)
+                        
+                        # Write the new handle value
                         edge_fresh[end_x_layer] = new_handle.x
                         edge_fresh[end_y_layer] = new_handle.y
                         edge_fresh[end_z_layer] = new_handle.z
