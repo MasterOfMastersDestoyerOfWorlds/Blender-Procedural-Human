@@ -5,6 +5,7 @@ This module provides a lazy-loading singleton wrapper around the SAM3 model.
 The model files are bundled with the addon at procedural_human/image_seg/.
 The model is loaded on first use and kept in memory until Blender quits.
 """
+from __future__ import annotations  # PEP 563: Postponed evaluation of annotations
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -23,15 +24,17 @@ def _patch_transformers_deps():
         fake_module.dep_version_check = lambda *args, **kwargs: None
         sys.modules['transformers.dependency_versions_check'] = fake_module
 
-_patch_transformers_deps()
-
-from typing import Optional, List, Tuple
-import numpy as np
-from PIL import Image
-import torch
-from transformers import Sam3Processor, Sam3Model
+from typing import Optional, List, Tuple, TYPE_CHECKING
 
 from procedural_human.logger import logger
+
+# Heavy imports are lazy-loaded to speed up addon startup
+# torch, transformers, numpy, PIL are only imported when SAM features are used
+if TYPE_CHECKING:
+    import numpy as np
+    from PIL import Image
+    import torch
+    from transformers import Sam3Processor, Sam3Model
 
 # Get path relative to this file
 # __file__ is in procedural_human/segmentation/sam_integration.py
@@ -53,6 +56,24 @@ class SAM3Manager:
     _processor = None
     _device: str = "cpu"
     _initialized: bool = False
+    _torch = None  # Lazily imported torch module
+    _np = None  # Lazily imported numpy module
+    
+    @classmethod
+    def _get_torch(cls):
+        """Get lazily imported torch module."""
+        if cls._torch is None:
+            import torch
+            cls._torch = torch
+        return cls._torch
+    
+    @classmethod
+    def _get_numpy(cls):
+        """Get lazily imported numpy module."""
+        if cls._np is None:
+            import numpy as np
+            cls._np = np
+        return cls._np
     
     # Path to bundled model files
     MODEL_PATH = _MODEL_PATH
@@ -82,6 +103,10 @@ class SAM3Manager:
         logger.info("Loading SAM3 model...")
         
         try:
+            # Lazy import heavy dependencies
+            _patch_transformers_deps()
+            import torch
+            from transformers import Sam3Processor, Sam3Model
             
             # Determine device
             if torch.cuda.is_available():
@@ -194,6 +219,8 @@ class SAM3Manager:
         
         logger.info(f"Segmenting by {len(points)} points")
         
+        torch = self._get_torch()
+        
         # Process image first (without points - new API)
         inputs = self._processor(
             images=image,
@@ -207,7 +234,7 @@ class SAM3Manager:
         input_labels = torch.tensor([labels], dtype=torch.int64, device=self._device)
         
         # Run inference with points passed directly to model
-        with torch.no_grad():
+        with self._get_torch().no_grad():
             outputs = self._model(
                 **inputs,
                 input_points=input_points,
@@ -267,6 +294,8 @@ class SAM3Manager:
         
         logger.info(f"Segmenting by box: {box}")
         
+        torch = self._get_torch()
+        
         # Process image first (without boxes - new API)
         inputs = self._processor(
             images=image,
@@ -320,6 +349,6 @@ class SAM3Manager:
             cls._model = None
             cls._processor = None
             cls._initialized = False
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            if cls._torch is not None and cls._torch.cuda.is_available():
+                cls._torch.cuda.empty_cache()
             logger.info("SAM3 model unloaded.")

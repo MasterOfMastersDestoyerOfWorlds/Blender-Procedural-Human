@@ -11,10 +11,24 @@ import sys
 import subprocess
 from pathlib import Path
 import os
+import time as _time_module
+import json as _json_module
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 os.environ["HF_HUB_DISABLE_EXPERIMENTAL_WARNING"] = "1"
 import ctypes
+
+# #region agent log - startup timing
+_STARTUP_LOG_PATH = r"c:\Code\Blender-Procedural-Human\.cursor\debug.log"
+_startup_times = {}
+_startup_start = _time_module.perf_counter()
+
+def _log_timing(phase, elapsed_ms):
+    try:
+        with open(_STARTUP_LOG_PATH, "a") as f:
+            f.write(_json_module.dumps({"hypothesisId": "TIMING", "location": "__init__.py", "message": f"Startup phase: {phase}", "data": {"phase": phase, "elapsed_ms": round(elapsed_ms, 2)}, "timestamp": int(_time_module.time()*1000), "sessionId": "startup-timing"}) + "\n")
+    except: pass
+# #endregion
 
 
 # Add addon parent directory to sys.path for absolute imports
@@ -69,7 +83,11 @@ def _setup_torch_dll_path():
             except OSError:
                 pass  # Some DLLs may fail, that's okay
 
+# #region agent log - timing torch dll
+_t0 = _time_module.perf_counter()
 _setup_torch_dll_path()
+_log_timing("setup_torch_dll_path", (_time_module.perf_counter() - _t0) * 1000)
+# #endregion
 
 # Install wheels for development mode, with version tracking
 def _get_wheels_hash():
@@ -82,17 +100,12 @@ def _get_wheels_hash():
     return hashlib.md5("|".join(wheel_names).encode()).hexdigest()[:16]
 
 def _check_packages_installed():
-    """Check if required packages are already importable."""
-    try:
-        import torch
-        import transformers
-        return True
-    except ImportError:
-        return False
-    except OSError as e:
-        print(f"[Procedural Human] PyTorch DLL error: {e}")
-        print("[Procedural Human] Try installing Visual C++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe")
-        return False
+    """Check if required packages are already importable (without importing them)."""
+    import importlib.util
+    # Use find_spec to check if packages exist without importing them (much faster)
+    torch_spec = importlib.util.find_spec("torch")
+    transformers_spec = importlib.util.find_spec("transformers")
+    return torch_spec is not None and transformers_spec is not None
 
 def _ensure_wheels_installed():
     """Install wheels from ./wheels/ directory if dependencies are missing or changed."""
@@ -172,8 +185,14 @@ def _ensure_wheels_installed():
     except subprocess.CalledProcessError as e:
         print(f"[Procedural Human] Failed to install wheels: {e}")
 
+# #region agent log - timing wheels
+_t0 = _time_module.perf_counter()
 _ensure_wheels_installed()
+_log_timing("ensure_wheels_installed", (_time_module.perf_counter() - _t0) * 1000)
+# #endregion
  
+# #region agent log - timing imports
+_t0 = _time_module.perf_counter()
 import bpy
 from procedural_human.dsl.finger_segment_const import SEGMENT_SAMPLE_COUNT
 from procedural_human.logger import *
@@ -182,6 +201,7 @@ from procedural_human.decorators.curve_preset_decorator import register_preset_c
 from procedural_human.decorators.panel_decorator import procedural_panel
 from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.decorators.workspace_decorator import procedural_workspace
+from procedural_human.decorators.gizmo_decorator import procedural_gizmo
 from procedural_human.decorators.module_discovery import (
     clear_discovered,
     import_all_modules,
@@ -190,6 +210,8 @@ from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human import menus
 from procedural_human import preferences
+_log_timing("imports_total", (_time_module.perf_counter() - _t0) * 1000)
+# #endregion
 
 
 def update_profile_curves(self, context): 
@@ -225,15 +247,59 @@ bl_info = {
 
 
 def register():
+    # Clear debug log on reload for clean logging
+    _debug_log_path = _addon_dir / ".cursor" / "debug.log"
+    if _debug_log_path.exists():
+        try:
+            _debug_log_path.unlink()
+        except Exception:
+            pass
+    
+    # #region agent log - timing register
+    _t_reg_start = _time_module.perf_counter()
+    
+    _t0 = _time_module.perf_counter()
     preferences.register()
+    _log_timing("register:preferences", (_time_module.perf_counter() - _t0) * 1000)
 
+    _t0 = _time_module.perf_counter()
     import_all_modules()
+    _log_timing("register:import_all_modules", (_time_module.perf_counter() - _t0) * 1000)
 
+    _t0 = _time_module.perf_counter()
     procedural_panel.discover_and_register_all_decorators()
+    _log_timing("register:panels", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     procedural_operator.discover_and_register_all_decorators()
+    _log_timing("register:operators", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     register_preset_class.discover_and_register_all_decorators()
+    _log_timing("register:presets", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     geo_node_group.discover_and_register_all_decorators()
+    _log_timing("register:geo_nodes", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     procedural_workspace.discover_and_register_all_decorators()
+    _log_timing("register:workspace", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
+    procedural_gizmo.discover_and_register_all_decorators()
+    _log_timing("register:gizmo", (_time_module.perf_counter() - _t0) * 1000)
+    # #endregion
+    
+    # Register gizmo module (draw handlers, tools)
+    _t0 = _time_module.perf_counter()
+    try:
+        from procedural_human import gizmo
+        gizmo.register()
+        logger.info("[Procedural Human] Registered gizmo module")
+    except Exception as e:
+        logger.info(f"[Procedural Human] Could not register gizmo module: {e}")
+    _log_timing("register:gizmo_module", (_time_module.perf_counter() - _t0) * 1000)
 
     logger.info(f"Node group registry: {geo_node_group.registry}")
     
@@ -268,12 +334,17 @@ def register():
         logger.info(f"[Procedural Human] Could not register segmentation properties: {e}")
 
     # Register the search asset manager (for Yandex search results in Asset Browser)
+    _t0 = _time_module.perf_counter()
     try:
         from procedural_human.segmentation import search_asset_manager
         search_asset_manager.register()
         logger.info("[Procedural Human] Registered search asset manager")
     except Exception as e:
         logger.info(f"[Procedural Human] Could not register search asset manager: {e}")
+    _log_timing("register:search_asset_manager", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _log_timing("register:TOTAL", (_time_module.perf_counter() - _t_reg_start) * 1000)
+    _log_timing("startup:TOTAL_FROM_IMPORT", (_time_module.perf_counter() - _startup_start) * 1000)
 
 
 def unregister():
@@ -297,12 +368,20 @@ def unregister():
     except Exception:
         pass
 
+    # Unregister gizmo module first (draw handlers, tools)
+    try:
+        from procedural_human import gizmo
+        gizmo.unregister()
+    except Exception:
+        pass
+
     menus.unregister()
     procedural_panel.unregister_all_decorators()
     procedural_operator.unregister_all_decorators()
     register_preset_class.unregister_all_decorators()
     geo_node_group.unregister_all_decorators()
     procedural_workspace.unregister_all_decorators()
+    procedural_gizmo.unregister_all_decorators()
     preferences.unregister()
     clear_discovered()
 
