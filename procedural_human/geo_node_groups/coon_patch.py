@@ -210,13 +210,13 @@ def create_coons_patch_group():
     v_smooth = smoother_step(v_raw)
 
     # Function: Evaluate Bezier
-    def eval_bezier_curve(geo_ref, edge_idx_field, is_fwd_field, t_field):
+    def eval_bezier_curve(geo_ref, edge_idx_field, is_fwd_field, t_field, original_geometry):
         # Helper to sample edge attribute by index
         def sample_edge(attr_name, type='FLOAT_VECTOR'):
             s = nodes.new("GeometryNodeSampleIndex")
             s.domain = 'EDGE'
             s.data_type = type
-            links.new(geo_ref, s.inputs["Geometry"])
+            links.new(original_geometry, s.inputs["Geometry"])
             links.new(edge_idx_field, s.inputs["Index"])
             inp = nodes.new("GeometryNodeInputNamedAttribute")
             inp.data_type = type
@@ -229,7 +229,7 @@ def create_coons_patch_group():
             s_verts = nodes.new("GeometryNodeSampleIndex")
             s_verts.domain = 'EDGE'
             s_verts.data_type = 'INT'
-            links.new(geo_ref, s_verts.inputs["Geometry"])
+            links.new(original_geometry, s_verts.inputs["Geometry"])
             links.new(edge_idx_field, s_verts.inputs["Index"])
             ev = nodes.new("GeometryNodeInputMeshEdgeVertices")
             links.new(ev.outputs[v_socket_idx], s_verts.inputs["Value"])
@@ -237,7 +237,7 @@ def create_coons_patch_group():
             s_pos = nodes.new("GeometryNodeSampleIndex")
             s_pos.domain = 'POINT'
             s_pos.data_type = 'FLOAT_VECTOR'
-            links.new(geo_ref, s_pos.inputs["Geometry"])
+            links.new(original_geometry, s_pos.inputs["Geometry"])
             links.new(s_verts.outputs[0], s_pos.inputs["Index"])
             links.new(nodes.new("GeometryNodeInputPosition").outputs[0], s_pos.inputs["Value"])
             return s_pos.outputs[0]
@@ -324,17 +324,17 @@ def create_coons_patch_group():
     e3, d3 = get_face_attr("e3"), get_face_attr("d3", 'BOOLEAN')
 
     # Curves
-    c_bottom = eval_bezier_curve(subdivided_geo, e0, d0, u_raw)
-    c_top    = eval_bezier_curve(subdivided_geo, e2, d2, create_math('SUBTRACT', 1.0, u_raw))
-    c_left   = eval_bezier_curve(subdivided_geo, e3, d3, create_math('SUBTRACT', 1.0, v_raw))
-    c_right  = eval_bezier_curve(subdivided_geo, e1, d1, v_raw)
+    c_bottom = eval_bezier_curve(subdivided_geo, e0, d0, u_raw, group_input.outputs[0])
+    c_top    = eval_bezier_curve(subdivided_geo, e2, d2, create_math('SUBTRACT', 1.0, u_raw), group_input.outputs[0])
+    c_left   = eval_bezier_curve(subdivided_geo, e3, d3, create_math('SUBTRACT', 1.0, v_raw), group_input.outputs[0])
+    c_right  = eval_bezier_curve(subdivided_geo, e1, d1, v_raw, group_input.outputs[0])
     
     # Corners (Bilinear Patch)
     # Using 0.0 and 1.0 explicitly
-    p00 = eval_bezier_curve(subdivided_geo, e0, d0, 0.0)
-    p10 = eval_bezier_curve(subdivided_geo, e0, d0, 1.0)
-    p01 = eval_bezier_curve(subdivided_geo, e2, d2, 1.0)
-    p11 = eval_bezier_curve(subdivided_geo, e2, d2, 0.0)
+    p00 = eval_bezier_curve(subdivided_geo, e0, d0, 0.0, group_input.outputs[0])
+    p10 = eval_bezier_curve(subdivided_geo, e0, d0, 1.0, group_input.outputs[0])
+    p01 = eval_bezier_curve(subdivided_geo, e2, d2, 1.0, group_input.outputs[0])
+    p11 = eval_bezier_curve(subdivided_geo, e2, d2, 0.0, group_input.outputs[0])
     
     # Lofts
     loft_u = nodes.new("ShaderNodeMix")
