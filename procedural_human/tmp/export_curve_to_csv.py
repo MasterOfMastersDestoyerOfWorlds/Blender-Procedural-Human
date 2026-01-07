@@ -407,3 +407,4 @@ def export_all_curve_data(curve_obj=None, output_dir=None):
 if __name__ == "__main__":
     export_all_curve_data()
 
+

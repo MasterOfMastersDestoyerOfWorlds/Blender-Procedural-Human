@@ -154,3 +154,4 @@ class procedural_gizmo(DiscoverableClassDecorator):
             del cls._draw_handlers[name]
 
 
+

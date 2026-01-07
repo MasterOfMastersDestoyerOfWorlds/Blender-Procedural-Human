@@ -1,0 +1,389 @@
+import bpy
+from procedural_human.utils.node_layout import auto_layout_nodes
+from procedural_human.decorators.geo_node_decorator import geo_node_group
+
+@geo_node_group
+def create_coons_patch_group():
+    group_name = "CoonsPatchGenerator"
+    if group_name in bpy.data.node_groups:
+        return bpy.data.node_groups[group_name]
+
+    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    
+    # --- Interface ---
+    group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    group.interface.new_socket(name="Subdivisions", in_out="INPUT", socket_type="NodeSocketInt").default_value = 4
+    group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+
+    nodes = group.nodes
+    links = group.links
+    
+    # --- Helpers ---
+    def create_math(op, inp1, inp2=None):
+        node = nodes.new("ShaderNodeMath")
+        node.operation = op
+        if isinstance(inp1, str): links.new(nodes.get(inp1).outputs[0], node.inputs[0])
+        elif isinstance(inp1, (float, int)): node.inputs[0].default_value = inp1
+        else: links.new(inp1, node.inputs[0])
+        if inp2 is not None:
+            if isinstance(inp2, (float, int)): node.inputs[1].default_value = inp2
+            else: links.new(inp2, node.inputs[1])
+        return node.outputs[0]
+
+    def create_vec_math(op, inp1, inp2=None):
+        node = nodes.new("ShaderNodeVectorMath")
+        node.operation = op
+        if isinstance(inp1, tuple): node.inputs[0].default_value = inp1
+        else: links.new(inp1, node.inputs[0])
+        
+        if inp2 is not None:
+            if op == 'SCALE':
+                if isinstance(inp2, (float, int)): node.inputs[3].default_value = inp2
+                else: links.new(inp2, node.inputs[3])
+            else:
+                if isinstance(inp2, tuple): node.inputs[1].default_value = inp2
+                else: links.new(inp2, node.inputs[1])
+        return node.outputs[0]
+
+    # --- 1. Inputs ---
+    group_input = nodes.new("NodeGroupInput")
+    group_output = nodes.new("NodeGroupOutput")
+    
+    # --- 2. Topology Analysis (Face Corners) ---
+    # Goal: Identify if a corner is 0 (Bottom-Left), 1 (Bottom-Right), 2 (Top-Right), or 3 (Top-Left)
+    
+    # Get Current Corner Index
+    corner_idx_node = nodes.new("GeometryNodeInputIndex") # Domain: Corner
+    
+    # Get Face Index of this Corner
+    face_of_corner = nodes.new("GeometryNodeFaceOfCorner")
+    links.new(corner_idx_node.outputs[0], face_of_corner.inputs["Corner Index"])
+    face_idx = face_of_corner.outputs["Face Index"]
+    
+    # Get First Corner Index of this Face (Sort Index 0)
+    # "Corners of Face" looks up the global Corner Index for a specific Sort Index (0 here)
+    corners_lookup_0 = nodes.new("GeometryNodeCornersOfFace")
+    links.new(face_idx, corners_lookup_0.inputs["Face Index"])
+    corners_lookup_0.inputs["Sort Index"].default_value = 0
+    first_corner_idx = corners_lookup_0.outputs["Corner Index"]
+    
+    # Calculate Sort Index: Current - Start
+    sort_idx = create_math('SUBTRACT', corner_idx_node.outputs[0], first_corner_idx)
+    
+    # --- Store UV on Corners ---
+    # U = (SortIdx == 1) or (SortIdx == 2)
+    # V = (SortIdx == 2) or (SortIdx == 3)
+    
+    op_eq1 = create_math('COMPARE', sort_idx, 1.0)
+    op_eq2 = create_math('COMPARE', sort_idx, 2.0)
+    op_eq3 = create_math('COMPARE', sort_idx, 3.0)
+    
+    u_val = create_math('ADD', op_eq1, op_eq2)
+    v_val = create_math('ADD', op_eq2, op_eq3)
+    
+    uv_combine = nodes.new("ShaderNodeCombineXYZ")
+    links.new(u_val, uv_combine.inputs[0])
+    links.new(v_val, uv_combine.inputs[1])
+    
+    store_uv = nodes.new("GeometryNodeStoreNamedAttribute")
+    store_uv.data_type = 'FLOAT_VECTOR'
+    store_uv.domain = 'CORNER'
+    store_uv.inputs["Name"].default_value = "patch_uv"
+    links.new(group_input.outputs[0], store_uv.inputs[0])
+    links.new(uv_combine.outputs[0], store_uv.inputs["Value"])
+
+    # --- 3. Identify Edge Indices per Corner ---
+    # "Edges of Corner" gives the edge connected to this corner in the winding direction (Next Edge)
+    edges_of_corner = nodes.new("GeometryNodeEdgesOfCorner")
+    # Note: EdgesOfCorner inputs implicitly use Context Corner Index if not connected
+    edge_idx_at_corner = edges_of_corner.outputs["Next Edge Index"]
+    
+    store_edge_indices = nodes.new("GeometryNodeStoreNamedAttribute")
+    store_edge_indices.data_type = 'INT'
+    store_edge_indices.domain = 'CORNER'
+    store_edge_indices.inputs["Name"].default_value = "corner_edge_idx"
+    links.new(store_uv.outputs[0], store_edge_indices.inputs[0])
+    links.new(edge_idx_at_corner, store_edge_indices.inputs["Value"])
+    
+    # --- Determine Edge Direction ---
+    # Compare Corner Vertex with Edge Vertex 1
+    vertex_of_corner = nodes.new("GeometryNodeVertexOfCorner")
+    # (Implicit input: Context Corner Index)
+    
+    # Evaluate Edge Vertex 1 at the specific Edge Index we just found
+    sample_edge_vert1 = nodes.new("GeometryNodeSampleIndex")
+    sample_edge_vert1.domain = 'EDGE'
+    sample_edge_vert1.data_type = 'INT'
+    links.new(store_edge_indices.outputs[0], sample_edge_vert1.inputs["Geometry"])
+    links.new(edge_idx_at_corner, sample_edge_vert1.inputs["Index"])
+    
+    edge_verts_node = nodes.new("GeometryNodeInputMeshEdgeVertices")
+    links.new(edge_verts_node.outputs["Vertex Index 1"], sample_edge_vert1.inputs["Value"])
+    
+    is_forward = create_math('COMPARE', vertex_of_corner.outputs["Vertex Index"], sample_edge_vert1.outputs[0])
+    
+    store_direction = nodes.new("GeometryNodeStoreNamedAttribute")
+    store_direction.data_type = 'BOOLEAN'
+    store_direction.domain = 'CORNER'
+    store_direction.inputs["Name"].default_value = "edge_is_forward"
+    links.new(store_edge_indices.outputs[0], store_direction.inputs[0])
+    links.new(is_forward, store_direction.inputs["Value"])
+
+    # --- 4. Capture Data to FACE Domain ---
+    # We need E0 (Bottom), E1 (Right), E2 (Top), E3 (Left) available on the Face domain.
+    # We do this by looking up the specific corners of the face (Sort Index 0, 1, 2, 3).
+    
+    def get_data_from_corner_sort_id(geo_link, sort_id_val, attr_name, type='INT'):
+        # 1. Get Face Index (Context: Face)
+        face_idx_node = nodes.new("GeometryNodeInputIndex") 
+        
+        # 2. Get Corner Index for this Sort ID on this Face
+        c_lookup = nodes.new("GeometryNodeCornersOfFace")
+        links.new(face_idx_node.outputs[0], c_lookup.inputs["Face Index"])
+        c_lookup.inputs["Sort Index"].default_value = sort_id_val
+        target_corner = c_lookup.outputs["Corner Index"]
+        
+        # 3. Sample the attribute from that Corner
+        samp = nodes.new("GeometryNodeSampleIndex")
+        samp.domain = 'CORNER'
+        samp.data_type = type
+        links.new(geo_link, samp.inputs["Geometry"])
+        links.new(target_corner, samp.inputs["Index"])
+        
+        read_attr = nodes.new("GeometryNodeInputNamedAttribute")
+        read_attr.data_type = type
+        read_attr.inputs["Name"].default_value = attr_name
+        
+        links.new(read_attr.outputs[0], samp.inputs["Value"])
+        return samp.outputs[0]
+
+    # Store 4 Edge Indices and 4 Directions on the Face
+    def store_face_attr(geo, name, val, type='INT'):
+        s = nodes.new("GeometryNodeStoreNamedAttribute")
+        s.domain = 'FACE'
+        s.data_type = type
+        s.inputs["Name"].default_value = name
+        links.new(geo, s.inputs[0])
+        links.new(val, s.inputs["Value"])
+        return s.outputs[0]
+
+    # Chain the stores
+    geo = store_direction.outputs[0]
+    
+    # Edges
+    geo = store_face_attr(geo, "e0", get_data_from_corner_sort_id(geo, 0, "corner_edge_idx"))
+    geo = store_face_attr(geo, "e1", get_data_from_corner_sort_id(geo, 1, "corner_edge_idx"))
+    geo = store_face_attr(geo, "e2", get_data_from_corner_sort_id(geo, 2, "corner_edge_idx"))
+    geo = store_face_attr(geo, "e3", get_data_from_corner_sort_id(geo, 3, "corner_edge_idx"))
+    
+    # Directions
+    geo = store_face_attr(geo, "d0", get_data_from_corner_sort_id(geo, 0, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
+    geo = store_face_attr(geo, "d1", get_data_from_corner_sort_id(geo, 1, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
+    geo = store_face_attr(geo, "d2", get_data_from_corner_sort_id(geo, 2, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
+    geo = store_face_attr(geo, "d3", get_data_from_corner_sort_id(geo, 3, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
+
+    # --- 5. Subdivide ---
+    subdiv = nodes.new("GeometryNodeSubdivideMesh")
+    links.new(geo, subdiv.inputs[0])
+    links.new(group_input.outputs["Subdivisions"], subdiv.inputs["Level"])
+    subdivided_geo = subdiv.outputs[0]
+
+    # --- 6. Evaluation Logic (Per Point) ---
+    
+    # Get UV
+    get_uv = nodes.new("GeometryNodeInputNamedAttribute")
+    get_uv.data_type = 'FLOAT_VECTOR'
+    get_uv.inputs["Name"].default_value = "patch_uv"
+    sep_uv = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(get_uv.outputs[0], sep_uv.inputs[0])
+    u_raw = sep_uv.outputs["X"]
+    v_raw = sep_uv.outputs["Y"]
+    
+    # Smoother Step (6t^5 - 15t^4 + 10t^3)
+    def smoother_step(val_node):
+        s1 = create_math('SUBTRACT', create_math('MULTIPLY', val_node, 6.0), 15.0)
+        s2 = create_math('ADD', create_math('MULTIPLY', val_node, s1), 10.0)
+        t3 = create_math('POWER', val_node, 3.0)
+        return create_math('MULTIPLY', t3, s2)
+
+    u_smooth = smoother_step(u_raw)
+    v_smooth = smoother_step(v_raw)
+
+    # Function: Evaluate Bezier
+    def eval_bezier_curve(geo_ref, edge_idx_field, is_fwd_field, t_field):
+        # Helper to sample edge attribute by index
+        def sample_edge(attr_name, type='FLOAT_VECTOR'):
+            s = nodes.new("GeometryNodeSampleIndex")
+            s.domain = 'EDGE'
+            s.data_type = type
+            links.new(geo_ref, s.inputs["Geometry"])
+            links.new(edge_idx_field, s.inputs["Index"])
+            inp = nodes.new("GeometryNodeInputNamedAttribute")
+            inp.data_type = type
+            inp.inputs["Name"].default_value = attr_name
+            links.new(inp.outputs[0], s.inputs["Value"])
+            return s.outputs[0]
+        
+        # Helper to get vertex pos from edge
+        def get_vert_pos(v_socket_idx):
+            s_verts = nodes.new("GeometryNodeSampleIndex")
+            s_verts.domain = 'EDGE'
+            s_verts.data_type = 'INT'
+            links.new(geo_ref, s_verts.inputs["Geometry"])
+            links.new(edge_idx_field, s_verts.inputs["Index"])
+            ev = nodes.new("GeometryNodeInputMeshEdgeVertices")
+            links.new(ev.outputs[v_socket_idx], s_verts.inputs["Value"])
+            
+            s_pos = nodes.new("GeometryNodeSampleIndex")
+            s_pos.domain = 'POINT'
+            s_pos.data_type = 'FLOAT_VECTOR'
+            links.new(geo_ref, s_pos.inputs["Geometry"])
+            links.new(s_verts.outputs[0], s_pos.inputs["Index"])
+            links.new(nodes.new("GeometryNodeInputPosition").outputs[0], s_pos.inputs["Value"])
+            return s_pos.outputs[0]
+
+        p_start = get_vert_pos(0) # Vertex 1
+        p_end = get_vert_pos(1)   # Vertex 2
+        
+        # Combine handles
+        def get_vec_handle(prefix):
+            x = sample_edge(f"{prefix}_x", 'FLOAT')
+            y = sample_edge(f"{prefix}_y", 'FLOAT')
+            z = sample_edge(f"{prefix}_z", 'FLOAT')
+            combine = nodes.new("ShaderNodeCombineXYZ")
+            links.new(x, combine.inputs[0])
+            links.new(y, combine.inputs[1])
+            links.new(z, combine.inputs[2])
+            return combine.outputs[0]
+
+        h_start = get_vec_handle("handle_start")
+        h_end = get_vec_handle("handle_end")
+        
+        # Logic for orientation
+        # If Forward: P0=p_start, P1=p_start+h_start, P2=p_end+h_end, P3=p_end
+        # If Backward: P0=p_end, P1=p_end+h_end, P2=p_start+h_start, P3=p_start
+        
+        mix_p0 = nodes.new("ShaderNodeMix")
+        mix_p0.data_type = 'VECTOR'
+        links.new(is_fwd_field, mix_p0.inputs["Factor"])
+        links.new(p_end, mix_p0.inputs["A"])
+        links.new(p_start, mix_p0.inputs["B"])
+        P0 = mix_p0.outputs["Result"]
+        
+        mix_p3 = nodes.new("ShaderNodeMix")
+        mix_p3.data_type = 'VECTOR'
+        links.new(is_fwd_field, mix_p3.inputs["Factor"])
+        links.new(p_start, mix_p3.inputs["A"])
+        links.new(p_end, mix_p3.inputs["B"])
+        P3 = mix_p3.outputs["Result"]
+        
+        # P1
+        p1_fwd = create_vec_math('ADD', p_start, h_start)
+        p1_bwd = create_vec_math('ADD', p_end, h_end)
+        mix_p1 = nodes.new("ShaderNodeMix")
+        mix_p1.data_type = 'VECTOR'
+        links.new(is_fwd_field, mix_p1.inputs["Factor"])
+        links.new(p1_bwd, mix_p1.inputs["A"])
+        links.new(p1_fwd, mix_p1.inputs["B"])
+        P1 = mix_p1.outputs["Result"]
+        
+        # P2
+        p2_fwd = create_vec_math('ADD', p_end, h_end)
+        p2_bwd = create_vec_math('ADD', p_start, h_start)
+        mix_p2 = nodes.new("ShaderNodeMix")
+        mix_p2.data_type = 'VECTOR'
+        links.new(is_fwd_field, mix_p2.inputs["Factor"])
+        links.new(p2_bwd, mix_p2.inputs["A"])
+        links.new(p2_fwd, mix_p2.inputs["B"])
+        P2 = mix_p2.outputs["Result"]
+        
+        # Bezier Calculation
+        one_minus_t = create_math('SUBTRACT', 1.0, t_field)
+        
+        c0 = create_math('POWER', one_minus_t, 3.0)
+        c1 = create_math('MULTIPLY', create_math('MULTIPLY', 3.0, create_math('POWER', one_minus_t, 2.0)), t_field)
+        c2 = create_math('MULTIPLY', create_math('MULTIPLY', 3.0, one_minus_t), create_math('POWER', t_field, 2.0))
+        c3 = create_math('POWER', t_field, 3.0)
+        
+        return create_vec_math('ADD', 
+            create_vec_math('ADD', create_vec_math('SCALE', P0, c0), create_vec_math('SCALE', P1, c1)),
+            create_vec_math('ADD', create_vec_math('SCALE', P2, c2), create_vec_math('SCALE', P3, c3))
+        )
+
+    # Helper to get stored face attributes (which are now on points due to subdivision)
+    def get_face_attr(name, type='INT'):
+        node = nodes.new("GeometryNodeInputNamedAttribute")
+        node.data_type = type
+        node.inputs["Name"].default_value = name
+        return node.outputs[0]
+        
+    e0, d0 = get_face_attr("e0"), get_face_attr("d0", 'BOOLEAN')
+    e1, d1 = get_face_attr("e1"), get_face_attr("d1", 'BOOLEAN')
+    e2, d2 = get_face_attr("e2"), get_face_attr("e2", 'BOOLEAN') # Typo check: "d2"
+    d2 = get_face_attr("d2", 'BOOLEAN') # Fix
+    e3, d3 = get_face_attr("e3"), get_face_attr("d3", 'BOOLEAN')
+
+    # Curves
+    c_bottom = eval_bezier_curve(subdivided_geo, e0, d0, u_raw)
+    c_top    = eval_bezier_curve(subdivided_geo, e2, d2, create_math('SUBTRACT', 1.0, u_raw))
+    c_left   = eval_bezier_curve(subdivided_geo, e3, d3, create_math('SUBTRACT', 1.0, v_raw))
+    c_right  = eval_bezier_curve(subdivided_geo, e1, d1, v_raw)
+    
+    # Corners (Bilinear Patch)
+    # Using 0.0 and 1.0 explicitly
+    p00 = eval_bezier_curve(subdivided_geo, e0, d0, 0.0)
+    p10 = eval_bezier_curve(subdivided_geo, e0, d0, 1.0)
+    p01 = eval_bezier_curve(subdivided_geo, e2, d2, 1.0)
+    p11 = eval_bezier_curve(subdivided_geo, e2, d2, 0.0)
+    
+    # Lofts
+    loft_u = nodes.new("ShaderNodeMix")
+    loft_u.data_type = 'VECTOR'
+    links.new(v_smooth, loft_u.inputs["Factor"])
+    links.new(c_bottom, loft_u.inputs["A"])
+    links.new(c_top, loft_u.inputs["B"])
+    
+    loft_v = nodes.new("ShaderNodeMix")
+    loft_v.data_type = 'VECTOR'
+    links.new(u_smooth, loft_v.inputs["Factor"])
+    links.new(c_left, loft_v.inputs["A"])
+    links.new(c_right, loft_v.inputs["B"])
+    
+    # Bilinear
+    mix_b1 = nodes.new("ShaderNodeMix")
+    mix_b1.data_type = 'VECTOR'
+    links.new(u_smooth, mix_b1.inputs["Factor"])
+    links.new(p00, mix_b1.inputs["A"])
+    links.new(p10, mix_b1.inputs["B"])
+    
+    mix_b2 = nodes.new("ShaderNodeMix")
+    mix_b2.data_type = 'VECTOR'
+    links.new(u_smooth, mix_b2.inputs["Factor"])
+    links.new(p01, mix_b2.inputs["A"])
+    links.new(p11, mix_b2.inputs["B"])
+    
+    bilinear = nodes.new("ShaderNodeMix")
+    bilinear.data_type = 'VECTOR'
+    links.new(v_smooth, bilinear.inputs["Factor"])
+    links.new(mix_b1.outputs["Result"], bilinear.inputs["A"])
+    links.new(mix_b2.outputs["Result"], bilinear.inputs["B"])
+    
+    # Coons Sum: LU + LV - B
+    final_pos = create_vec_math('SUBTRACT', 
+        create_vec_math('ADD', loft_u.outputs["Result"], loft_v.outputs["Result"]), 
+        bilinear.outputs["Result"]
+    )
+    
+    # Output
+    set_pos = nodes.new("GeometryNodeSetPosition")
+    links.new(subdivided_geo, set_pos.inputs["Geometry"])
+    links.new(final_pos, set_pos.inputs["Position"])
+    
+    set_smooth = nodes.new("GeometryNodeSetShadeSmooth")
+    links.new(set_pos.outputs[0], set_smooth.inputs[0])
+    set_smooth.inputs["Shade Smooth"].default_value = True
+
+    links.new(set_smooth.outputs[0], group_output.inputs[0])
+    
+    auto_layout_nodes(group)
+    return group

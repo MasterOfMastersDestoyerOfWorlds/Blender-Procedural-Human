@@ -1,15 +1,16 @@
 """
-Export Curve/Spline Data to CSV
+Export Spreadsheet Data to CSV
 
-Exports all curve and control point data from the active object's
-evaluated geometry (after geometry nodes) to CSV files in the tmp folder.
+Exports attribute data from the active object based on the Spreadsheet editor settings.
+Works with any geometry type (MESH, CURVE, CURVES) and any domain (POINT, EDGE, FACE, CURVE).
 
-Works with:
-- Native CURVE objects
-- Mesh/other objects with geometry nodes that output curves
+Supports:
+- Mesh attributes (object mode)
+- BMesh layers (edit mode) - including edge float layers from loft handle gizmos
 """
 
 import bpy
+import bmesh
 import csv
 import os
 from pathlib import Path
@@ -56,331 +57,312 @@ def get_next_csv_path(base_dir, prefix):
         i += 1
 
 
-def format_vector(vec):
-    """Format a vector as separate values."""
-    return list(vec[:])
-
-
-# ============================================================================
-# EVALUATED CURVES EXPORT (Geometry Nodes output)
-# ============================================================================
-
-def get_evaluated_curves(obj):
-    """
-    Get the evaluated curves data from an object.
-    Works with geometry nodes that output curves.
-    
-    Returns:
-        Curves data block or None if no curves found
-    """
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    eval_obj = obj.evaluated_get(depsgraph)
-    
-    # Check if evaluated object has curves data
-    if eval_obj.type == 'CURVES':
-        return eval_obj.data
-    
-    # Try to get curves from geometry nodes output
-    # The evaluated data might be a Curves type even if original is Mesh
-    eval_data = eval_obj.data
-    
-    # Check if it's a Curves datablock
-    if hasattr(eval_data, 'curves') and hasattr(eval_data, 'points'):
-        return eval_data
-    
-    # For CURVE type objects, we need different handling
-    if eval_obj.type == 'CURVE':
-        return eval_data
-    
+def find_spreadsheet_area():
+    """Find the first Spreadsheet editor in the current screen."""
+    for area in bpy.context.screen.areas:
+        if area.type == 'SPREADSHEET':
+            return area
     return None
 
 
-def export_curves_geometry_to_csv(curves_data, output_dir, obj_name):
+def get_spreadsheet_settings(area):
+    """Get the current settings from a Spreadsheet editor."""
+    space = area.spaces.active
+    return {
+        'domain': space.attribute_domain,  # 'POINT', 'FACE', 'EDGE', 'CURVE', 'CORNER'
+        'component': space.geometry_component_type,  # 'MESH', 'CURVE', 'CURVES', 'INSTANCES'
+        'eval_state': space.object_eval_state,  # 'EVALUATED' or 'VIEWER_NODE'
+    }
+
+
+def get_domain_row_count(data, component, domain):
     """
-    Export curves using the new Curves API (Blender 3.x+).
-    This is used for geometry nodes curve output.
-    
-    The Curves datablock has:
-    - curves_data.curves: Collection of individual curves (like splines)
-    - curves_data.points: All control points across all curves
-    - curves_data.attributes: All attributes
+    Get the row count for a domain from the geometry structure.
+    This is more reliable than len(attr.data) for evaluated geometry.
     """
-    created_files = []
+    row_count = 0
     
-    # -------------------------------------------------------------------------
-    # 1. Export curve (spline) level data
-    # -------------------------------------------------------------------------
-    if hasattr(curves_data, 'curves'):
-        csv_path = get_next_csv_path(output_dir, f"{obj_name}_curves")
-        
-        with open(csv_path, 'w', newline='') as f:
-            writer = csv.writer(f)
+    if component == 'MESH':
+        if domain == 'POINT' and hasattr(data, 'vertices'):
+            row_count = len(data.vertices)
+        elif domain == 'EDGE' and hasattr(data, 'edges'):
+            row_count = len(data.edges)
+        elif domain == 'FACE' and hasattr(data, 'polygons'):
+            row_count = len(data.polygons)
+        elif domain == 'CORNER' and hasattr(data, 'loops'):
+            row_count = len(data.loops)
             
-            # Get curve-domain attributes
-            curve_attrs = {}
-            if hasattr(curves_data, 'attributes'):
-                for attr in curves_data.attributes:
-                    if attr.domain == 'CURVE':
-                        curve_attrs[attr.name] = attr
+    elif component == 'CURVE' and hasattr(data, 'splines'):
+        if domain == 'POINT':
+            row_count = sum(len(s.points) + len(s.bezier_points) for s in data.splines)
+        elif domain == 'CURVE':
+            row_count = len(data.splines)
             
-            # Build header
-            header = ["curve_index", "point_count", "first_point_index"]
-            for attr_name in curve_attrs.keys():
-                attr = curve_attrs[attr_name]
-                header.extend(_get_attr_header_columns(attr_name, attr.data_type))
-            
-            writer.writerow(header)
-            
-            # Write curve data
-            for i, curve in enumerate(curves_data.curves):
-                row = [
-                    i,
-                    curve.points_length,
-                    curve.first_point_index,
-                ]
-                
-                # Add attribute values
-                for attr_name, attr in curve_attrs.items():
-                    row.extend(_get_attr_value(attr, i))
-                
-                writer.writerow(row)
-        
-        created_files.append(csv_path)
+    elif component == 'CURVES':
+        if domain == 'POINT':
+            if hasattr(data, 'points'):
+                row_count = len(data.points)
+            elif hasattr(data, 'attributes') and 'position' in data.attributes:
+                try:
+                    row_count = len(data.attributes['position'].data)
+                except Exception:
+                    pass
+        elif domain == 'CURVE' and hasattr(data, 'curves'):
+            row_count = len(data.curves)
     
-    # -------------------------------------------------------------------------
-    # 2. Export point level data with all attributes
-    # -------------------------------------------------------------------------
-    if hasattr(curves_data, 'points') or hasattr(curves_data, 'attributes'):
-        csv_path = get_next_csv_path(output_dir, f"{obj_name}_points")
-        
-        with open(csv_path, 'w', newline='') as f:
-            writer = csv.writer(f)
-            
-            # Get point-domain attributes
-            point_attrs = {}
-            if hasattr(curves_data, 'attributes'):
-                for attr in curves_data.attributes:
-                    if attr.domain == 'POINT':
-                        point_attrs[attr.name] = attr
-            
-            # Build header - always include position
-            header = ["point_index", "curve_index"]
-            for attr_name in point_attrs.keys():
-                attr = point_attrs[attr_name]
-                header.extend(_get_attr_header_columns(attr_name, attr.data_type))
-            
-            writer.writerow(header)
-            
-            # Build curve index lookup
-            curve_for_point = []
-            if hasattr(curves_data, 'curves'):
-                for curve_idx, curve in enumerate(curves_data.curves):
-                    for _ in range(curve.points_length):
-                        curve_for_point.append(curve_idx)
-            
-            # Write point data
-            point_count = len(curves_data.points) if hasattr(curves_data, 'points') else 0
-            if point_count == 0 and point_attrs:
-                # Get count from first attribute
-                first_attr = next(iter(point_attrs.values()))
-                point_count = len(first_attr.data)
-            
-            for i in range(point_count):
-                curve_idx = curve_for_point[i] if i < len(curve_for_point) else -1
-                row = [i, curve_idx]
-                
-                # Add attribute values
-                for attr_name, attr in point_attrs.items():
-                    row.extend(_get_attr_value(attr, i))
-                
-                writer.writerow(row)
-        
-        created_files.append(csv_path)
+    return row_count
+
+
+def export_bmesh_edge_layers(obj, output_dir):
+    """
+    Export BMesh edge float layers to CSV.
+    Used when in edit mode with BMesh layer data (like loft handles).
     
-    return created_files
-
-
-def _get_attr_header_columns(attr_name, data_type):
-    """Get header column names for an attribute based on its data type."""
-    if data_type in ('FLOAT', 'INT', 'INT8', 'INT_8', 'BOOLEAN', 'STRING'):
-        return [attr_name]
-    elif data_type == 'FLOAT_VECTOR':
-        return [f"{attr_name}.x", f"{attr_name}.y", f"{attr_name}.z"]
-    elif data_type in ('FLOAT_COLOR', 'BYTE_COLOR'):
-        return [f"{attr_name}.r", f"{attr_name}.g", f"{attr_name}.b", f"{attr_name}.a"]
-    elif data_type in ('FLOAT2', 'INT32_2D'):
-        return [f"{attr_name}.x", f"{attr_name}.y"]
-    elif data_type == 'QUATERNION':
-        return [f"{attr_name}.w", f"{attr_name}.x", f"{attr_name}.y", f"{attr_name}.z"]
-    return [attr_name]
-
-
-def _get_attr_value(attr, index):
-    """Get attribute value at index, handling different data types."""
-    try:
-        data_type = attr.data_type
+    Args:
+        obj: The mesh object (must be in edit mode)
+        output_dir: Output directory path
         
-        if data_type in ('FLOAT', 'INT', 'INT8', 'INT_8', 'BOOLEAN', 'STRING'):
-            return [attr.data[index].value]
-        elif data_type in ('FLOAT_VECTOR', 'FLOAT2'):
-            return list(attr.data[index].vector[:])
-        elif data_type in ('FLOAT_COLOR', 'BYTE_COLOR'):
-            return list(attr.data[index].color[:])
-        elif data_type in ('INT32_2D', 'QUATERNION'):
-            return list(attr.data[index].value[:])
-        else:
-            return [str(attr.data[index].value)]
-    except Exception:
-        # Return empty values based on expected column count
-        return _get_empty_values(attr.data_type)
-
-
-def _get_empty_values(data_type):
-    """Return empty placeholder values for a given data type."""
-    if data_type in ('FLOAT', 'INT', 'INT8', 'INT_8', 'BOOLEAN', 'STRING'):
-        return ['']
-    elif data_type == 'FLOAT_VECTOR':
-        return ['', '', '']
-    elif data_type in ('FLOAT_COLOR', 'BYTE_COLOR'):
-        return ['', '', '', '']
-    elif data_type in ('FLOAT2', 'INT32_2D'):
-        return ['', '']
-    elif data_type == 'QUATERNION':
-        return ['', '', '', '']
-    return ['']
-
-
-# ============================================================================
-# LEGACY CURVE EXPORT (for native CURVE objects)
-# ============================================================================
-
-def export_legacy_splines_to_csv(curve_data, output_dir, obj_name):
-    """Export spline-level metadata for legacy Curve objects."""
-    
-    if not hasattr(curve_data, 'splines'):
+    Returns:
+        Tuple of (csv_path, row_count, headers) or None if no layers found
+    """
+    if obj.mode != 'EDIT':
         return None
     
-    csv_path = get_next_csv_path(output_dir, f"{obj_name}_splines")
+    mesh = obj.data
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.edges.ensure_lookup_table()
     
+    # Collect all edge float layers
+    float_layers = {}
+    for layer in bm.edges.layers.float:
+        float_layers[layer.name] = layer
+    
+    if not float_layers:
+        return None
+    
+    row_count = len(bm.edges)
+    if row_count == 0:
+        return None
+    
+    print(f"Found {len(float_layers)} BMesh edge float layers with {row_count} edges")
+    
+    # Build columns
+    columns = {}
+    headers = []
+    
+    # Add edge index and vertex indices
+    columns["edge_index"] = list(range(row_count))
+    headers.append("edge_index")
+    
+    columns["vert0_index"] = [e.verts[0].index for e in bm.edges]
+    columns["vert1_index"] = [e.verts[1].index for e in bm.edges]
+    headers.extend(["vert0_index", "vert1_index"])
+    
+    # Add vertex positions
+    columns["vert0_x"] = [e.verts[0].co.x for e in bm.edges]
+    columns["vert0_y"] = [e.verts[0].co.y for e in bm.edges]
+    columns["vert0_z"] = [e.verts[0].co.z for e in bm.edges]
+    columns["vert1_x"] = [e.verts[1].co.x for e in bm.edges]
+    columns["vert1_y"] = [e.verts[1].co.y for e in bm.edges]
+    columns["vert1_z"] = [e.verts[1].co.z for e in bm.edges]
+    headers.extend(["vert0_x", "vert0_y", "vert0_z", "vert1_x", "vert1_y", "vert1_z"])
+    
+    # Add all float layers
+    for layer_name, layer in float_layers.items():
+        columns[layer_name] = [e[layer] for e in bm.edges]
+        headers.append(layer_name)
+    
+    # Generate filename
+    obj_name = obj.name.replace(" ", "_").replace(".", "_")
+    csv_path = get_next_csv_path(output_dir, f"bmesh_{obj_name}_edges")
+    
+    # Write CSV
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
-        
-        header = [
-            "spline_index",
-            "type",
-            "point_count",
-            "use_cyclic_u",
-            "resolution_u",
-            "tilt_interpolation",
-            "radius_interpolation",
-        ]
-        writer.writerow(header)
-        
-        for i, spline in enumerate(curve_data.splines):
-            point_count = len(spline.bezier_points) if spline.type == 'BEZIER' else len(spline.points)
-            
-            row = [
-                i,
-                spline.type,
-                point_count,
-                spline.use_cyclic_u,
-                spline.resolution_u,
-                spline.tilt_interpolation,
-                spline.radius_interpolation,
-            ]
-            writer.writerow(row)
+        writer.writerow(headers)
+        writer.writerows(zip(*[columns[h] for h in headers]))
     
-    return csv_path
+    return csv_path, row_count, headers
 
 
-def export_legacy_bezier_points_to_csv(curve_data, output_dir, obj_name):
-    """Export Bezier control point data for legacy Curve objects."""
+def export_spreadsheet_data(obj, settings, output_dir):
+    """
+    Export data based on spreadsheet settings.
     
-    if not hasattr(curve_data, 'splines'):
-        return None
-    
-    has_bezier = any(s.type == 'BEZIER' for s in curve_data.splines)
-    if not has_bezier:
-        return None
-    
-    csv_path = get_next_csv_path(output_dir, f"{obj_name}_bezier_points")
-    
-    with open(csv_path, 'w', newline='') as f:
-        writer = csv.writer(f)
+    Args:
+        obj: The object to export from
+        settings: Dict with 'domain', 'component', 'eval_state'
+        output_dir: Output directory path
         
-        header = [
-            "spline_index",
-            "point_index",
-            "co.x", "co.y", "co.z",
-            "handle_left.x", "handle_left.y", "handle_left.z",
-            "handle_right.x", "handle_right.y", "handle_right.z",
-            "handle_left_type",
-            "handle_right_type",
-            "radius",
-            "tilt",
-        ]
-        writer.writerow(header)
-        
-        for spline_idx, spline in enumerate(curve_data.splines):
-            if spline.type != 'BEZIER':
+    Returns:
+        Tuple of (csv_path, row_count, headers)
+    """
+    domain = settings['domain']
+    component = settings['component']
+    
+    # Special case: In edit mode with EDGE domain, try BMesh layers first
+    if obj.mode == 'EDIT' and domain == 'EDGE' and obj.type == 'MESH':
+        result = export_bmesh_edge_layers(obj, output_dir)
+        if result:
+            print("Exported from BMesh edge layers (edit mode)")
+            return result
+        print("No BMesh edge layers found, falling back to mesh attributes...")
+    
+    # Get evaluated data
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    eval_obj = obj.evaluated_get(depsgraph)
+    data = eval_obj.data
+    
+    # Get row count from geometry structure (more reliable than attr.data length)
+    row_count = get_domain_row_count(data, component, domain)
+    
+    if row_count == 0:
+        raise ValueError(f"No geometry data found for Component: {component} / Domain: {domain}")
+    
+    print(f"Exporting {component}/{domain} with {row_count} rows")
+    
+    # Build columns and headers
+    columns = {}
+    headers = []
+    
+    # --- Standard Position (special case for POINT domain on MESH) ---
+    if domain == 'POINT' and component == 'MESH' and row_count > 0:
+        raw_pos = [0.0] * (row_count * 3)
+        try:
+            if hasattr(data, "vertices") and len(data.vertices) == row_count:
+                data.vertices.foreach_get("co", raw_pos)
+                if any(v != 0.0 for v in raw_pos):
+                    columns["Position_X"] = raw_pos[0::3]
+                    columns["Position_Y"] = raw_pos[1::3]
+                    columns["Position_Z"] = raw_pos[2::3]
+                    headers.extend(["Position_X", "Position_Y", "Position_Z"])
+        except Exception as e:
+            print(f"Note: Could not export vertex positions: {e}")
+    
+    # --- Export all attributes matching the domain ---
+    if hasattr(data, 'attributes'):
+        for name, attr in data.attributes.items():
+            if attr.domain != domain:
                 continue
-                
-            for pt_idx, pt in enumerate(spline.bezier_points):
-                row = [
-                    spline_idx,
-                    pt_idx,
-                    *format_vector(pt.co),
-                    *format_vector(pt.handle_left),
-                    *format_vector(pt.handle_right),
-                    pt.handle_left_type,
-                    pt.handle_right_type,
-                    pt.radius,
-                    pt.tilt,
-                ]
-                writer.writerow(row)
+            
+            # Skip position if already exported
+            if name == 'position' and 'Position_X' in columns:
+                continue
+            
+            # Check actual data length
+            try:
+                actual_len = len(attr.data)
+            except Exception:
+                actual_len = 0
+            
+            # Skip attributes with no data
+            if actual_len == 0:
+                print(f"Skipping attribute '{name}': has 0 data items (attribute defined but not populated)")
+                continue
+            
+            # Use actual_len for buffer if it differs from row_count
+            buf_len = actual_len if actual_len > 0 else row_count
+            
+            d_type = attr.data_type
+            
+            try:
+                if d_type == 'FLOAT':
+                    buf = [0.0] * buf_len
+                    attr.data.foreach_get("value", buf)
+                    columns[name] = buf
+                    headers.append(name)
+                    
+                elif d_type == 'INT':
+                    buf = [0] * buf_len
+                    attr.data.foreach_get("value", buf)
+                    columns[name] = buf
+                    headers.append(name)
+                    
+                elif d_type == 'FLOAT_VECTOR':
+                    buf = [0.0] * (buf_len * 3)
+                    attr.data.foreach_get("vector", buf)
+                    columns[f"{name}_X"] = buf[0::3]
+                    columns[f"{name}_Y"] = buf[1::3]
+                    columns[f"{name}_Z"] = buf[2::3]
+                    headers.extend([f"{name}_X", f"{name}_Y", f"{name}_Z"])
+                    
+                elif d_type == 'FLOAT2':
+                    buf = [0.0] * (buf_len * 2)
+                    attr.data.foreach_get("vector", buf)
+                    columns[f"{name}_X"] = buf[0::2]
+                    columns[f"{name}_Y"] = buf[1::2]
+                    headers.extend([f"{name}_X", f"{name}_Y"])
+                    
+                elif d_type == 'FLOAT_COLOR' or d_type == 'BYTE_COLOR':
+                    buf = [0.0] * (buf_len * 4)
+                    attr.data.foreach_get("color", buf)
+                    columns[f"{name}_R"] = buf[0::4]
+                    columns[f"{name}_G"] = buf[1::4]
+                    columns[f"{name}_B"] = buf[2::4]
+                    columns[f"{name}_A"] = buf[3::4]
+                    headers.extend([f"{name}_R", f"{name}_G", f"{name}_B", f"{name}_A"])
+                    
+                elif d_type == 'BOOLEAN':
+                    buf = [False] * buf_len
+                    attr.data.foreach_get("value", buf)
+                    columns[name] = buf
+                    headers.append(name)
+                    
+                elif d_type == 'INT8':
+                    buf = [0] * buf_len
+                    attr.data.foreach_get("value", buf)
+                    columns[name] = buf
+                    headers.append(name)
+                    
+                elif d_type == 'QUATERNION':
+                    buf = [0.0] * (buf_len * 4)
+                    attr.data.foreach_get("value", buf)
+                    columns[f"{name}_W"] = buf[0::4]
+                    columns[f"{name}_X"] = buf[1::4]
+                    columns[f"{name}_Y"] = buf[2::4]
+                    columns[f"{name}_Z"] = buf[3::4]
+                    headers.extend([f"{name}_W", f"{name}_X", f"{name}_Y", f"{name}_Z"])
+                    
+            except Exception as e:
+                print(f"Warning: Could not export attribute '{name}': {e}")
     
-    return csv_path
-
-
-def export_legacy_nurbs_poly_points_to_csv(curve_data, output_dir, obj_name):
-    """Export NURBS/Poly control point data for legacy Curve objects."""
+    if not headers:
+        # List what we found for debugging
+        all_attrs = []
+        empty_attrs = []
+        if hasattr(data, 'attributes'):
+            for name, attr in data.attributes.items():
+                try:
+                    attr_len = len(attr.data)
+                except Exception:
+                    attr_len = 0
+                info = f"{name} ({attr.domain}, {attr.data_type}, len={attr_len})"
+                all_attrs.append(info)
+                if attr.domain == domain and attr_len == 0:
+                    empty_attrs.append(name)
+        
+        msg = f"No exportable attributes found for domain '{domain}'.\n"
+        msg += f"Geometry has {row_count} {domain.lower()}s.\n"
+        if empty_attrs:
+            msg += f"\nAttributes DEFINED on {domain} but with NO DATA (len=0):\n"
+            msg += f"  {', '.join(empty_attrs)}\n"
+            msg += "\nThis means these attributes exist in the definition but were never populated.\n"
+            msg += "Check your geometry nodes - use 'Store Named Attribute' to actually write data.\n"
+        msg += f"\nAll available attributes: {', '.join(all_attrs) if all_attrs else 'None'}"
+        
+        raise ValueError(msg)
     
-    if not hasattr(curve_data, 'splines'):
-        return None
+    # Generate filename based on object and settings
+    obj_name = obj.name.replace(" ", "_").replace(".", "_")
+    csv_path = get_next_csv_path(output_dir, f"spreadsheet_{obj_name}_{component}_{domain}")
     
-    has_nurbs_poly = any(s.type != 'BEZIER' for s in curve_data.splines)
-    if not has_nurbs_poly:
-        return None
-    
-    csv_path = get_next_csv_path(output_dir, f"{obj_name}_nurbs_poly_points")
-    
+    # Write CSV
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
-        
-        header = [
-            "spline_index",
-            "point_index",
-            "co.x", "co.y", "co.z", "co.w",
-            "radius",
-            "tilt",
-        ]
-        writer.writerow(header)
-        
-        for spline_idx, spline in enumerate(curve_data.splines):
-            if spline.type == 'BEZIER':
-                continue
-                
-            for pt_idx, pt in enumerate(spline.points):
-                row = [
-                    spline_idx,
-                    pt_idx,
-                    *format_vector(pt.co),
-                    pt.radius,
-                    pt.tilt,
-                ]
-                writer.writerow(row)
+        writer.writerow(headers)
+        writer.writerows(zip(*[columns[h] for h in headers]))
     
-    return csv_path
+    return csv_path, row_count, headers
 
 
 # ============================================================================
@@ -389,10 +371,10 @@ def export_legacy_nurbs_poly_points_to_csv(curve_data, output_dir, obj_name):
 
 @procedural_operator
 class CURVE_OT_export_curve_to_csv(Operator):
-    """Export curve data from evaluated geometry (including geometry nodes output) to CSV"""
+    """Export evaluated geometry data from the active Spreadsheet to CSV"""
     
     bl_idname = "curve.export_curve_to_csv"
-    bl_label = "Export Curve to CSV"
+    bl_label = "Export Spreadsheet to CSV"
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
@@ -406,55 +388,38 @@ class CURVE_OT_export_curve_to_csv(Operator):
             self.report({'ERROR'}, "No active object selected")
             return {'CANCELLED'}
         
-        output_dir = get_tmp_base_dir()
-        created_files = []
-        obj_name = obj.name.replace(" ", "_").replace(".", "_")
+        # Find the Spreadsheet editor
+        area = find_spreadsheet_area()
         
-        # Get evaluated curves data
-        depsgraph = context.evaluated_depsgraph_get()
-        eval_obj = obj.evaluated_get(depsgraph)
-        eval_data = eval_obj.data
+        if area:
+            settings = get_spreadsheet_settings(area)
+            
+            if settings['eval_state'] == 'VIEWER_NODE':
+                self.report({'WARNING'}, 
+                    "Spreadsheet is looking at a VIEWER NODE. "
+                    "Python cannot access Viewer Nodes directly. "
+                    "Connect your geometry to Group Output instead. "
+                    "Falling back to Group Output data...")
+        else:
+            # No spreadsheet found - use sensible defaults
+            settings = {
+                'domain': 'POINT',
+                'component': 'MESH',
+                'eval_state': 'EVALUATED',
+            }
+            self.report({'INFO'}, "No Spreadsheet found, using MESH/POINT defaults")
+        
+        output_dir = get_tmp_base_dir()
         
         try:
-            # Check what type of data we have
-            is_new_curves_api = hasattr(eval_data, 'curves') and hasattr(eval_data, 'points')
-            is_legacy_curve = hasattr(eval_data, 'splines')
+            csv_path, row_count, headers = export_spreadsheet_data(obj, settings, output_dir)
             
-            if is_new_curves_api:
-                # New Curves API (geometry nodes output, CURVES object type)
-                self.report({'INFO'}, "Exporting using new Curves API...")
-                files = export_curves_geometry_to_csv(eval_data, output_dir, obj_name)
-                created_files.extend(files)
-                
-            elif is_legacy_curve:
-                # Legacy Curve API (native CURVE objects)
-                self.report({'INFO'}, "Exporting using legacy Curve API...")
-                
-                csv_path = export_legacy_splines_to_csv(eval_data, output_dir, obj_name)
-                if csv_path:
-                    created_files.append(csv_path)
-                
-                csv_path = export_legacy_bezier_points_to_csv(eval_data, output_dir, obj_name)
-                if csv_path:
-                    created_files.append(csv_path)
-                
-                csv_path = export_legacy_nurbs_poly_points_to_csv(eval_data, output_dir, obj_name)
-                if csv_path:
-                    created_files.append(csv_path)
-            
-            else:
-                self.report({'ERROR'}, f"Object '{obj.name}' has no curve data in evaluated geometry")
-                return {'CANCELLED'}
+            self.report({'INFO'}, 
+                f"Exported {row_count} rows ({len(headers)} columns) to {csv_path.name}")
+            return {'FINISHED'}
             
         except Exception as e:
             import traceback
             traceback.print_exc()
             self.report({'ERROR'}, f"Export failed: {e}")
             return {'CANCELLED'}
-        
-        if not created_files:
-            self.report({'WARNING'}, "No curve data found to export")
-            return {'CANCELLED'}
-        
-        self.report({'INFO'}, f"Exported {len(created_files)} CSV files to {output_dir}")
-        return {'FINISHED'}
