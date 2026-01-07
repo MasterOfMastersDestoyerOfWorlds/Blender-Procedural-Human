@@ -106,21 +106,58 @@ def create_coons_patch_group():
     links.new(edge_idx_at_corner, store_edge_indices.inputs["Value"])
     
     # --- Determine Edge Direction ---
-    # Compare Corner Vertex with Edge Vertex 1
+    # Compare Corner Vertex with Edge Vertex 0
     vertex_of_corner = nodes.new("GeometryNodeVertexOfCorner")
     # (Implicit input: Context Corner Index)
     
-    # Evaluate Edge Vertex 1 at the specific Edge Index we just found
-    sample_edge_vert1 = nodes.new("GeometryNodeSampleIndex")
-    sample_edge_vert1.domain = 'EDGE'
-    sample_edge_vert1.data_type = 'INT'
-    links.new(store_edge_indices.outputs[0], sample_edge_vert1.inputs["Geometry"])
-    links.new(edge_idx_at_corner, sample_edge_vert1.inputs["Index"])
+    # Evaluate Edge Vertex 0 at the specific Edge Index we just found
+    sample_edge_vert0 = nodes.new("GeometryNodeSampleIndex")
+    sample_edge_vert0.domain = 'EDGE'
+    sample_edge_vert0.data_type = 'INT'
+    links.new(store_edge_indices.outputs[0], sample_edge_vert0.inputs["Geometry"])
+    links.new(edge_idx_at_corner, sample_edge_vert0.inputs["Index"])
+    
+    # If Corner Vertex == Vertex 2 (Index 1), then we are at the end, so Edge Direction is BACKWARD relative to face winding?
+    # Actually, standard: Edge is V1->V2.
+    # If Corner is V1, we are at start.
+    # If Corner is V2, we are at end.
+    
+    # Let's check if Corner == Vertex Index 1 (the first vertex, index 0 in UI but maybe "Vertex Index 1" in API?)
+    # The socket names are "Vertex Index 1" and "Vertex Index 2".
+    
+    # If Corner Vertex == Vertex 1 (Index 0), then we are at the start of the edge.
+    # Winding order usually goes V0 -> V1.
+    # If we are at V0, we traverse forward to V1.
+    # If we are at V1, we traverse backward to V0.
+    
+    # We compare Corner Vert Index with Edge Vert Index 0.
+    # If Equal -> We are at Start -> Forward (True)
+    # If Not Equal -> We are at End (V1) -> Backward (False)
     
     edge_verts_node = nodes.new("GeometryNodeInputMeshEdgeVertices")
-    links.new(edge_verts_node.outputs["Vertex Index 1"], sample_edge_vert1.inputs["Value"])
+    # socket 0 is "Vertex Index 1" (start)
+    links.new(edge_verts_node.outputs[0], sample_edge_vert0.inputs["Value"])
     
-    is_forward = create_math('COMPARE', vertex_of_corner.outputs["Vertex Index"], sample_edge_vert1.outputs[0])
+    is_at_start = create_math('COMPARE', vertex_of_corner.outputs["Vertex Index"], sample_edge_vert0.outputs[0])
+    
+    # BUT! The previous logic using COMPARE directly as boolean 0/1 might be tricky if not exact match (float vs int).
+    # Using 'EQUAL' operation for integer comparison is safer if available, but COMPARE works for floats.
+    # Vertex indices are INTs. Use 'EQUAL'.
+    
+    # Use 'EQUAL' for Integer comparison, which is safer for indices
+    is_at_start_node = nodes.new("FunctionNodeCompare")
+    is_at_start_node.data_type = 'INT'
+    is_at_start_node.operation = 'EQUAL'
+
+    # Compare the Corner Vertex Index
+    links.new(vertex_of_corner.outputs["Vertex Index"], is_at_start_node.inputs["A"])
+
+    # Against the Edge's First Vertex Index (Vertex Index 1)
+    # We must ensure sample_edge_vert0 is sampling the correct edge
+    links.new(sample_edge_vert0.outputs["Value"], is_at_start_node.inputs["B"]) 
+
+    
+    is_forward = is_at_start_node.outputs["Result"]
     
     store_direction = nodes.new("GeometryNodeStoreNamedAttribute")
     store_direction.data_type = 'BOOLEAN'
@@ -128,10 +165,26 @@ def create_coons_patch_group():
     store_direction.inputs["Name"].default_value = "edge_is_forward"
     links.new(store_edge_indices.outputs[0], store_direction.inputs[0])
     links.new(is_forward, store_direction.inputs["Value"])
+    # Store this Result
+    links.new(is_at_start_node.outputs["Result"], store_direction.inputs["Value"])
 
     # --- 4. Capture Data to FACE Domain ---
     # We need E0 (Bottom), E1 (Right), E2 (Top), E3 (Left) available on the Face domain.
     # We do this by looking up the specific corners of the face (Sort Index 0, 1, 2, 3).
+    
+    # Sort Index mapping is crucial.
+    # 0 -> Bottom Left
+    # 1 -> Bottom Right
+    # 2 -> Top Right
+    # 3 -> Top Left
+    
+    # The edges connected to these corners:
+    # Corner 0 connects to Edge 0 (Bottom) and Edge 3 (Left) usually.
+    # But "Edges of Corner" gives the edge in the winding direction (Next Edge).
+    # So Corner 0 -> Next Edge is Edge 0 (Bottom).
+    # Corner 1 -> Next Edge is Edge 1 (Right).
+    # Corner 2 -> Next Edge is Edge 2 (Top).
+    # Corner 3 -> Next Edge is Edge 3 (Left).
     
     def get_data_from_corner_sort_id(geo_link, sort_id_val, attr_name, type='INT'):
         # 1. Get Face Index (Context: Face)
@@ -181,23 +234,59 @@ def create_coons_patch_group():
     geo = store_face_attr(geo, "d1", get_data_from_corner_sort_id(geo, 1, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
     geo = store_face_attr(geo, "d2", get_data_from_corner_sort_id(geo, 2, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
     geo = store_face_attr(geo, "d3", get_data_from_corner_sort_id(geo, 3, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
-
-    # --- 5. Subdivide ---
-    subdiv = nodes.new("GeometryNodeSubdivideMesh")
-    links.new(geo, subdiv.inputs[0])
-    links.new(group_input.outputs["Subdivisions"], subdiv.inputs["Level"])
-    subdivided_geo = subdiv.outputs[0]
-
-    # --- 6. Evaluation Logic (Per Point) ---
     
-    # Get UV
-    get_uv = nodes.new("GeometryNodeInputNamedAttribute")
-    get_uv.data_type = 'FLOAT_VECTOR'
-    get_uv.inputs["Name"].default_value = "patch_uv"
-    sep_uv = nodes.new("ShaderNodeSeparateXYZ")
-    links.new(get_uv.outputs[0], sep_uv.inputs[0])
-    u_raw = sep_uv.outputs["X"]
-    v_raw = sep_uv.outputs["Y"]
+    # Store Source Face Index
+    store_face_idx = nodes.new("GeometryNodeStoreNamedAttribute")
+    store_face_idx.domain = 'FACE'
+    store_face_idx.data_type = 'INT'
+    store_face_idx.inputs["Name"].default_value = "src_face_index"
+    links.new(geo, store_face_idx.inputs[0])
+    links.new(nodes.new("GeometryNodeInputIndex").outputs[0], store_face_idx.inputs["Value"])
+    
+    geo = store_face_idx.outputs[0]
+    
+    # Keeping a reference to geometry with face attributes for later sampling
+    geo_with_face_attrs = geo
+
+    # --- 5. Generate Grid Geometry per Face ---
+    # Replace Subdivide Mesh with Grid Instancing for clean topology per face
+    
+    # Create Grid Primitive
+    grid = nodes.new("GeometryNodeMeshGrid")
+    grid.inputs["Size X"].default_value = 1.0
+    grid.inputs["Size Y"].default_value = 1.0
+    links.new(group_input.outputs["Subdivisions"], grid.inputs["Vertices X"])
+    links.new(group_input.outputs["Subdivisions"], grid.inputs["Vertices Y"])
+    
+    # Capture Attributes on Points before instancing
+    # We need to ensure e0..e3, d0..d3 are available on the points for instancing
+    # Mesh to Points (Face)
+    mesh_to_points = nodes.new("GeometryNodeMeshToPoints")
+    mesh_to_points.mode = 'FACES'
+    links.new(geo, mesh_to_points.inputs["Mesh"])
+    
+    # Instance on Points
+    instance = nodes.new("GeometryNodeInstanceOnPoints")
+    links.new(mesh_to_points.outputs["Points"], instance.inputs["Points"])
+    links.new(grid.outputs["Mesh"], instance.inputs["Instance"])
+    
+    # Realize Instances to get actual geometry
+    realize = nodes.new("GeometryNodeRealizeInstances")
+    links.new(instance.outputs["Instances"], realize.inputs["Geometry"])
+    
+    subdivided_geo = realize.outputs["Geometry"]
+    
+    # --- 6. UV Logic (From Grid Position) ---
+    # Grid creates positions from -0.5 to 0.5. We map to 0..1
+    pos_node = nodes.new("GeometryNodeInputPosition")
+    
+    # Separate XYZ
+    sep_pos = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(pos_node.outputs[0], sep_pos.inputs[0])
+    
+    # Map -0.5..0.5 to 0..1: (val + 0.5)
+    u_raw = create_math('ADD', sep_pos.outputs["X"], 0.5)
+    v_raw = create_math('ADD', sep_pos.outputs["Y"], 0.5)
     
     # Smoother Step (6t^5 - 15t^4 + 10t^3)
     def smoother_step(val_node):
@@ -211,6 +300,17 @@ def create_coons_patch_group():
 
     # Function: Evaluate Bezier
     def eval_bezier_curve(geo_ref, edge_idx_field, is_fwd_field, t_field, original_geometry):
+        # We need to handle the is_fwd_field carefully.
+        # Logic Recap:
+        # P0 = (is_fwd) ? Start : End
+        # P3 = (is_fwd) ? End : Start
+        # If is_fwd is True: Curve is Start->End. t=0 is Start. t=1 is End.
+        # If is_fwd is False: Curve is End->Start. t=0 is End. t=1 is Start.
+        
+        # When we sample along an edge using "Sample Index", we don't have a concept of "Forward/Backward" built-in
+        # unless we are sampling at specific t.
+        # BUT, the curve logic below constructs P0..P3 based on this flag.
+        
         # Helper to sample edge attribute by index
         def sample_edge(attr_name, type='FLOAT_VECTOR'):
             s = nodes.new("GeometryNodeSampleIndex")
@@ -242,8 +342,8 @@ def create_coons_patch_group():
             links.new(nodes.new("GeometryNodeInputPosition").outputs[0], s_pos.inputs["Value"])
             return s_pos.outputs[0]
 
-        p_start = get_vert_pos(0) # Vertex 1
-        p_end = get_vert_pos(1)   # Vertex 2
+        p_start = get_vert_pos(0) # Vertex 1 (Index 0)
+        p_end = get_vert_pos(1)   # Vertex 2 (Index 1)
         
         # Combine handles
         def get_vec_handle(prefix):
@@ -260,8 +360,28 @@ def create_coons_patch_group():
         h_end = get_vec_handle("handle_end")
         
         # Logic for orientation
-        # If Forward: P0=p_start, P1=p_start+h_start, P2=p_end+h_end, P3=p_end
-        # If Backward: P0=p_end, P1=p_end+h_end, P2=p_start+h_start, P3=p_start
+        # If Forward (True): We want curve from V0 to V1.
+        #   P0 = V0 (p_start)
+        #   P3 = V1 (p_end)
+        #   P1 = V0 + h_start
+        #   P2 = V1 + h_end
+        
+        # If Backward (False): We want curve from V1 to V0.
+        #   P0 = V1 (p_end)
+        #   P3 = V0 (p_start)
+        #   P1 = V1 + h_end
+        #   P2 = V0 + h_start
+        
+        # MIX NODE: Factor 0 -> A, Factor 1 -> B.
+        # Wait, Blender Mix Node: A is top (0), B is bottom (1).
+        # Boolean True maps to 1. False maps to 0.
+        
+        # If is_fwd (1): We want P0=p_start. So p_start should be B. p_end should be A.
+        #   Mix(0, p_end, p_start) -> p_end (Backward P0)
+        #   Mix(1, p_end, p_start) -> p_start (Forward P0)
+        # This matches current code:
+        # links.new(p_end, mix_p0.inputs["A"])
+        # links.new(p_start, mix_p0.inputs["B"])
         
         mix_p0 = nodes.new("ShaderNodeMix")
         mix_p0.data_type = 'VECTOR'
@@ -270,6 +390,7 @@ def create_coons_patch_group():
         links.new(p_start, mix_p0.inputs["B"])
         P0 = mix_p0.outputs["Result"]
         
+        # P3: If Forward (1), want p_end. So p_end is B. p_start is A.
         mix_p3 = nodes.new("ShaderNodeMix")
         mix_p3.data_type = 'VECTOR'
         links.new(is_fwd_field, mix_p3.inputs["Factor"])
@@ -277,7 +398,8 @@ def create_coons_patch_group():
         links.new(p_end, mix_p3.inputs["B"])
         P3 = mix_p3.outputs["Result"]
         
-        # P1
+        # P1: If Forward (1), want p_start + h_start.
+        #     If Backward (0), want p_end + h_end.
         p1_fwd = create_vec_math('ADD', p_start, h_start)
         p1_bwd = create_vec_math('ADD', p_end, h_end)
         mix_p1 = nodes.new("ShaderNodeMix")
@@ -287,7 +409,8 @@ def create_coons_patch_group():
         links.new(p1_fwd, mix_p1.inputs["B"])
         P1 = mix_p1.outputs["Result"]
         
-        # P2
+        # P2: If Forward (1), want p_end + h_end.
+        #     If Backward (0), want p_start + h_start.
         p2_fwd = create_vec_math('ADD', p_end, h_end)
         p2_bwd = create_vec_math('ADD', p_start, h_start)
         mix_p2 = nodes.new("ShaderNodeMix")
@@ -310,12 +433,26 @@ def create_coons_patch_group():
             create_vec_math('ADD', create_vec_math('SCALE', P2, c2), create_vec_math('SCALE', P3, c3))
         )
 
-    # Helper to get stored face attributes (which are now on points due to subdivision)
+    # Helper to get stored face attributes (sampled from source geometry using src_face_index)
     def get_face_attr(name, type='INT'):
-        node = nodes.new("GeometryNodeInputNamedAttribute")
-        node.data_type = type
-        node.inputs["Name"].default_value = name
-        return node.outputs[0]
+        # 1. Get src_face_index from current geometry (propagated from instance)
+        get_src_idx = nodes.new("GeometryNodeInputNamedAttribute")
+        get_src_idx.data_type = 'INT'
+        get_src_idx.inputs["Name"].default_value = "src_face_index"
+        
+        # 2. Sample the attribute from geo_with_face_attrs at that index
+        s = nodes.new("GeometryNodeSampleIndex")
+        s.domain = 'FACE'
+        s.data_type = type
+        links.new(geo_with_face_attrs, s.inputs["Geometry"])
+        links.new(get_src_idx.outputs[0], s.inputs["Index"])
+        
+        get_attr = nodes.new("GeometryNodeInputNamedAttribute")
+        get_attr.data_type = type
+        get_attr.inputs["Name"].default_value = name
+        links.new(get_attr.outputs[0], s.inputs["Value"])
+        
+        return s.outputs[0]
         
     e0, d0 = get_face_attr("e0"), get_face_attr("d0", 'BOOLEAN')
     e1, d1 = get_face_attr("e1"), get_face_attr("d1", 'BOOLEAN')
@@ -324,13 +461,74 @@ def create_coons_patch_group():
     e3, d3 = get_face_attr("e3"), get_face_attr("d3", 'BOOLEAN')
 
     # Curves
+    # Note: U is 0..1 (Left to Right), V is 0..1 (Bottom to Top)
+    # c_bottom: V=0. Should use Edge 0 (Bottom). Edge 0 starts at Corner 0.
+    # c_top: V=1. Should use Edge 2 (Top). Edge 2 starts at Corner 2.
+    # c_right: U=1. Should use Edge 1 (Right). Edge 1 starts at Corner 1.
+    # c_left: U=0. Should use Edge 3 (Left). Edge 3 starts at Corner 3.
+    
+    # Check orientation logic:
+    # If edge is forward (V0->V1), T=0 is V0, T=1 is V1.
+    # E0 (Bottom): V0 is Corner 0 (u=0, v=0), V1 is Corner 1 (u=1, v=0). 
+    #   So T aligns with U.
+    # E2 (Top): V0 is Corner 2 (u=1, v=1), V1 is Corner 3 (u=0, v=1).
+    #   Wait! Winding order: 0->1->2->3.
+    #   Edge 2 goes from Corner 2 to Corner 3.
+    #   Corner 2 is (1,1). Corner 3 is (0,1).
+    #   So Edge 2 travels from Right to Left (U=1 to U=0).
+    #   So T=0 is Right, T=1 is Left.
+    #   We want c_top(u). 
+    #   If we sample at parameter (1-u):
+    #     At u=0 (Left), param=1 (End of E2 = Corner 3 = Left). Correct.
+    #     At u=1 (Right), param=0 (Start of E2 = Corner 2 = Right). Correct.
+    
+    # E1 (Right): V0 is Corner 1 (u=1, v=0), V1 is Corner 2 (u=1, v=1).
+    #   So T aligns with V (0->1).
+    #   We want c_right(v).
+    #   Sample at v. Correct.
+    
+    # E3 (Left): V0 is Corner 3 (u=0, v=1), V1 is Corner 0 (u=0, v=0).
+    #   Edge 3 travels Top to Bottom (V=1 to V=0).
+    #   So T=0 is Top, T=1 is Bottom.
+    #   We want c_left(v).
+    #   If we sample at parameter (1-v):
+    #     At v=0 (Bottom), param=1 (End of E3 = Corner 0 = Bottom). Correct.
+    #     At v=1 (Top), param=0 (Start of E3 = Corner 3 = Top). Correct.
+    
+    # BUT, "Corners of Face" returns corners in CCW winding order.
+    # 0 -> 1 -> 2 -> 3.
+    # If the face is flipped or winding is different on sides, this breaks.
+    # Sides of a cube: normals point out. Winding is CCW from outside.
+    # 0->1 (Bottom), 1->2 (Right), 2->3 (Top), 3->0 (Left).
+    # This assumption holds for any convex quad face.
+    
     c_bottom = eval_bezier_curve(subdivided_geo, e0, d0, u_raw, group_input.outputs[0])
     c_top    = eval_bezier_curve(subdivided_geo, e2, d2, create_math('SUBTRACT', 1.0, u_raw), group_input.outputs[0])
     c_left   = eval_bezier_curve(subdivided_geo, e3, d3, create_math('SUBTRACT', 1.0, v_raw), group_input.outputs[0])
     c_right  = eval_bezier_curve(subdivided_geo, e1, d1, v_raw, group_input.outputs[0])
     
     # Corners (Bilinear Patch)
-    # Using 0.0 and 1.0 explicitly
+    # P00: u=0, v=0 (Bottom-Left) -> Corner 0. 
+    #   Ideally use Corner 0 position directly.
+    #   Using e0(0) (Start of Edge 0) -> Corner 0. Correct.
+    
+    # P10: u=1, v=0 (Bottom-Right) -> Corner 1.
+    #   Using e0(1) (End of Edge 0) -> Corner 1. Correct.
+    
+    # P11: u=1, v=1 (Top-Right) -> Corner 2.
+    #   Using e2(0) (Start of Edge 2) -> Corner 2.
+    #   Wait, in our logic above (c_top), we established E2 goes R->L (2->3).
+    #   So e2(0) is Corner 2 (Right). Correct.
+    
+    # P01: u=0, v=1 (Top-Left) -> Corner 3.
+    #   Using e2(1) (End of Edge 2) -> Corner 3. Correct.
+    
+    # Previous code:
+    # p00 = eval(e0, 0.0) -> Corner 0. OK.
+    # p10 = eval(e0, 1.0) -> Corner 1. OK.
+    # p01 = eval(e2, 1.0) -> Corner 3. OK. (0,1)
+    # p11 = eval(e2, 0.0) -> Corner 2. OK. (1,1)
+    
     p00 = eval_bezier_curve(subdivided_geo, e0, d0, 0.0, group_input.outputs[0])
     p10 = eval_bezier_curve(subdivided_geo, e0, d0, 1.0, group_input.outputs[0])
     p01 = eval_bezier_curve(subdivided_geo, e2, d2, 1.0, group_input.outputs[0])
@@ -379,8 +577,13 @@ def create_coons_patch_group():
     links.new(subdivided_geo, set_pos.inputs["Geometry"])
     links.new(final_pos, set_pos.inputs["Position"])
     
+    # Weld Vertices (Merge by Distance) to close gaps
+    merge = nodes.new("GeometryNodeMergeByDistance")
+    links.new(set_pos.outputs[0], merge.inputs["Geometry"])
+    merge.inputs["Distance"].default_value = 0.001
+    
     set_smooth = nodes.new("GeometryNodeSetShadeSmooth")
-    links.new(set_pos.outputs[0], set_smooth.inputs[0])
+    links.new(merge.outputs[0], set_smooth.inputs[0])
     set_smooth.inputs["Shade Smooth"].default_value = True
 
     links.new(set_smooth.outputs[0], group_output.inputs[0])
