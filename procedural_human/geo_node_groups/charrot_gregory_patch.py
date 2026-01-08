@@ -118,10 +118,17 @@ def create_charrot_gregory_group():
     N_total = accum_N.outputs["Total"]
     
     # --- 2. STORE DOMAIN POLYGON COORDINATES ON CORNERS ---
-    # Each corner i gets domain position (cos(2πi/N), sin(2πi/N))
+    # Each corner i gets domain position (cos(2πi/N + π/N), sin(2πi/N + π/N))
+    # Rotating by π/N aligns the edges of N=4 (square) to the axes, fixing "cross pattern" artifacts.
     
-    # θ = 2π * sort_idx / N
-    theta = math_op('MULTIPLY', 6.283185307, math_op('DIVIDE', sort_idx, N_total))
+    # angle_step = 2π / N
+    angle_step = math_op('DIVIDE', 6.283185307, N_total)
+    
+    # theta = sort_idx * angle_step + angle_step / 2
+    theta = math_op('ADD', 
+        math_op('MULTIPLY', sort_idx, angle_step),
+        math_op('DIVIDE', angle_step, 2.0)
+    )
     
     # domain_pos = (cos(θ), sin(θ), 0)
     domain_x = math_op('COSINE', theta)
@@ -147,13 +154,26 @@ def create_charrot_gregory_group():
         "Value": face_idx_node.outputs[0]
     })
     links.new(store_domain_pos.outputs[0], store_face_idx.inputs[0])
+
+    # Store original loop start ("first corner") per face.
+    # This is stable for looking up per-face corners later even after subdiv/split,
+    # and avoids using CornersOfFace with face indices from a different geometry.
+    corners_of_face_for_store = nodes.new("GeometryNodeCornersOfFace")
+    links.new(face_idx_node.outputs[0], corners_of_face_for_store.inputs["Face Index"])
+    corners_of_face_for_store.inputs["Sort Index"].default_value = 0
+
+    store_loop_start = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "orig_loop_start", "Domain": "FACE", "Data Type": "INT",
+        "Value": corners_of_face_for_store.outputs["Corner Index"]
+    })
+    links.new(store_face_idx.outputs[0], store_loop_start.inputs[0])
     
     # Store N on face domain
     store_N = create_node("GeometryNodeStoreNamedAttribute", {
         "Name": "poly_N", "Domain": "FACE", "Data Type": "INT",
         "Value": N_total
     })
-    links.new(store_face_idx.outputs[0], store_N.inputs[0])
+    links.new(store_loop_start.outputs[0], store_N.inputs[0])
     
     # --- 4. STORE EDGE INFO ON CORNERS (for sampling from original geo) ---
     edges_of_corner = nodes.new("GeometryNodeEdgesOfCorner")
@@ -210,6 +230,7 @@ def create_charrot_gregory_group():
     
     N_field = get_attr("poly_N", "INT")
     orig_face_idx_field = get_attr("orig_face_idx", "INT")
+    orig_loop_start_field = get_attr("orig_loop_start", "INT")
     
     # --- 7. REPEAT ZONE 1: Compute LogSum of all λ ---
     stat_N = create_node("GeometryNodeAttributeStatistic", {
@@ -241,14 +262,26 @@ def create_charrot_gregory_group():
         Compute perpendicular distance from domain point to edge idx_node.
         Edge i goes from vertex i to vertex i+1 of the regular N-gon.
         """
-        # Vertex i at angle 2πi/N
-        theta_i = math_op('MULTIPLY', 6.283185307, math_op('DIVIDE', idx_node, N_field))
+        # Match the same domain rotation used for domain_pos: + (π/N) == + (angle_step/2)
+        angle_step_local = math_op('DIVIDE', 6.283185307, N_field)
+        angle_offset = math_op('DIVIDE', angle_step_local, 2.0)
+
+        # Vertex i at angle (2πi/N + π/N)
+        theta_i = math_op(
+            'ADD',
+            math_op('MULTIPLY', idx_node, angle_step_local),
+            angle_offset,
+        )
         v_i_x = math_op('COSINE', theta_i)
         v_i_y = math_op('SINE', theta_i)
         
         # Vertex i+1
         idx_next = math_op('ADD', idx_node, 1)
-        theta_next = math_op('MULTIPLY', 6.283185307, math_op('DIVIDE', idx_next, N_field))
+        theta_next = math_op(
+            'ADD',
+            math_op('MULTIPLY', idx_next, angle_step_local),
+            angle_offset,
+        )
         v_next_x = math_op('COSINE', theta_next)
         v_next_y = math_op('SINE', theta_next)
         
@@ -323,26 +356,28 @@ def create_charrot_gregory_group():
     # λ_{i+1} (distance to edge i+1, which is AFTER vertex i+1)
     idx_next = math_op('MODULO', math_op('ADD', l2_iter, 1), N_field)
     lam_next = calc_lambda(idx_next)
+    # λ_{i-2} (distance to edge i-2, needed for s_{i-1})
+    idx_prev_prev = math_op('MODULO', math_op('ADD', math_op('SUBTRACT', l2_iter, 2), N_field), N_field)
+    lam_prev_prev = calc_lambda(idx_prev_prev)
     
     # Weight Λ_i = Π{λ_j : j ≠ i-1 AND j ≠ i} = exp(logsum - log(λ_i) - log(λ_{i-1}))
     log_local = math_op('ADD', math_op('LOGARITHM', lam_curr), math_op('LOGARITHM', lam_prev))
     weight_i = math_op('EXPONENT', math_op('SUBTRACT', total_log_sum, log_local))
     
     # Sampling weight s_i varies along edge i using adjacent edges
+    # s_i = d_{i-1} / (d_{i-1} + d_{i+1})
     s_val = math_op('DIVIDE', lam_prev, math_op('ADD', lam_prev, lam_next))
+
+    # Sampling weight s_{i-1} varies along edge i-1
+    # s_{i-1} = d_{i-2} / (d_{i-2} + d_i)
+    s_prev = math_op('DIVIDE', lam_prev_prev, math_op('ADD', lam_prev_prev, lam_curr))
     
-    # --- CRITICAL FIX: Get corner info from ORIGINAL geometry using CornersOfFace ---
-    # Use orig_face_idx to look up corners in the original geometry
-    
-    def get_corner_of_orig_face(sort_index_val):
-        """Get the corner index in original geometry for given sort index."""
-        cof = nodes.new("GeometryNodeCornersOfFace")
-        links.new(orig_face_idx_field, cof.inputs["Face Index"])
-        links.new(sort_index_val, cof.inputs["Sort Index"])
-        return cof.outputs["Corner Index"]
-    
-    corner_i = get_corner_of_orig_face(l2_iter)
-    corner_prev = get_corner_of_orig_face(idx_prev)
+    # --- Stable per-face corner addressing ---
+    # Do NOT use CornersOfFace here: it operates on the current (subdivided) geometry.
+    # Instead, we stored each original face's loop start (first corner index) as an attribute.
+    # Corners for a face are contiguous in the corner/loop array: corner = loop_start + sort_index.
+    corner_i = math_op('ADD', orig_loop_start_field, l2_iter)
+    corner_prev = math_op('ADD', orig_loop_start_field, idx_prev)
     
     def sample_from_orig_corner(attr_name, dtype, corner_idx_val):
         """Sample an attribute from the original geometry at a specific corner."""
@@ -459,12 +494,14 @@ def create_charrot_gregory_group():
     
     # c_i(s_i): point on curve i (edge leaving vertex i)
     c_i_pos = eval_bezier(edge_idx_i, is_fwd_i, s_val)
-    # c_{i-1}(1 - s_i): point on curve i-1 (edge arriving at vertex i)
-    c_prev_pos = eval_bezier(edge_idx_prev, is_fwd_prev, math_op('SUBTRACT', 1.0, s_val))
+    # c_{i-1}(s_{i-1}): point on curve i-1 (edge arriving at vertex i)
+    # We use s_{i-1} directly because it parameterizes edge i-1 from vertex i-1 to i.
+    # So at vertex i (this corner), s_{i-1} -> 1.
+    c_prev_pos = eval_bezier(edge_idx_prev, is_fwd_prev, s_prev)
     # p_i: corner vertex (curve i at t=0)
     p_corner = eval_bezier(edge_idx_i, is_fwd_i, 0.0)
     
-    # r_i = c_i(1-s_i) + c_{i-1}(s_i) - p_i
+    # r_i = c_i(s_i) + c_{i-1}(s_{i-1}) - p_i
     r_i = vec_math_op('SUBTRACT', vec_math_op('ADD', c_i_pos, c_prev_pos), p_corner)
     
     # Accumulate w_i * r_i
