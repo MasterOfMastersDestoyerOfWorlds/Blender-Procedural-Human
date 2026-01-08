@@ -320,13 +320,16 @@ def create_charrot_gregory_group():
     # λ_{i-1} (distance to edge i-1, which is BEFORE vertex i)
     idx_prev = math_op('MODULO', math_op('ADD', math_op('SUBTRACT', l2_iter, 1), N_field), N_field)
     lam_prev = calc_lambda(idx_prev)
+    # λ_{i+1} (distance to edge i+1, which is AFTER vertex i+1)
+    idx_next = math_op('MODULO', math_op('ADD', l2_iter, 1), N_field)
+    lam_next = calc_lambda(idx_next)
     
     # Weight Λ_i = Π{λ_j : j ≠ i-1 AND j ≠ i} = exp(logsum - log(λ_i) - log(λ_{i-1}))
     log_local = math_op('ADD', math_op('LOGARITHM', lam_curr), math_op('LOGARITHM', lam_prev))
     weight_i = math_op('EXPONENT', math_op('SUBTRACT', total_log_sum, log_local))
     
-    # Sampling weight s_i = λ_i / (λ_i + λ_{i-1})
-    s_val = math_op('DIVIDE', lam_curr, math_op('ADD', lam_curr, lam_prev))
+    # Sampling weight s_i varies along edge i using adjacent edges
+    s_val = math_op('DIVIDE', lam_prev, math_op('ADD', lam_prev, lam_next))
     
     # --- CRITICAL FIX: Get corner info from ORIGINAL geometry using CornersOfFace ---
     # Use orig_face_idx to look up corners in the original geometry
@@ -454,10 +457,10 @@ def create_charrot_gregory_group():
         t4 = vec_math_op('SCALE', P3, c3)
         return vec_math_op('ADD', vec_math_op('ADD', t1, t2), vec_math_op('ADD', t3, t4))
     
-    # c_i(1 - s_i): point on curve i (edge leaving vertex i)
-    c_i_pos = eval_bezier(edge_idx_i, is_fwd_i, math_op('SUBTRACT', 1.0, s_val))
-    # c_{i-1}(s_i): point on curve i-1 (edge arriving at vertex i)
-    c_prev_pos = eval_bezier(edge_idx_prev, is_fwd_prev, s_val)
+    # c_i(s_i): point on curve i (edge leaving vertex i)
+    c_i_pos = eval_bezier(edge_idx_i, is_fwd_i, s_val)
+    # c_{i-1}(1 - s_i): point on curve i-1 (edge arriving at vertex i)
+    c_prev_pos = eval_bezier(edge_idx_prev, is_fwd_prev, math_op('SUBTRACT', 1.0, s_val))
     # p_i: corner vertex (curve i at t=0)
     p_corner = eval_bezier(edge_idx_i, is_fwd_i, 0.0)
     
