@@ -231,13 +231,134 @@ def create_charrot_gregory_group():
     N_field = get_attr("poly_N", "INT")
     orig_face_idx_field = get_attr("orig_face_idx", "INT")
     orig_loop_start_field = get_attr("orig_loop_start", "INT")
-    
-    # --- 7. REPEAT ZONE 1: Compute LogSum of all λ ---
+
+    # --- 6.0 Determine max N across patches (repeat iterations) ---
     stat_N = create_node("GeometryNodeAttributeStatistic", {
         "Geometry": subdivided_geo, "Domain": "POINT", "Attribute": N_field
     })
     max_N = stat_N.outputs["Max"]
+
+    # --- 6.1 Build a stable per-face orientation frame (for auto rotate/flip) ---
+    # We evaluate the FACE normal and derive a consistent (u_dir, v_dir) tangent basis
+    # using a world-axis reference (X unless parallel, then Y).
+    face_normal = nodes.new("GeometryNodeFieldOnDomain")
+    face_normal.domain = "FACE"
+    face_normal.data_type = "FLOAT_VECTOR"
+    links.new(nodes.new("GeometryNodeInputNormal").outputs[0], face_normal.inputs[0])
+
+    world_x = nodes.new("ShaderNodeCombineXYZ")
+    world_x.inputs["X"].default_value = 1.0
+    world_y = nodes.new("ShaderNodeCombineXYZ")
+    world_y.inputs["Y"].default_value = 1.0
+
+    dot_x_n = vec_math_op("DOT_PRODUCT", world_x.outputs[0], face_normal.outputs[0])
+    proj_x = vec_math_op("SUBTRACT", world_x.outputs[0], vec_math_op("SCALE", face_normal.outputs[0], dot_x_n))
+    proj_x_len = vec_math_op("LENGTH", proj_x)
+
+    use_y = math_op("LESS_THAN", proj_x_len, 0.00001)
+    ref_axis = nodes.new("ShaderNodeMix")
+    ref_axis.data_type = "VECTOR"
+    links.new(use_y, ref_axis.inputs["Factor"])
+    links.new(world_x.outputs[0], ref_axis.inputs["A"])
+    links.new(world_y.outputs[0], ref_axis.inputs["B"])
+
+    dot_ref_n = vec_math_op("DOT_PRODUCT", ref_axis.outputs["Result"], face_normal.outputs[0])
+    proj_ref = vec_math_op("SUBTRACT", ref_axis.outputs["Result"], vec_math_op("SCALE", face_normal.outputs[0], dot_ref_n))
+    u_dir = vec_math_op("NORMALIZE", proj_ref)
+    v_dir = vec_math_op("CROSS_PRODUCT", face_normal.outputs[0], u_dir)
+
+    def corner_position_from_orig_corner_index(orig_corner_idx_field):
+        """Get 3D position of a CORNER by sampling its vertex position from orig_geo."""
+        voc = nodes.new("GeometryNodeVertexOfCorner")
+        links.new(orig_corner_idx_field, voc.inputs["Corner Index"])
+
+        s_pos = create_node("GeometryNodeSampleIndex", {
+            "Geometry": orig_geo, "Domain": "POINT", "Data Type": "FLOAT_VECTOR",
+            "Index": voc.outputs["Vertex Index"]
+        })
+        links.new(nodes.new("GeometryNodeInputPosition").outputs[0], s_pos.inputs["Value"])
+        return s_pos.outputs[0]
+
+    # --- 6.2 Repeat Zone (per point): find "bottom-left" corner index to rotate mapping ---
+    # We choose the corner with minimal key = dot(pos,u_dir)*1e4 + dot(pos,v_dir)
+    rep_o_in = nodes.new("GeometryNodeRepeatInput")
+    rep_o_out = nodes.new("GeometryNodeRepeatOutput")
+    rep_o_in.pair_with_output(rep_o_out)
+
+    rep_o_out.repeat_items.new("GEOMETRY", "Geometry")
+    rep_o_out.repeat_items.new("FLOAT", "MinKey")
+    rep_o_out.repeat_items.new("INT", "BestIdx")
+    rep_o_out.repeat_items.new("INT", "IterIdx")
+
+    links.new(subdivided_geo, rep_o_in.inputs["Geometry"])
+    links.new(max_N, rep_o_in.inputs["Iterations"])
+    rep_o_in.inputs["MinKey"].default_value = 1.0e20
+    rep_o_in.inputs["BestIdx"].default_value = 0
+    rep_o_in.inputs["IterIdx"].default_value = 0
+
+    o_geo = rep_o_in.outputs["Geometry"]
+    o_min_key = rep_o_in.outputs["MinKey"]
+    o_best_idx = rep_o_in.outputs["BestIdx"]
+    o_iter = rep_o_in.outputs["IterIdx"]
+
+    o_valid = math_op("LESS_THAN", o_iter, N_field)
+    o_corner_idx = math_op("ADD", orig_loop_start_field, o_iter)
+    o_corner_pos = corner_position_from_orig_corner_index(o_corner_idx)
+
+    o_u = vec_math_op("DOT_PRODUCT", o_corner_pos, u_dir)
+    o_v = vec_math_op("DOT_PRODUCT", o_corner_pos, v_dir)
+    o_key = math_op("ADD", math_op("MULTIPLY", o_u, 10000.0), o_v)
+
+    o_better = nodes.new("FunctionNodeCompare")
+    o_better.data_type = "FLOAT"
+    o_better.operation = "LESS_THAN"
+    links.new(o_key, o_better.inputs["A"])
+    links.new(o_min_key, o_better.inputs["B"])
+
+    o_take_and = nodes.new("FunctionNodeBooleanMath")
+    o_take_and.operation = "AND"
+    links.new(o_valid, o_take_and.inputs[0])
+    links.new(o_better.outputs["Result"], o_take_and.inputs[1])
+    o_take = o_take_and.outputs["Boolean"]
+
+    o_min_mix = nodes.new("ShaderNodeMix")
+    o_min_mix.data_type = "FLOAT"
+    links.new(o_take, o_min_mix.inputs["Factor"])
+    links.new(o_min_key, o_min_mix.inputs["A"])
+    links.new(o_key, o_min_mix.inputs["B"])
+
+    o_best_switch = nodes.new("GeometryNodeSwitch")
+    o_best_switch.input_type = "INT"
+    links.new(o_take, o_best_switch.inputs["Switch"])
+    links.new(o_best_idx, o_best_switch.inputs["False"])
+    links.new(o_iter, o_best_switch.inputs["True"])
+
+    o_next_iter = math_op("ADD", o_iter, 1)
+
+    links.new(o_geo, rep_o_out.inputs["Geometry"])
+    links.new(o_min_mix.outputs["Result"], rep_o_out.inputs["MinKey"])
+    links.new(o_best_switch.outputs["Output"], rep_o_out.inputs["BestIdx"])
+    links.new(o_next_iter, rep_o_out.inputs["IterIdx"])
+
+    corner_shift = rep_o_out.outputs["BestIdx"]
+
+    # Determine if we must flip winding to match the face normal in the (u_dir, v_dir) frame.
+    idx1_o = math_op("MODULO", math_op("ADD", corner_shift, 1), N_field)
+    idx_prev_o = math_op("MODULO", math_op("ADD", math_op("SUBTRACT", corner_shift, 1), N_field), N_field)
+    p0_o = corner_position_from_orig_corner_index(math_op("ADD", orig_loop_start_field, corner_shift))
+    p1_o = corner_position_from_orig_corner_index(math_op("ADD", orig_loop_start_field, idx1_o))
+    pprev_o = corner_position_from_orig_corner_index(math_op("ADD", orig_loop_start_field, idx_prev_o))
+    e_next = vec_math_op("SUBTRACT", p1_o, p0_o)
+    e_prev = vec_math_op("SUBTRACT", p0_o, pprev_o)
+    orient_dot = vec_math_op("DOT_PRODUCT", vec_math_op("CROSS_PRODUCT", e_next, e_prev), face_normal.outputs[0])
+    need_flip_cmp = nodes.new("FunctionNodeCompare")
+    need_flip_cmp.data_type = "FLOAT"
+    need_flip_cmp.operation = "LESS_THAN"
+    links.new(orient_dot, need_flip_cmp.inputs["A"])
+    need_flip_cmp.inputs["B"].default_value = 0.0
+    need_flip = need_flip_cmp.outputs["Result"]
     
+    # --- 7. REPEAT ZONE 1: Compute LogSum of all λ ---
     rep_1_in = nodes.new("GeometryNodeRepeatInput")
     rep_1_out = nodes.new("GeometryNodeRepeatOutput")
     rep_1_in.pair_with_output(rep_1_out)
@@ -306,7 +427,45 @@ def create_charrot_gregory_group():
         # Perpendicular distance = |cross| / |edge|
         perp_dist = math_op('DIVIDE', math_op('ABSOLUTE', cross_2d), edge_len)
         
-        return math_op('MAXIMUM', perp_dist, 0.0001)
+        return math_op('MAXIMUM', perp_dist, 0.00000001)
+
+    def calc_lambda_raw(idx_node):
+        """Same as calc_lambda, but without epsilon clamp (used to snap boundary points)."""
+        angle_step_local = math_op('DIVIDE', 6.283185307, N_field)
+        angle_offset = math_op('DIVIDE', angle_step_local, 2.0)
+
+        theta_i = math_op(
+            'ADD',
+            math_op('MULTIPLY', idx_node, angle_step_local),
+            angle_offset,
+        )
+        v_i_x = math_op('COSINE', theta_i)
+        v_i_y = math_op('SINE', theta_i)
+
+        idx_next = math_op('ADD', idx_node, 1)
+        theta_next = math_op(
+            'ADD',
+            math_op('MULTIPLY', idx_next, angle_step_local),
+            angle_offset,
+        )
+        v_next_x = math_op('COSINE', theta_next)
+        v_next_y = math_op('SINE', theta_next)
+
+        edge_x = math_op('SUBTRACT', v_next_x, v_i_x)
+        edge_y = math_op('SUBTRACT', v_next_y, v_i_y)
+        edge_len = math_op('SQRT', math_op('ADD',
+            math_op('MULTIPLY', edge_x, edge_x),
+            math_op('MULTIPLY', edge_y, edge_y)
+        ))
+
+        pv_x = math_op('SUBTRACT', domain_p_x, v_i_x)
+        pv_y = math_op('SUBTRACT', domain_p_y, v_i_y)
+
+        cross_2d = math_op('SUBTRACT',
+            math_op('MULTIPLY', pv_x, edge_y),
+            math_op('MULTIPLY', pv_y, edge_x)
+        )
+        return math_op('DIVIDE', math_op('ABSOLUTE', cross_2d), edge_len)
     
     lam_val = calc_lambda(loop_iter)
     new_log_sum = math_op('ADD', loop_log, math_op('LOGARITHM', lam_val))
@@ -333,20 +492,36 @@ def create_charrot_gregory_group():
     rep_2_out.repeat_items.new("GEOMETRY", "Geometry")
     rep_2_out.repeat_items.new("VECTOR", "WeightedPos")
     rep_2_out.repeat_items.new("FLOAT", "TotalWeight")
+    rep_2_out.repeat_items.new("VECTOR", "BoundaryPos")
+    rep_2_out.repeat_items.new("BOOLEAN", "BoundaryFound")
     rep_2_out.repeat_items.new("INT", "IterIdx")
     
     links.new(rep_1_out.outputs["Geometry"], rep_2_in.inputs["Geometry"])
     links.new(max_N, rep_2_in.inputs["Iterations"])
     rep_2_in.inputs["WeightedPos"].default_value = (0, 0, 0)
     rep_2_in.inputs["TotalWeight"].default_value = 0.0
+    rep_2_in.inputs["BoundaryPos"].default_value = (0, 0, 0)
+    rep_2_in.inputs["BoundaryFound"].default_value = False
     rep_2_in.inputs["IterIdx"].default_value = 0
     
     l2_geo = rep_2_in.outputs["Geometry"]
     l2_wpos = rep_2_in.outputs["WeightedPos"]
     l2_wgt = rep_2_in.outputs["TotalWeight"]
+    l2_bpos = rep_2_in.outputs["BoundaryPos"]
+    l2_bfound = rep_2_in.outputs["BoundaryFound"]
     l2_iter = rep_2_in.outputs["IterIdx"]
     
     valid_2 = math_op('LESS_THAN', l2_iter, N_field)
+
+    # Map domain index -> original corner index via per-face rotate/flip (corner_shift, need_flip)
+    mapped_add = math_op('MODULO', math_op('ADD', corner_shift, l2_iter), N_field)
+    mapped_sub = math_op('MODULO', math_op('ADD', math_op('SUBTRACT', corner_shift, l2_iter), N_field), N_field)
+    mapped_i_switch = nodes.new("GeometryNodeSwitch")
+    mapped_i_switch.input_type = "INT"
+    links.new(need_flip, mapped_i_switch.inputs["Switch"])
+    links.new(mapped_add, mapped_i_switch.inputs["False"])
+    links.new(mapped_sub, mapped_i_switch.inputs["True"])
+    mapped_i = mapped_i_switch.outputs["Output"]
     
     # λ_i (distance to edge i, which is AFTER vertex i)
     lam_curr = calc_lambda(l2_iter)
@@ -376,8 +551,17 @@ def create_charrot_gregory_group():
     # Do NOT use CornersOfFace here: it operates on the current (subdivided) geometry.
     # Instead, we stored each original face's loop start (first corner index) as an attribute.
     # Corners for a face are contiguous in the corner/loop array: corner = loop_start + sort_index.
-    corner_i = math_op('ADD', orig_loop_start_field, l2_iter)
-    corner_prev = math_op('ADD', orig_loop_start_field, idx_prev)
+    mapped_prev_add = math_op('MODULO', math_op('ADD', corner_shift, idx_prev), N_field)
+    mapped_prev_sub = math_op('MODULO', math_op('ADD', math_op('SUBTRACT', corner_shift, idx_prev), N_field), N_field)
+    mapped_prev_switch = nodes.new("GeometryNodeSwitch")
+    mapped_prev_switch.input_type = "INT"
+    links.new(need_flip, mapped_prev_switch.inputs["Switch"])
+    links.new(mapped_prev_add, mapped_prev_switch.inputs["False"])
+    links.new(mapped_prev_sub, mapped_prev_switch.inputs["True"])
+    mapped_prev = mapped_prev_switch.outputs["Output"]
+
+    corner_i = math_op('ADD', orig_loop_start_field, mapped_i)
+    corner_prev = math_op('ADD', orig_loop_start_field, mapped_prev)
     
     def sample_from_orig_corner(attr_name, dtype, corner_idx_val):
         """Sample an attribute from the original geometry at a specific corner."""
@@ -491,6 +675,64 @@ def create_charrot_gregory_group():
         t3 = vec_math_op('SCALE', P2, c2)
         t4 = vec_math_op('SCALE', P3, c3)
         return vec_math_op('ADD', vec_math_op('ADD', t1, t2), vec_math_op('ADD', t3, t4))
+
+    # --- Boundary snap: if point lies on domain edge i, force it onto curve i ---
+    # NOTE: Must be after eval_bezier is defined (python function).
+    lam_raw = calc_lambda_raw(l2_iter)
+    on_edge_cmp = nodes.new("FunctionNodeCompare")
+    on_edge_cmp.data_type = "FLOAT"
+    on_edge_cmp.operation = "LESS_THAN"
+    links.new(lam_raw, on_edge_cmp.inputs["A"])
+    on_edge_cmp.inputs["B"].default_value = 0.000001
+    on_edge = on_edge_cmp.outputs["Result"]
+
+    not_found = nodes.new("FunctionNodeBooleanMath")
+    not_found.operation = "NOT"
+    links.new(l2_bfound, not_found.inputs[0])
+
+    take_edge_and1 = nodes.new("FunctionNodeBooleanMath")
+    take_edge_and1.operation = "AND"
+    links.new(valid_2, take_edge_and1.inputs[0])
+    links.new(on_edge, take_edge_and1.inputs[1])
+
+    take_edge_and2 = nodes.new("FunctionNodeBooleanMath")
+    take_edge_and2.operation = "AND"
+    links.new(take_edge_and1.outputs["Boolean"], take_edge_and2.inputs[0])
+    links.new(not_found.outputs["Boolean"], take_edge_and2.inputs[1])
+    take_edge = take_edge_and2.outputs["Boolean"]
+
+    # Compute parameter t along domain edge i by projection onto the regular polygon edge segment.
+    angle_step_local2 = math_op('DIVIDE', 6.283185307, N_field)
+    angle_offset2 = math_op('DIVIDE', angle_step_local2, 2.0)
+    theta_i2 = math_op('ADD', math_op('MULTIPLY', l2_iter, angle_step_local2), angle_offset2)
+    vx0 = math_op('COSINE', theta_i2)
+    vy0 = math_op('SINE', theta_i2)
+    i2_next = math_op('ADD', l2_iter, 1)
+    theta_i2n = math_op('ADD', math_op('MULTIPLY', i2_next, angle_step_local2), angle_offset2)
+    vx1 = math_op('COSINE', theta_i2n)
+    vy1 = math_op('SINE', theta_i2n)
+    ex = math_op('SUBTRACT', vx1, vx0)
+    ey = math_op('SUBTRACT', vy1, vy0)
+    px = math_op('SUBTRACT', domain_p_x, vx0)
+    py = math_op('SUBTRACT', domain_p_y, vy0)
+    dot_pe = math_op('ADD', math_op('MULTIPLY', px, ex), math_op('MULTIPLY', py, ey))
+    dot_ee = math_op('ADD', math_op('MULTIPLY', ex, ex), math_op('MULTIPLY', ey, ey))
+    t_edge = math_op('DIVIDE', dot_pe, dot_ee)
+    t_edge_clamped = math_op('MINIMUM', 1.0, math_op('MAXIMUM', 0.0, t_edge))
+
+    edge_pos = eval_bezier(edge_idx_i, is_fwd_i, t_edge_clamped)
+
+    bpos_switch = nodes.new("GeometryNodeSwitch")
+    bpos_switch.input_type = "VECTOR"
+    links.new(take_edge, bpos_switch.inputs["Switch"])
+    links.new(l2_bpos, bpos_switch.inputs["False"])
+    links.new(edge_pos, bpos_switch.inputs["True"])
+
+    bfound_or = nodes.new("FunctionNodeBooleanMath")
+    bfound_or.operation = "OR"
+    links.new(l2_bfound, bfound_or.inputs[0])
+    links.new(take_edge, bfound_or.inputs[1])
+    bfound_new = bfound_or.outputs["Boolean"]
     
     # c_i(s_i): point on curve i (edge leaving vertex i)
     c_i_pos = eval_bezier(edge_idx_i, is_fwd_i, s_val)
@@ -527,12 +769,21 @@ def create_charrot_gregory_group():
     links.new(l2_geo, rep_2_out.inputs["Geometry"])
     links.new(final_wpos_mix.outputs["Result"], rep_2_out.inputs["WeightedPos"])
     links.new(final_wgt_mix.outputs["Result"], rep_2_out.inputs["TotalWeight"])
+    links.new(bpos_switch.outputs["Output"], rep_2_out.inputs["BoundaryPos"])
+    links.new(bfound_new, rep_2_out.inputs["BoundaryFound"])
     links.new(next_iter2, rep_2_out.inputs["IterIdx"])
     
     # --- 9. FINAL OUTPUT ---
     # Q = Σ(w_i * r_i) / Σ(w_i)
-    final_pos = vec_math_op('SCALE', rep_2_out.outputs["WeightedPos"],
-                           math_op('DIVIDE', 1.0, rep_2_out.outputs["TotalWeight"]))
+    final_pos_raw = vec_math_op('SCALE', rep_2_out.outputs["WeightedPos"],
+                               math_op('DIVIDE', 1.0, rep_2_out.outputs["TotalWeight"]))
+
+    final_pos_switch = nodes.new("GeometryNodeSwitch")
+    final_pos_switch.input_type = "VECTOR"
+    links.new(rep_2_out.outputs["BoundaryFound"], final_pos_switch.inputs["Switch"])
+    links.new(final_pos_raw, final_pos_switch.inputs["False"])
+    links.new(rep_2_out.outputs["BoundaryPos"], final_pos_switch.inputs["True"])
+    final_pos = final_pos_switch.outputs["Output"]
     
     set_pos = nodes.new("GeometryNodeSetPosition")
     links.new(rep_2_out.outputs["Geometry"], set_pos.inputs["Geometry"])
