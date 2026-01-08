@@ -520,20 +520,26 @@ def create_charrot_gregory_group():
     sumW = repB_out.outputs["SumW"]
 
     # --- 11. Repeat Zone C: Accumulate surface S = Σ R_i(s_i,d_i) * B_i(d_i) ---
+    # IMPORTANT: We also accumulate SumB = Σ B_i(d_i) and normalize S/SumB.
+    # Without this, vertices can double-count (e.g. a quad corner contributing from 2 ribbons),
+    # which matches the user-observed exact 2x scaling at cube corners.
     repC_in = nodes.new("GeometryNodeRepeatInput")
     repC_out = nodes.new("GeometryNodeRepeatOutput")
     repC_in.pair_with_output(repC_out)
     repC_out.repeat_items.new("GEOMETRY", "Geometry")
     repC_out.repeat_items.new("VECTOR", "SumS")
+    repC_out.repeat_items.new("FLOAT", "SumB")
     repC_out.repeat_items.new("INT", "IterIdx")
 
     links.new(repB_out.outputs["Geometry"], repC_in.inputs["Geometry"])
     links.new(max_N, repC_in.inputs["Iterations"])
     repC_in.inputs["SumS"].default_value = (0, 0, 0)
+    repC_in.inputs["SumB"].default_value = 0.0
     repC_in.inputs["IterIdx"].default_value = 0
 
     C_geo = repC_in.outputs["Geometry"]
     C_sumS = repC_in.outputs["SumS"]
+    C_sumB = repC_in.outputs["SumB"]
     C_i = repC_in.outputs["IterIdx"]
     C_valid = compare_int_less(C_i, N_field)
 
@@ -624,10 +630,11 @@ def create_charrot_gregory_group():
                       vec_math_op("ADD", vec_math_op("ADD", termA, termB), vec_math_op("ADD", termC, termD)),
                       bilinear)
 
-    # Blend B_i(d_i) = 1 - d_i^2
-    Bi = math_op("SUBTRACT", 1.0, math_op("POWER", d_i, 2.0))
+    # Blend B_i(d_i) = (1 - d_i)^2  (matches `multisided_coon.md` / Salvi 2020)
+    Bi = math_op("POWER", math_op("SUBTRACT", 1.0, d_i), 2.0)
     contrib = vec_math_op("SCALE", R_i, Bi)
     S_new = vec_math_op("ADD", C_sumS, contrib)
+    B_new = math_op("ADD", C_sumB, Bi)
 
     S_mix = nodes.new("GeometryNodeSwitch")
     S_mix.input_type = "VECTOR"
@@ -635,11 +642,21 @@ def create_charrot_gregory_group():
     links.new(C_sumS, S_mix.inputs["False"])
     links.new(S_new, S_mix.inputs["True"])
 
+    B_mix = nodes.new("GeometryNodeSwitch")
+    B_mix.input_type = "FLOAT"
+    links.new(C_valid, B_mix.inputs["Switch"])
+    links.new(C_sumB, B_mix.inputs["False"])
+    links.new(B_new, B_mix.inputs["True"])
+
     links.new(C_geo, repC_out.inputs["Geometry"])
     links.new(S_mix.outputs["Output"], repC_out.inputs["SumS"])
+    links.new(B_mix.outputs["Output"], repC_out.inputs["SumB"])
     links.new(int_op("ADD", C_i, 1), repC_out.inputs["IterIdx"])
 
-    final_pos = repC_out.outputs["SumS"]
+    sumS = repC_out.outputs["SumS"]
+    sumB = repC_out.outputs["SumB"]
+    inv_sumB = math_op("DIVIDE", 1.0, math_op("MAXIMUM", sumB, 1.0e-8))
+    final_pos = vec_math_op("SCALE", sumS, inv_sumB)
     
     set_pos = nodes.new("GeometryNodeSetPosition")
     links.new(repC_out.outputs["Geometry"], set_pos.inputs["Geometry"])
