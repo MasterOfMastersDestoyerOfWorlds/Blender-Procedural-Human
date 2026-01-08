@@ -182,17 +182,15 @@ def create_charrot_gregory_group():
     })
     N_total = accum_N.outputs["Total"]
     
-    # --- 2. STORE DOMAIN POLYGON COORDINATES ON CORNERS ---
-    # Each corner i gets domain position (cos(2πi/N + π/N), sin(2πi/N + π/N))
-    # Rotating by π/N aligns the edges of N=4 (square) to the axes, fixing "cross pattern" artifacts.
-    
+# --- 2. STORE DOMAIN POLYGON COORDINATES ON CORNERS ---
     # angle_step = 2π / N
     angle_step = math_op('DIVIDE', 6.283185307, N_total)
     
-    # theta = sort_idx * angle_step + angle_step / 2
+    # FIX: Add PI to start at 225 degrees (Bottom-Left)
+    # theta = sort_idx * angle_step + angle_step / 2 + pi
     theta = math_op('ADD', 
         math_op('MULTIPLY', sort_idx, angle_step),
-        math_op('DIVIDE', angle_step, 2.0)
+        math_op('ADD', math_op('DIVIDE', angle_step, 2.0), 3.14159265)
     )
     
     # domain_pos = (cos(θ), sin(θ), 0)
@@ -239,15 +237,14 @@ def create_charrot_gregory_group():
         "Value": N_total
     })
     links.new(store_loop_start.outputs[0], store_N.inputs[0])
-    
-    # --- 4. STORE EDGE INFO ON CORNERS (for sampling from original geo) ---
+    # --- 4. STORE EDGE INFO ON CORNERS ---
     edges_of_corner = nodes.new("GeometryNodeEdgesOfCorner")
     links.new(corner_idx, edges_of_corner.inputs["Corner Index"])
     
     store_edge_idx = create_node("GeometryNodeStoreNamedAttribute", {
         "Name": "corner_edge_idx", "Domain": "CORNER", "Data Type": "INT",
-        # Use incoming edge for this corner (matches paper's C_i at corner i).
-        "Value": edges_of_corner.outputs["Previous Edge Index"]
+        # FIX: Use Next Edge Index (Outgoing)
+        "Value": edges_of_corner.outputs["Next Edge Index"]
     })
     links.new(store_N.outputs[0], store_edge_idx.inputs[0])
     
@@ -257,13 +254,13 @@ def create_charrot_gregory_group():
     
     edge_verts = nodes.new("GeometryNodeInputMeshEdgeVertices")
     
-    # Sample edge's SECOND vertex at the edge index (we want P3 at the corner)
+    # FIX: Sample Vertex Index 1 (Start of edge)
     sample_edge_v1 = create_node("GeometryNodeSampleIndex", {
         "Geometry": store_edge_idx.outputs[0],
         "Domain": "EDGE", "Data Type": "INT",
-        "Index": edges_of_corner.outputs["Previous Edge Index"]
+        "Index": edges_of_corner.outputs["Next Edge Index"]
     })
-    links.new(edge_verts.outputs["Vertex Index 2"], sample_edge_v1.inputs["Value"])
+    links.new(edge_verts.outputs["Vertex Index 1"], sample_edge_v1.inputs["Value"])
     
     is_fwd_cmp = create_node("FunctionNodeCompare", {"Data Type": "INT", "Operation": "EQUAL"})
     links.new(vertex_of_corner.outputs["Vertex Index"], is_fwd_cmp.inputs["A"])
@@ -313,110 +310,26 @@ def create_charrot_gregory_group():
     })
     max_N = stat_N.outputs["Max"]
 
-    # --- 6.1 Canonical per-face corner mapping (rotate + optional flip) ---
-    # Without this, for n>4 it's common that the domain's side i maps to the wrong mesh edge
-    # (left/right swapped, etc.) because Blender's corner ordering varies per face.
-    face_normal = nodes.new("GeometryNodeFieldOnDomain")
-    face_normal.domain = "FACE"
-    face_normal.data_type = "FLOAT_VECTOR"
-    links.new(nodes.new("GeometryNodeInputNormal").outputs[0], face_normal.inputs[0])
-
-    world_x = nodes.new("ShaderNodeCombineXYZ")
-    world_x.inputs["X"].default_value = 1.0
-    world_y = nodes.new("ShaderNodeCombineXYZ")
-    world_y.inputs["Y"].default_value = 1.0
-
-    dot_x_n = vec_math_op("DOT_PRODUCT", world_x.outputs[0], face_normal.outputs[0])
-    proj_x = vec_math_op("SUBTRACT", world_x.outputs[0], vec_math_op("SCALE", face_normal.outputs[0], dot_x_n))
-    proj_x_len = vec_math_op("LENGTH", proj_x)
-
-    use_y = compare_float_less(proj_x_len, 1.0e-6)
-    ref_axis_mix = nodes.new("ShaderNodeMix")
-    ref_axis_mix.data_type = "VECTOR"
-    links.new(use_y, ref_axis_mix.inputs["Factor"])
-    links.new(world_x.outputs[0], ref_axis_mix.inputs["A"])
-    links.new(world_y.outputs[0], ref_axis_mix.inputs["B"])
-    ref_axis = ref_axis_mix.outputs["Result"]
-
-    dot_ref_n = vec_math_op("DOT_PRODUCT", ref_axis, face_normal.outputs[0])
-    proj_ref = vec_math_op("SUBTRACT", ref_axis, vec_math_op("SCALE", face_normal.outputs[0], dot_ref_n))
-    u_dir = vec_math_op("NORMALIZE", proj_ref)
-    v_dir = vec_math_op("CROSS_PRODUCT", face_normal.outputs[0], u_dir)
-
-    def corner_position_from_orig_corner_index(orig_corner_idx_field):
-        voc = nodes.new("GeometryNodeVertexOfCorner")
-        links.new(orig_corner_idx_field, voc.inputs["Corner Index"])
-        s_pos = create_node("GeometryNodeSampleIndex", {
-            "Geometry": orig_geo, "Domain": "POINT", "Data Type": "FLOAT_VECTOR",
-            "Index": voc.outputs["Vertex Index"]
-        })
-        links.new(nodes.new("GeometryNodeInputPosition").outputs[0], s_pos.inputs["Value"])
-        return s_pos.outputs[0]
-
-    repM_in = nodes.new("GeometryNodeRepeatInput")
-    repM_out = nodes.new("GeometryNodeRepeatOutput")
-    repM_in.pair_with_output(repM_out)
-
-    repM_out.repeat_items.new("GEOMETRY", "Geometry")
-    repM_out.repeat_items.new("FLOAT", "MinKey")
-    repM_out.repeat_items.new("INT", "BestIdx")
-    repM_out.repeat_items.new("INT", "IterIdx")
-
-    links.new(subdivided_geo, repM_in.inputs["Geometry"])
-    links.new(max_N, repM_in.inputs["Iterations"])
-    repM_in.inputs["MinKey"].default_value = 1.0e20
-    repM_in.inputs["BestIdx"].default_value = 0
-    repM_in.inputs["IterIdx"].default_value = 0
-
-    M_geo = repM_in.outputs["Geometry"]
-    M_min = repM_in.outputs["MinKey"]
-    M_best = repM_in.outputs["BestIdx"]
-    M_i = repM_in.outputs["IterIdx"]
-    M_valid = compare_int_less(M_i, N_field)
-
-    M_corner = int_op("ADD", orig_loop_start_field, M_i)
-    M_pos = corner_position_from_orig_corner_index(M_corner)
-    key_u = vec_math_op("DOT_PRODUCT", M_pos, u_dir)
-    key_v = vec_math_op("DOT_PRODUCT", M_pos, v_dir)
-    key = math_op("ADD", math_op("MULTIPLY", key_u, 10000.0), key_v)
-
-    better = nodes.new("FunctionNodeCompare")
-    better.data_type = "FLOAT"
-    better.operation = "LESS_THAN"
-    links.new(key, better.inputs["A"])
-    links.new(M_min, better.inputs["B"])
-
-    take = bool_and(M_valid, better.outputs["Result"])
-
-    min_mix = nodes.new("ShaderNodeMix")
-    min_mix.data_type = "FLOAT"
-    links.new(take, min_mix.inputs["Factor"])
-    links.new(M_min, min_mix.inputs["A"])
-    links.new(key, min_mix.inputs["B"])
-
-    best_switch = nodes.new("GeometryNodeSwitch")
-    best_switch.input_type = "INT"
-    links.new(take, best_switch.inputs["Switch"])
-    links.new(M_best, best_switch.inputs["False"])
-    links.new(M_i, best_switch.inputs["True"])
-
-    links.new(M_geo, repM_out.inputs["Geometry"])
-    links.new(min_mix.outputs["Result"], repM_out.inputs["MinKey"])
-    links.new(best_switch.outputs["Output"], repM_out.inputs["BestIdx"])
-    links.new(int_op("ADD", M_i, 1), repM_out.inputs["IterIdx"])
-
-    corner_shift = repM_out.outputs["BestIdx"]
-
-    # Decide flip so that increasing indices go CCW in face plane
-    idx1 = int_op("MODULO", int_op("ADD", corner_shift, 1), N_field)
-    idxm1 = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", corner_shift, 1), N_field), N_field)
-    p0 = corner_position_from_orig_corner_index(int_op("ADD", orig_loop_start_field, corner_shift))
-    p1 = corner_position_from_orig_corner_index(int_op("ADD", orig_loop_start_field, idx1))
-    pm1 = corner_position_from_orig_corner_index(int_op("ADD", orig_loop_start_field, idxm1))
-    e_next = vec_math_op("SUBTRACT", p1, p0)
-    e_prev = vec_math_op("SUBTRACT", p0, pm1)
-    orient = vec_math_op("DOT_PRODUCT", vec_math_op("CROSS_PRODUCT", e_next, e_prev), face_normal.outputs[0])
-    need_flip = compare_float_less(orient, 0.0)
+# --- 6.1 ALIGN DOMAIN TO TOPOLOGY ---
+    # Fix: Shift indices by -1 (N-1) to align Domain Edge definitions (Incoming)
+    # with Mesh Edge definitions (Outgoing).
+    
+    # 1. Create Integer Math Node for subtraction
+    sub_node = nodes.new("FunctionNodeIntegerMath")
+    sub_node.operation = 'SUBTRACT'
+    
+    # 2. Link poly_N (Int) to Input 0
+    links.new(N_field, sub_node.inputs[0])
+    
+    # 3. Set Input 1 to integer 1
+    sub_node.inputs[1].default_value = 1
+    
+    # 4. Use this output as the shift
+    corner_shift = sub_node.outputs[0]
+    
+    need_flip = nodes.new("FunctionNodeInputBool")
+    need_flip.boolean = False
+    need_flip = need_flip.outputs[0]
 
     # --- 7. Geometry sampling helpers (from original mesh) ---
     def sample_from_orig_corner(attr_name, dtype, corner_idx_val):
@@ -539,14 +452,15 @@ def create_charrot_gregory_group():
         return vec_math_op("ADD",
                            vec_math_op("ADD", vec_math_op("SCALE", d10, a0), vec_math_op("SCALE", d21, a1)),
                            vec_math_op("SCALE", d32, a2))
-
     # --- 8. Domain distances D_i(p) to regular polygon edges ---
     def domain_edge_distance(i_idx):
         angle_step_local = math_op("DIVIDE", 6.283185307, N_field)
-        angle_offset = math_op("DIVIDE", angle_step_local, 2.0)  # π/N
 
+        angle_offset = math_op("ADD", 
+            math_op("DIVIDE", angle_step_local, 2.0), 
+            3.14159265
+        )
         # IMPORTANT: In Salvi's notation, D_i is the distance to the side between vertices (i-1, i).
-        # So domain edge i uses endpoints v_{i-1} -> v_i (not v_i -> v_{i+1}).
         i_prev = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", i_idx, 1), N_field), N_field)
         theta0 = math_op("ADD", math_op("MULTIPLY", i_prev, angle_step_local), angle_offset)
         theta1 = math_op("ADD", math_op("MULTIPLY", i_idx, angle_step_local), angle_offset)
@@ -599,33 +513,36 @@ def create_charrot_gregory_group():
 
     logD_total = repA_out.outputs["LogDTotal"]
 
-    # --- 10. Repeat Zone B: SumW = Σ w_i where w_i = Π_{j≠i-1,i} D_j ---
+  # --- 10. Repeat Zone B: SumW = Σ w_i where w_i = Π_{j≠i-1,i} D_j ---
     repB_in = nodes.new("GeometryNodeRepeatInput")
     repB_out = nodes.new("GeometryNodeRepeatOutput")
     repB_in.pair_with_output(repB_out)
     repB_out.repeat_items.new("GEOMETRY", "Geometry")
     repB_out.repeat_items.new("FLOAT", "SumW")
     repB_out.repeat_items.new("INT", "IterIdx")
-
     links.new(repA_out.outputs["Geometry"], repB_in.inputs["Geometry"])
     links.new(max_N, repB_in.inputs["Iterations"])
     repB_in.inputs["SumW"].default_value = 0.0
     repB_in.inputs["IterIdx"].default_value = 0
-
     B_geo = repB_in.outputs["Geometry"]
     B_sumw = repB_in.outputs["SumW"]
     B_i = repB_in.outputs["IterIdx"]
     B_valid = compare_int_less(B_i, N_field)
-
     B_im1 = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", B_i, 1), N_field), N_field)
-    D0 = domain_edge_distance(B_i)
-    D1 = domain_edge_distance(B_im1)
+    # FIX: Use i+1 (ip1) instead of i-1 (im1)
+    B_ip1 = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", B_i, N_field), 2), N_field)
+    D0 = domain_edge_distance(B_i)   # Incoming Edge
+    D1 = domain_edge_distance(B_ip1) # Outgoing Edge 
+    
     D0c = math_op("MAXIMUM", D0, 1.0e-8)
     D1c = math_op("MAXIMUM", D1, 1.0e-8)
+    
+    # log_w = LogTotal - (LogD_In + LogD_Out)
     log_w = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", D0c), math_op("LOGARITHM", D1c)))
+    
     w_i = math_op("EXPONENT", log_w)
     sum_new = math_op("ADD", B_sumw, w_i)
-
+    
     B_sum_mix = nodes.new("ShaderNodeMix")
     B_sum_mix.data_type = "FLOAT"
     links.new(B_valid, B_sum_mix.inputs["Factor"])
@@ -635,7 +552,7 @@ def create_charrot_gregory_group():
     links.new(B_geo, repB_out.inputs["Geometry"])
     links.new(B_sum_mix.outputs["Result"], repB_out.inputs["SumW"])
     links.new(int_op("ADD", B_i, 1), repB_out.inputs["IterIdx"])
-
+    
     sumW = repB_out.outputs["SumW"]
 
     # --- 11. Repeat Zone C: Accumulate surface S = Σ R_i(s_i,d_i) * B_i(d_i) ---
@@ -669,17 +586,20 @@ def create_charrot_gregory_group():
 
     # Wachspress λ_i and λ_{i-1}
     Di = math_op("MAXIMUM", domain_edge_distance(C_i), 1.0e-8)
-    Dim1 = math_op("MAXIMUM", domain_edge_distance(im1), 1.0e-8)
-    Dim2 = math_op("MAXIMUM", domain_edge_distance(im2), 1.0e-8)
-
-    log_w_i = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Di), math_op("LOGARITHM", Dim1)))
+    Dip1 = math_op("MAXIMUM", domain_edge_distance(ip1), 1.0e-8) # Changed from Dim1
+    
+    log_w_i = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Di), math_op("LOGARITHM", Dip1)))
     wcur = math_op("EXPONENT", log_w_i)
     lam_i = math_op("DIVIDE", wcur, sumW)
 
-    log_w_im1 = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Dim1), math_op("LOGARITHM", Dim2)))
+    # Wachspress weight for Corner i-1 (previous)
+    # Uses i (Incoming) and i-1 (Prev Incoming)
+    im1 = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", C_i, 1), N_field), N_field)
+    Dim1 = math_op("MAXIMUM", domain_edge_distance(im1), 1.0e-8)
+
+    log_w_im1 = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Dim1), math_op("LOGARITHM", Di)))
     wprev = math_op("EXPONENT", log_w_im1)
     lam_im1 = math_op("DIVIDE", wprev, sumW)
-
     denom = math_op("MAXIMUM", math_op("ADD", lam_im1, lam_i), 1.0e-8)
     s_i = clamp01(math_op("DIVIDE", lam_i, denom))
     d_i = clamp01(math_op("SUBTRACT", 1.0, math_op("ADD", lam_im1, lam_i)))
@@ -835,10 +755,12 @@ def create_charrot_gregory_group():
 
     on_edge = compare_float_less(minD, 1.0e-6)
 
-    # Compute parameter t along domain edge `minIdx` by projecting onto that edge segment.
-    # Domain edge minIdx is between vertices (minIdx-1, minIdx).
+    # Compute parameter t along domain edge
     angle_step_local = math_op("DIVIDE", 6.283185307, N_field)
-    angle_offset = math_op("DIVIDE", angle_step_local, 2.0)
+    angle_offset = math_op("ADD", 
+        math_op("DIVIDE", angle_step_local, 2.0), 
+        3.14159265
+    )
 
     minIdx_prev = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", minIdx, 1), N_field), N_field)
     theta0 = math_op("ADD", math_op("MULTIPLY", minIdx_prev, angle_step_local), angle_offset)
