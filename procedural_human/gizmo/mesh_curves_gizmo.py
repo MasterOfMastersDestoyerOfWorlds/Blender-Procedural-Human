@@ -747,13 +747,8 @@ def draw_bezier_curves():
         handle_coords.append(v1_pos)
         handle_coords.append(end_handle_pos)
     
-    if handle_coords:
-        batch = batch_for_shader(shader, 'LINES', {"pos": handle_coords})
-        gpu.state.blend_set('ALPHA')
-        gpu.state.line_width_set(1.0)
-        shader.bind()
-        shader.uniform_float("color", LINE_COLOR)
-        batch.draw(shader)
+
+
     
     # Draw Bezier curves
     bezier_data = get_edge_bezier_data(obj, bm)
@@ -768,6 +763,15 @@ def draw_bezier_curves():
             curve_coords.append(points[i])
             curve_coords.append(points[i + 1])
     
+    gpu.state.depth_test_set('LESS_EQUAL')
+    if handle_coords:
+        batch = batch_for_shader(shader, 'LINES', {"pos": handle_coords})
+        gpu.state.blend_set('ALPHA')
+        gpu.state.line_width_set(1.0)
+        shader.bind()
+        shader.uniform_float("color", LINE_COLOR)
+        batch.draw(shader)
+
     if curve_coords:
         batch = batch_for_shader(shader, 'LINES', {"pos": curve_coords})
         gpu.state.line_width_set(2.0)
@@ -776,6 +780,7 @@ def draw_bezier_curves():
         batch.draw(shader)
     
     gpu.state.blend_set('NONE')
+    gpu.state.depth_test_set('NONE')
 
 
 # --- PART 3: GIZMO GROUP ---
@@ -790,7 +795,7 @@ class LoftHandleGizmoGroup(GizmoGroup):
     bl_label = "Loft Handles"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'WINDOW'
-    bl_options = {'3D', 'PERSISTENT'}
+    bl_options = {'3D', 'PERSISTENT', 'DEPTH_3D'}
 
     @classmethod
     def poll(cls, context):
