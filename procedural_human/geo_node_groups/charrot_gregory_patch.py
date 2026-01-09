@@ -122,37 +122,37 @@ def create_charrot_gregory_group():
         links.new(b, n.inputs[1])
         return n.outputs["Boolean"]
 
-    def bool_or(a, b):
-        n = nodes.new("FunctionNodeBooleanMath")
-        n.operation = "OR"
-        links.new(a, n.inputs[0])
-        links.new(b, n.inputs[1])
-        return n.outputs["Boolean"]
-
-    def bool_not(a):
-        n = nodes.new("FunctionNodeBooleanMath")
-        n.operation = "NOT"
-        links.new(a, n.inputs[0])
-        return n.outputs["Boolean"]
+    def switch_node(dtype, sw, false_val, true_val):
+        """Generic switch for INT, FLOAT, or VECTOR types."""
+        n = nodes.new("GeometryNodeSwitch")
+        n.input_type = dtype
+        links.new(sw, n.inputs["Switch"])
+        link_or_set(n.inputs["False"], false_val)
+        link_or_set(n.inputs["True"], true_val)
+        return n.outputs["Output"]
 
     def switch_int(sw, false_val, true_val):
-        n = nodes.new("GeometryNodeSwitch")
-        n.input_type = "INT"
-        links.new(sw, n.inputs["Switch"])
-        links.new(false_val, n.inputs["False"])
-        links.new(true_val, n.inputs["True"])
-        return n.outputs["Output"]
+        return switch_node("INT", sw, false_val, true_val)
 
     def switch_vec(sw, false_val, true_val):
-        n = nodes.new("GeometryNodeSwitch")
-        n.input_type = "VECTOR"
-        links.new(sw, n.inputs["Switch"])
-        links.new(false_val, n.inputs["False"])
-        links.new(true_val, n.inputs["True"])
-        return n.outputs["Output"]
+        return switch_node("VECTOR", sw, false_val, true_val)
+
+    def switch_float(sw, false_val, true_val):
+        return switch_node("FLOAT", sw, false_val, true_val)
 
     def clamp01(x):
         return math_op("MINIMUM", 1.0, math_op("MAXIMUM", 0.0, x))
+
+    def smoother_step(t):
+        """Quintic smoothstep: t^3 * (6t^2 - 15t + 10) for C2 continuity.
+        Matches coon_patch.py's blending function."""
+        # s1 = 6*t - 15
+        s1 = math_op("SUBTRACT", math_op("MULTIPLY", t, 6.0), 15.0)
+        # s2 = t * s1 + 10 = 6t^2 - 15t + 10
+        s2 = math_op("ADD", math_op("MULTIPLY", t, s1), 10.0)
+        # result = t^3 * s2
+        t3 = math_op("POWER", t, 3.0)
+        return math_op("MULTIPLY", t3, s2)
 
     # --- 1. INPUTS & TOPOLOGY ---
     group_input = nodes.new("NodeGroupInput")
@@ -182,15 +182,16 @@ def create_charrot_gregory_group():
     })
     N_total = accum_N.outputs["Total"]
     
-# --- 2. STORE DOMAIN POLYGON COORDINATES ON CORNERS ---
+    # --- 2. STORE DOMAIN POLYGON COORDINATES ON CORNERS ---
     # angle_step = 2π / N
     angle_step = math_op('DIVIDE', 6.283185307, N_total)
     
-    # FIX: Add PI to start at 225 degrees (Bottom-Left)
-    # theta = sort_idx * angle_step + angle_step / 2 + pi
+    # FIX: Align domain with standard UV convention (no PI rotation)
+    # For N=4: corner 0 at 45°, corner 1 at 135°, corner 2 at 225°, corner 3 at 315°
+    # theta = sort_idx * angle_step + angle_step / 2
     theta = math_op('ADD', 
         math_op('MULTIPLY', sort_idx, angle_step),
-        math_op('ADD', math_op('DIVIDE', angle_step, 2.0), 3.14159265)
+        math_op('DIVIDE', angle_step, 2.0)
     )
     
     # domain_pos = (cos(θ), sin(θ), 0)
@@ -310,22 +311,18 @@ def create_charrot_gregory_group():
     })
     max_N = stat_N.outputs["Max"]
 
-# --- 6.1 ALIGN DOMAIN TO TOPOLOGY ---
-    # Fix: Shift indices by -1 (N-1) to align Domain Edge definitions (Incoming)
-    # with Mesh Edge definitions (Outgoing).
+    # --- 6.1 ALIGN DOMAIN TO TOPOLOGY ---
+    # FIX: With new domain orientation (no PI rotation):
+    # - Domain Edge 0 (right) maps to Mesh Corner 1's Next Edge
+    # - Domain Edge 1 (top) maps to Mesh Corner 2's Next Edge
+    # - Domain Edge 2 (left) maps to Mesh Corner 3's Next Edge
+    # - Domain Edge 3 (bottom) maps to Mesh Corner 0's Next Edge
+    # So: mesh_corner = (domain_idx + 1) % N
     
-    # 1. Create Integer Math Node for subtraction
-    sub_node = nodes.new("FunctionNodeIntegerMath")
-    sub_node.operation = 'SUBTRACT'
-    
-    # 2. Link poly_N (Int) to Input 0
-    links.new(N_field, sub_node.inputs[0])
-    
-    # 3. Set Input 1 to integer 1
-    sub_node.inputs[1].default_value = 1
-    
-    # 4. Use this output as the shift
-    corner_shift = sub_node.outputs[0]
+    # corner_shift = 1 (constant, not N-1)
+    corner_shift_node = nodes.new("FunctionNodeInputInt")
+    corner_shift_node.integer = 1
+    corner_shift = corner_shift_node.outputs[0]
     
     need_flip = nodes.new("FunctionNodeInputBool")
     need_flip.boolean = False
@@ -343,7 +340,16 @@ def create_charrot_gregory_group():
         return s.outputs[0]
 
     def mapped_index(idx):
-        """Domain index -> mesh corner sort index (rotate + optional flip)."""
+        """Domain index -> mesh corner sort index.
+        
+        VERIFIED MAPPING for N=4 with corner_shift=1:
+        - Domain Edge 0 (RIGHT, 315°→45°)  → Mesh Corner 1 → RIGHT edge ✓
+        - Domain Edge 1 (TOP, 45°→135°)    → Mesh Corner 2 → TOP edge ✓
+        - Domain Edge 2 (LEFT, 135°→225°)  → Mesh Corner 3 → LEFT edge ✓
+        - Domain Edge 3 (BOTTOM, 225°→315°) → Mesh Corner 0 → BOTTOM edge ✓
+        
+        Formula: mesh_corner = (corner_shift + idx) % N = (1 + idx) % N
+        """
         add = int_op("MODULO", int_op("ADD", corner_shift, idx), N_field)
         sub = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", corner_shift, idx), N_field), N_field)
         return switch_int(need_flip, add, sub)
@@ -456,10 +462,9 @@ def create_charrot_gregory_group():
     def domain_edge_distance(i_idx):
         angle_step_local = math_op("DIVIDE", 6.283185307, N_field)
 
-        angle_offset = math_op("ADD", 
-            math_op("DIVIDE", angle_step_local, 2.0), 
-            3.14159265
-        )
+        # FIX: Align with new domain convention (no PI rotation)
+        angle_offset = math_op("DIVIDE", angle_step_local, 2.0)
+        
         # IMPORTANT: In Salvi's notation, D_i is the distance to the side between vertices (i-1, i).
         i_prev = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", i_idx, 1), N_field), N_field)
         theta0 = math_op("ADD", math_op("MULTIPLY", i_prev, angle_step_local), angle_offset)
@@ -501,19 +506,15 @@ def create_charrot_gregory_group():
     D_i_clamp = math_op("MAXIMUM", D_i, 1.0e-8)
     add_log = math_op("ADD", A_log, math_op("LOGARITHM", D_i_clamp))
 
-    A_log_mix = nodes.new("ShaderNodeMix")
-    A_log_mix.data_type = "FLOAT"
-    links.new(A_valid, A_log_mix.inputs["Factor"])
-    links.new(A_log, A_log_mix.inputs["A"])
-    links.new(add_log, A_log_mix.inputs["B"])
+    A_log_final = switch_float(A_valid, A_log, add_log)
 
     links.new(A_geo, repA_out.inputs["Geometry"])
-    links.new(A_log_mix.outputs["Result"], repA_out.inputs["LogDTotal"])
+    links.new(A_log_final, repA_out.inputs["LogDTotal"])
     links.new(int_op("ADD", A_i, 1), repA_out.inputs["IterIdx"])
 
     logD_total = repA_out.outputs["LogDTotal"]
 
-  # --- 10. Repeat Zone B: SumW = Σ w_i where w_i = Π_{j≠i-1,i} D_j ---
+    # --- 10. Repeat Zone B: SumW = Σ w_i where w_i excludes D_i and D_{i+1} ---
     repB_in = nodes.new("GeometryNodeRepeatInput")
     repB_out = nodes.new("GeometryNodeRepeatOutput")
     repB_in.pair_with_output(repB_out)
@@ -528,11 +529,12 @@ def create_charrot_gregory_group():
     B_sumw = repB_in.outputs["SumW"]
     B_i = repB_in.outputs["IterIdx"]
     B_valid = compare_int_less(B_i, N_field)
-    B_im1 = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", B_i, 1), N_field), N_field)
-    # FIX: Use i+1 (ip1) instead of i-1 (im1)
-    B_ip1 = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", B_i, N_field), 2), N_field)
-    D0 = domain_edge_distance(B_i)   # Incoming Edge
-    D1 = domain_edge_distance(B_ip1) # Outgoing Edge 
+    # FIX: For vertex i, Wachspress weight w_i excludes D_i and D_{i+1} (the two edges meeting at vertex i)
+    # In the code's convention, edge j connects vertex (j-1) to vertex j.
+    # So vertex i is at the END of edge i, and at the START of edge (i+1).
+    B_ip1 = int_op("MODULO", int_op("ADD", B_i, 1), N_field)
+    D0 = domain_edge_distance(B_i)   # Edge i (ends at vertex i)
+    D1 = domain_edge_distance(B_ip1) # Edge i+1 (starts at vertex i) 
     
     D0c = math_op("MAXIMUM", D0, 1.0e-8)
     D1c = math_op("MAXIMUM", D1, 1.0e-8)
@@ -542,15 +544,10 @@ def create_charrot_gregory_group():
     
     w_i = math_op("EXPONENT", log_w)
     sum_new = math_op("ADD", B_sumw, w_i)
-    
-    B_sum_mix = nodes.new("ShaderNodeMix")
-    B_sum_mix.data_type = "FLOAT"
-    links.new(B_valid, B_sum_mix.inputs["Factor"])
-    links.new(B_sumw, B_sum_mix.inputs["A"])
-    links.new(sum_new, B_sum_mix.inputs["B"])
+    B_sum_final = switch_float(B_valid, B_sumw, sum_new)
 
     links.new(B_geo, repB_out.inputs["Geometry"])
-    links.new(B_sum_mix.outputs["Result"], repB_out.inputs["SumW"])
+    links.new(B_sum_final, repB_out.inputs["SumW"])
     links.new(int_op("ADD", B_i, 1), repB_out.inputs["IterIdx"])
     
     sumW = repB_out.outputs["SumW"]
@@ -584,25 +581,29 @@ def create_charrot_gregory_group():
     im2 = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", C_i, 2), N_field), N_field)
     ip2 = int_op("MODULO", int_op("ADD", C_i, 2), N_field)
 
-    # Wachspress λ_i and λ_{i-1}
+    # Wachspress λ_i for vertex i: excludes edges i and (i+1) meeting at vertex i
     Di = math_op("MAXIMUM", domain_edge_distance(C_i), 1.0e-8)
-    Dip1 = math_op("MAXIMUM", domain_edge_distance(ip1), 1.0e-8) # Changed from Dim1
+    Dip1 = math_op("MAXIMUM", domain_edge_distance(ip1), 1.0e-8)
     
     log_w_i = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Di), math_op("LOGARITHM", Dip1)))
     wcur = math_op("EXPONENT", log_w_i)
     lam_i = math_op("DIVIDE", wcur, sumW)
 
-    # Wachspress weight for Corner i-1 (previous)
-    # Uses i (Incoming) and i-1 (Prev Incoming)
-    im1 = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", C_i, 1), N_field), N_field)
+    # Wachspress λ_{i-1} for vertex (i-1): excludes edges (i-1) and i meeting at vertex (i-1)
     Dim1 = math_op("MAXIMUM", domain_edge_distance(im1), 1.0e-8)
 
     log_w_im1 = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Dim1), math_op("LOGARITHM", Di)))
     wprev = math_op("EXPONENT", log_w_im1)
     lam_im1 = math_op("DIVIDE", wprev, sumW)
     denom = math_op("MAXIMUM", math_op("ADD", lam_im1, lam_i), 1.0e-8)
-    s_i = clamp01(math_op("DIVIDE", lam_i, denom))
-    d_i = clamp01(math_op("SUBTRACT", 1.0, math_op("ADD", lam_im1, lam_i)))
+    
+    # Raw s_i, d_i from Wachspress coordinates
+    s_i_raw = clamp01(math_op("DIVIDE", lam_i, denom))
+    d_i_raw = clamp01(math_op("SUBTRACT", 1.0, math_op("ADD", lam_im1, lam_i)))
+    
+    # FIX: Apply quintic smoothstep for C2 continuity (matches coon_patch.py)
+    s_i = smoother_step(s_i_raw)
+    d_i = smoother_step(d_i_raw)
 
     # Evaluate boundary curves (paper indexing) with *incoming-edge* semantics:
     # We stored `corner_edge_idx` as EdgesOfCorner.Previous Edge Index, i.e. the incoming edge at corner i,
@@ -673,21 +674,12 @@ def create_charrot_gregory_group():
     S_new = vec_math_op("ADD", C_sumS, contrib)
     B_new = math_op("ADD", C_sumB, Bi)
 
-    S_mix = nodes.new("GeometryNodeSwitch")
-    S_mix.input_type = "VECTOR"
-    links.new(C_valid, S_mix.inputs["Switch"])
-    links.new(C_sumS, S_mix.inputs["False"])
-    links.new(S_new, S_mix.inputs["True"])
-
-    B_mix = nodes.new("GeometryNodeSwitch")
-    B_mix.input_type = "FLOAT"
-    links.new(C_valid, B_mix.inputs["Switch"])
-    links.new(C_sumB, B_mix.inputs["False"])
-    links.new(B_new, B_mix.inputs["True"])
+    S_final = switch_vec(C_valid, C_sumS, S_new)
+    B_final = switch_float(C_valid, C_sumB, B_new)
 
     links.new(C_geo, repC_out.inputs["Geometry"])
-    links.new(S_mix.outputs["Output"], repC_out.inputs["SumS"])
-    links.new(B_mix.outputs["Output"], repC_out.inputs["SumB"])
+    links.new(S_final, repC_out.inputs["SumS"])
+    links.new(B_final, repC_out.inputs["SumB"])
     links.new(int_op("ADD", C_i, 1), repC_out.inputs["IterIdx"])
 
     sumS = repC_out.outputs["SumS"]
@@ -733,21 +725,12 @@ def create_charrot_gregory_group():
 
     take = bool_and(E_valid, better.outputs["Result"])
 
-    minD_mix = nodes.new("ShaderNodeMix")
-    minD_mix.data_type = "FLOAT"
-    links.new(take, minD_mix.inputs["Factor"])
-    links.new(E_minD, minD_mix.inputs["A"])
-    links.new(D_edge, minD_mix.inputs["B"])
-
-    minIdx_switch = nodes.new("GeometryNodeSwitch")
-    minIdx_switch.input_type = "INT"
-    links.new(take, minIdx_switch.inputs["Switch"])
-    links.new(E_minIdx, minIdx_switch.inputs["False"])
-    links.new(E_i, minIdx_switch.inputs["True"])
+    minD_final = switch_float(take, E_minD, D_edge)
+    minIdx_final = switch_int(take, E_minIdx, E_i)
 
     links.new(E_geo, repE_out.inputs["Geometry"])
-    links.new(minD_mix.outputs["Result"], repE_out.inputs["MinD"])
-    links.new(minIdx_switch.outputs["Output"], repE_out.inputs["MinIdx"])
+    links.new(minD_final, repE_out.inputs["MinD"])
+    links.new(minIdx_final, repE_out.inputs["MinIdx"])
     links.new(int_op("ADD", E_i, 1), repE_out.inputs["IterIdx"])
 
     minD = repE_out.outputs["MinD"]
@@ -757,10 +740,8 @@ def create_charrot_gregory_group():
 
     # Compute parameter t along domain edge
     angle_step_local = math_op("DIVIDE", 6.283185307, N_field)
-    angle_offset = math_op("ADD", 
-        math_op("DIVIDE", angle_step_local, 2.0), 
-        3.14159265
-    )
+    # FIX: Align with new domain convention (no PI rotation)
+    angle_offset = math_op("DIVIDE", angle_step_local, 2.0)
 
     minIdx_prev = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", minIdx, 1), N_field), N_field)
     theta0 = math_op("ADD", math_op("MULTIPLY", minIdx_prev, angle_step_local), angle_offset)
@@ -792,9 +773,37 @@ def create_charrot_gregory_group():
     links.new(repC_out.outputs["Geometry"], set_pos.inputs["Geometry"])
     links.new(final_pos, set_pos.inputs["Position"])
     
+    # --- 13. DEBUG ATTRIBUTES ---
+    # Store debug values for inspection in Blender spreadsheet
+    geo_with_debug = set_pos.outputs[0]
+    
+    # debug_sumB: Sum of blending weights (should be ~1 for interior points)
+    store_debug_sumB = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_sumB", "Domain": "POINT", "Data Type": "FLOAT",
+        "Value": sumB
+    })
+    links.new(geo_with_debug, store_debug_sumB.inputs[0])
+    geo_with_debug = store_debug_sumB.outputs[0]
+    
+    # debug_minD: Minimum distance to domain edge (0 = on boundary)
+    store_debug_minD = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_minD", "Domain": "POINT", "Data Type": "FLOAT",
+        "Value": minD
+    })
+    links.new(geo_with_debug, store_debug_minD.inputs[0])
+    geo_with_debug = store_debug_minD.outputs[0]
+    
+    # debug_minIdx: Index of closest domain edge
+    store_debug_minIdx = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_minIdx", "Domain": "POINT", "Data Type": "INT",
+        "Value": minIdx
+    })
+    links.new(geo_with_debug, store_debug_minIdx.inputs[0])
+    geo_with_debug = store_debug_minIdx.outputs[0]
+    
     # Merge vertices back together
     merge = create_node("GeometryNodeMergeByDistance", {
-        "Geometry": set_pos.outputs[0], "Distance": 0.0001
+        "Geometry": geo_with_debug, "Distance": 0.0001
     })
     
     # Smooth shading
