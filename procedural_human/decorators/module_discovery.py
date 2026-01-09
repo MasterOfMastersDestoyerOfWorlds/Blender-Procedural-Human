@@ -61,9 +61,13 @@ def discover_modules(
     return modules
 
 
-def import_all_modules() -> Set[str]:
+def import_all_modules(force_reload: bool = False) -> Set[str]:
     """
     Import all discovered modules to trigger decorators.
+
+    Args:
+        force_reload: If True, reload already-imported modules. 
+                      If False (default), skip modules already in sys.modules for faster startup.
 
     Returns:
         Set of successfully imported module names
@@ -72,6 +76,7 @@ def import_all_modules() -> Set[str]:
 
     modules = discover_modules()
     imported = set()
+    skipped = 0
 
     logger.info(f"[Module Discovery] Found {len(modules)} modules to import")
 
@@ -86,7 +91,13 @@ def import_all_modules() -> Set[str]:
 
         try:
             if module_name in sys.modules:
-                importlib.reload(sys.modules[module_name])
+                if force_reload:
+                    importlib.reload(sys.modules[module_name])
+                else:
+                    # Skip reload for faster startup - module is already loaded
+                    skipped += 1
+                    _discovered_modules.add(module_name)
+                    continue
             else:
                 importlib.import_module(module_name)
 
@@ -106,7 +117,7 @@ def import_all_modules() -> Set[str]:
             logger.info(f"[Module Discovery] ERROR importing {module_name}:")
             traceback.print_exc()
 
-    logger.info(f"[Module Discovery] Successfully imported {len(imported)} new modules")
+    logger.info(f"[Module Discovery] Imported {len(imported)} new, skipped {skipped} already loaded")
     return imported
 
 

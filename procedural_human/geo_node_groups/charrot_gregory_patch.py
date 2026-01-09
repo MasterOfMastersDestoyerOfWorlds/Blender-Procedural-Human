@@ -28,6 +28,9 @@ def create_charrot_gregory_group():
     # --- Interface ---
     group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     group.interface.new_socket(name="Subdivisions", in_out="INPUT", socket_type="NodeSocketInt").default_value = 4
+    # Default OFF: merging breaks per-face attribute consistency (orig_loop_start/poly_N)
+    # and can create "star" connectivity when multiple face-islands collapse together.
+    group.interface.new_socket(name="Merge By Distance", in_out="INPUT", socket_type="NodeSocketBool").default_value = False
     group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
 
     nodes = group.nodes
@@ -266,8 +269,9 @@ def create_charrot_gregory_group():
     
     store_edge_idx = create_node("GeometryNodeStoreNamedAttribute", {
         "Name": "corner_edge_idx", "Domain": "CORNER", "Data Type": "INT",
-        # FIX: Use Next Edge Index (Outgoing)
-        "Value": edges_of_corner.outputs["Next Edge Index"]
+        # Store the *incoming* edge at this corner.
+        # This matches the paper's convention where side i is between vertices (i-1, i).
+        "Value": edges_of_corner.outputs["Previous Edge Index"]
     })
     links.new(store_N.outputs[0], store_edge_idx.inputs[0])
     
@@ -276,14 +280,53 @@ def create_charrot_gregory_group():
     links.new(corner_idx, vertex_of_corner.inputs["Corner Index"])
     
     edge_verts = nodes.new("GeometryNodeInputMeshEdgeVertices")
-    
-    # FIX: Sample Vertex Index 1 (Start of edge)
-    sample_edge_v1 = create_node("GeometryNodeSampleIndex", {
-        "Geometry": store_edge_idx.outputs[0],
-        "Domain": "EDGE", "Data Type": "INT",
-        "Index": edges_of_corner.outputs["Next Edge Index"]
+
+    # --- 4.1 DEBUG: verify corner_edge_idx is incident to corner vertex ---
+    # Store the corner's vertex index
+    store_corner_vert_idx = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "corner_vertex_idx", "Domain": "CORNER", "Data Type": "INT",
+        "Value": vertex_of_corner.outputs["Vertex Index"]
     })
-    links.new(edge_verts.outputs["Vertex Index 1"], sample_edge_v1.inputs["Value"])
+    links.new(store_edge_idx.outputs[0], store_corner_vert_idx.inputs[0])
+
+    # Sample the two endpoint vertex indices of the stored edge
+    sample_edge_v_idx1 = create_node("GeometryNodeSampleIndex", {
+        "Geometry": store_corner_vert_idx.outputs[0],
+        "Domain": "EDGE", "Data Type": "INT",
+        "Index": edges_of_corner.outputs["Previous Edge Index"]
+    })
+    links.new(edge_verts.outputs["Vertex Index 1"], sample_edge_v_idx1.inputs["Value"])
+
+    sample_edge_v_idx2 = create_node("GeometryNodeSampleIndex", {
+        "Geometry": store_corner_vert_idx.outputs[0],
+        "Domain": "EDGE", "Data Type": "INT",
+        "Index": edges_of_corner.outputs["Previous Edge Index"]
+    })
+    links.new(edge_verts.outputs["Vertex Index 2"], sample_edge_v_idx2.inputs["Value"])
+
+    store_corner_edge_v1 = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "corner_edge_v1", "Domain": "CORNER", "Data Type": "INT",
+        "Value": sample_edge_v_idx1.outputs[0]
+    })
+    links.new(store_corner_vert_idx.outputs[0], store_corner_edge_v1.inputs[0])
+
+    store_corner_edge_v2 = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "corner_edge_v2", "Domain": "CORNER", "Data Type": "INT",
+        "Value": sample_edge_v_idx2.outputs[0]
+    })
+    links.new(store_corner_edge_v1.outputs[0], store_corner_edge_v2.inputs[0])
+    
+    # Determine direction for the stored incoming edge.
+    # We want C_i(0)=vertex(i-1) and C_i(1)=vertex(i), i.e. the curve should end at this corner.
+    sample_edge_v1 = create_node("GeometryNodeSampleIndex", {
+        "Geometry": store_corner_edge_v2.outputs[0],
+        "Domain": "EDGE", "Data Type": "INT",
+        "Index": edges_of_corner.outputs["Previous Edge Index"]
+    })
+    # For an incoming edge, the corner vertex is the *end* of the edge in our convention,
+    # so compare against "Vertex Index 2" to decide whether the stored (v1->v2) direction
+    # already ends at this corner.
+    links.new(edge_verts.outputs["Vertex Index 2"], sample_edge_v1.inputs["Value"])
     
     is_fwd_cmp = create_node("FunctionNodeCompare", {"Data Type": "INT", "Operation": "EQUAL"})
     links.new(vertex_of_corner.outputs["Vertex Index"], is_fwd_cmp.inputs["A"])
@@ -293,15 +336,79 @@ def create_charrot_gregory_group():
         "Name": "edge_is_forward", "Domain": "CORNER", "Data Type": "BOOLEAN",
         "Value": is_fwd_cmp.outputs["Result"]
     })
-    links.new(store_edge_idx.outputs[0], store_is_fwd.inputs[0])
+    links.new(store_corner_edge_v2.outputs[0], store_is_fwd.inputs[0])
 
     prepared_geo = store_is_fwd.outputs[0]
     
-    # --- 5. SPLIT & SUBDIVIDE ---
-    split = create_node("GeometryNodeSplitEdges", {"Mesh": prepared_geo})
+    # --- 4.2 COMPUTE AND STORE FACE WINDING (before split/subdivide) ---
+    # The domain polygon vertices are arranged CCW. If the mesh face's corners wind CW,
+    # we need to flip the domain vertex order to prevent a "twisted" mapping.
+    # Compute winding per-face BEFORE split, so it propagates through subdivision.
     
-    # FIX: Crease edges to 1.0 to prevent domain polygon shrinkage during Catmull-Clark subdivision.
-    # Without this, the 'domain_pos' coordinates shrink inwards, causing the patch to float.
+    # Get face corner positions using corners_of_face
+    cof_winding = nodes.new("GeometryNodeCornersOfFace")
+    face_idx_node = nodes.new("GeometryNodeInputIndex")  # In FACE context, this is face index
+    links.new(face_idx_node.outputs[0], cof_winding.inputs["Face Index"])
+    
+    # Sample corner_pos at corners 0, 1, 2, 3 of each face
+    def sample_face_corner_pos(sort_index):
+        # Get the corner index for this face at the given sort position
+        cof_corner = nodes.new("GeometryNodeCornersOfFace")
+        links.new(face_idx_node.outputs[0], cof_corner.inputs["Face Index"])
+        cof_corner.inputs["Weights"].default_value = 0.0
+        cof_corner.inputs["Sort Index"].default_value = sort_index
+        corner_at_sort = cof_corner.outputs["Corner Index"]
+        
+        # Sample the corner_pos at that corner index
+        sample = create_node("GeometryNodeSampleIndex", {
+            "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
+            "Index": corner_at_sort
+        })
+        # Get the corner_pos attribute from prepared_geo
+        corner_pos_attr_w = nodes.new("GeometryNodeInputNamedAttribute")
+        corner_pos_attr_w.data_type = "FLOAT_VECTOR"
+        corner_pos_attr_w.inputs["Name"].default_value = "corner_pos"
+        links.new(corner_pos_attr_w.outputs[0], sample.inputs["Value"])
+        return sample.outputs[0]
+    
+    wc0 = sample_face_corner_pos(0)
+    wc1 = sample_face_corner_pos(1)
+    wc2 = sample_face_corner_pos(2)
+    wc3 = sample_face_corner_pos(3)
+    
+    # Compute cross product of two edges to get face normal direction
+    edge01_w = vec_math_op("SUBTRACT", wc1, wc0)
+    edge02_w = vec_math_op("SUBTRACT", wc2, wc0)
+    face_normal_w = vec_math_op("CROSS_PRODUCT", edge01_w, edge02_w)
+    
+    # Compute face center
+    fc_01 = vec_math_op("ADD", wc0, wc1)
+    fc_012 = vec_math_op("ADD", fc_01, wc2)
+    fc_sum = vec_math_op("ADD", fc_012, wc3)
+    face_center_w = vec_math_op("SCALE", fc_sum, 0.25)
+    
+    # Dot product of face_center and face_normal
+    # For a cube centered at origin: if dot < 0, face normal points inward (CW winding)
+    center_dot_w = vec_math_op("DOT_PRODUCT", face_center_w, face_normal_w)
+    
+    flip_cmp = nodes.new("FunctionNodeCompare")
+    flip_cmp.data_type = "FLOAT"
+    flip_cmp.operation = "LESS_THAN"
+    links.new(center_dot_w, flip_cmp.inputs["A"])
+    flip_cmp.inputs["B"].default_value = 0.0
+    face_flip_domain = flip_cmp.outputs["Result"]
+    
+    # Store flip_domain on FACE domain (will propagate through split/subdivide)
+    store_flip = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "face_flip_domain", "Domain": "FACE", "Data Type": "BOOLEAN",
+        "Value": face_flip_domain
+    })
+    links.new(prepared_geo, store_flip.inputs[0])
+    prepared_geo_with_flip = store_flip.outputs[0]
+    
+# --- 5. SPLIT & SUBDIVIDE ---
+    split = create_node("GeometryNodeSplitEdges", {"Mesh": prepared_geo_with_flip})
+    
     store_crease = create_node("GeometryNodeStoreNamedAttribute", {
         "Name": "crease",
         "Domain": "EDGE",
@@ -337,6 +444,14 @@ def create_charrot_gregory_group():
         "Geometry": subdivided_geo, "Domain": "POINT", "Attribute": N_field
     })
     max_N_for_bary = stat_N_temp.outputs["Max"]
+    
+    # --- 6.0b READ FACE WINDING (stored before split/subdivide) ---
+    # The flip_domain attribute was computed per-face before split and stored on FACE domain.
+    # After subdivision, it propagates to each point from its face.
+    flip_domain_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    flip_domain_attr.data_type = "BOOLEAN"
+    flip_domain_attr.inputs["Name"].default_value = "face_flip_domain"
+    flip_domain = flip_domain_attr.outputs[0]
     
     # --- 6.1 COMPUTE MEAN VALUE COORDINATES ---
     # Repeat Zone to compute sum of weights and weighted domain position
@@ -415,8 +530,9 @@ def create_charrot_gregory_group():
     dist_ip1 = vec_math_op("LENGTH", v_to_ip1)
     cos_alpha_i = math_op("DIVIDE", dot_i_ip1, 
                           math_op("MAXIMUM", math_op("MULTIPLY", dist_i, dist_ip1), 1e-8))
-    cos_alpha_i = clamp01(math_op("ADD", cos_alpha_i, 1.0))  # Shift to [0, 2] then clamp
-    cos_alpha_i = math_op("SUBTRACT", cos_alpha_i, 1.0)  # Back to [-1, 1]
+    # NOTE: Don't do "shift + clamp01" here. clamp01 clamps to [0,1] and would force cos into [-1,0],
+    # which breaks mean value coordinates and causes boundary points to map to the wrong domain location.
+    # tan_half_angle() already clamps cos to a safe range.
     
     # Compute angle α_{i-1} at P subtended by edge (C_{i-1}, C_i)
     dot_im1_i = vec_math_op("DOT_PRODUCT", v_to_im1, v_to_i)
@@ -441,12 +557,22 @@ def create_charrot_gregory_group():
                        dist_i_safe)
     
     # Compute domain position for corner i
-    # theta_i = (i + 0.5) * 2π / N
+    # theta_i = (i + 0.5) * 2π / N + π
+    # If flip_domain is true, we negate the angle to reverse the vertex order (CW instead of CCW)
     N_float = int_to_float(N_field)
     i_float = int_to_float(MV_i)
-    theta_i = math_op("MULTIPLY",
-                      math_op("ADD", i_float, 0.5),
-                      math_op("DIVIDE", 6.283185307, N_float))
+    
+    # Base angle (CCW order)
+    angle_step = math_op("DIVIDE", 6.283185307, N_float)
+    base_angle = math_op("MULTIPLY", math_op("ADD", i_float, 0.5), angle_step)
+    theta_ccw = math_op("ADD", base_angle, 3.14159265)
+    
+    # Flipped angle (CW order) - negate the base angle before adding offset
+    theta_cw = math_op("SUBTRACT", 3.14159265, base_angle)
+    
+    # Select based on flip_domain
+    theta_i = switch_float(flip_domain, theta_ccw, theta_cw)
+    
     domain_corner_x = math_op("COSINE", theta_i)
     domain_corner_y = math_op("SINE", theta_i)
     
@@ -483,20 +609,15 @@ def create_charrot_gregory_group():
     })
     max_N = stat_N.outputs["Max"]
 
-    # --- 6.1 ALIGN DOMAIN TO TOPOLOGY ---
-    # With domain orientation (no PI rotation):
-    # - Domain Edge 0 (RIGHT, 315°→45°)  → Mesh Corner 3's Next Edge (RIGHT)
-    # - Domain Edge 1 (TOP, 45°→135°)    → Mesh Corner 0's Next Edge (TOP)
-    # - Domain Edge 2 (LEFT, 135°→225°)  → Mesh Corner 1's Next Edge (LEFT)
-    # - Domain Edge 3 (BOTTOM, 225°→315°) → Mesh Corner 2's Next Edge (BOTTOM)
-    # So: mesh_corner = (domain_idx + N - 1) % N = (domain_idx - 1 + N) % N
-    
-    # corner_shift = N - 1
-    corner_shift = int_op("SUBTRACT", N_field, 1)
-    
-    need_flip = nodes.new("FunctionNodeInputBool")
-    need_flip.boolean = False
-    need_flip = need_flip.outputs[0]
+    # --- 6.1 DOMAIN INDEXING ---
+    # IMPORTANT:
+    # `domain_pos` (and later D_i distances) are already defined using the *face's corner order*
+    # (corner i ↔ domain vertex i). Therefore edge index i corresponds to the mesh side between
+    # corners (i-1, i), i.e. the incoming edge at corner i.
+    #
+    # Any extra "alignment" (shifts/flips) here will scramble which mesh edge is treated as side i
+    # and can produce self-intersecting ("star") boundary loops.
+    # (No shift applied; identity mapping below.)
 
     # --- 7. Geometry sampling helpers (from original mesh) ---
     def sample_from_orig_corner(attr_name, dtype, corner_idx_val):
@@ -510,19 +631,8 @@ def create_charrot_gregory_group():
         return s.outputs[0]
 
     def mapped_index(idx):
-        """Domain index -> mesh corner sort index.
-        
-        MAPPING for N=4 with corner_shift = N-1 = 3:
-        - Domain Edge 0 (RIGHT)  → Mesh Corner 3 → RIGHT edge
-        - Domain Edge 1 (TOP)    → Mesh Corner 0 → TOP edge
-        - Domain Edge 2 (LEFT)   → Mesh Corner 1 → LEFT edge
-        - Domain Edge 3 (BOTTOM) → Mesh Corner 2 → BOTTOM edge
-        
-        Formula: mesh_corner = (N-1 + idx) % N = (idx - 1 + N) % N
-        """
-        add = int_op("MODULO", int_op("ADD", corner_shift, idx), N_field)
-        sub = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", corner_shift, idx), N_field), N_field)
-        return switch_int(need_flip, add, sub)
+        """Identity mapping: domain vertex i == mesh corner i (within the face's corner order)."""
+        return idx
 
     def corner_for_idx(idx):
         return int_op("ADD", orig_loop_start_field, mapped_index(idx))
@@ -630,15 +740,24 @@ def create_charrot_gregory_group():
                            vec_math_op("SCALE", d32, a2))
     # --- 8. Domain distances D_i(p) to regular polygon edges ---
     def domain_edge_distance(i_idx):
+        # Must use the same flip_domain logic as in mean-value coordinates
+        # to ensure domain edge positions match the computed domain_p_x/y.
         angle_step_local = math_op("DIVIDE", 6.283185307, N_field)
-
-        # FIX: Align with new domain convention (no PI rotation)
-        angle_offset = math_op("DIVIDE", angle_step_local, 2.0)
         
-        # IMPORTANT: In Salvi's notation, D_i is the distance to the side between vertices (i-1, i).
+        i_float_local = int_to_float(i_idx)
         i_prev = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", i_idx, 1), N_field), N_field)
-        theta0 = math_op("ADD", math_op("MULTIPLY", i_prev, angle_step_local), angle_offset)
-        theta1 = math_op("ADD", math_op("MULTIPLY", i_idx, angle_step_local), angle_offset)
+        i_prev_float = int_to_float(i_prev)
+        
+        # CCW angles (same formula as in mean-value coords)
+        base_angle_prev = math_op("MULTIPLY", math_op("ADD", i_prev_float, 0.5), angle_step_local)
+        theta0_ccw = math_op("ADD", base_angle_prev, 3.14159265)
+        theta0_cw = math_op("SUBTRACT", 3.14159265, base_angle_prev)
+        theta0 = switch_float(flip_domain, theta0_ccw, theta0_cw)
+        
+        base_angle_i = math_op("MULTIPLY", math_op("ADD", i_float_local, 0.5), angle_step_local)
+        theta1_ccw = math_op("ADD", base_angle_i, 3.14159265)
+        theta1_cw = math_op("SUBTRACT", 3.14159265, base_angle_i)
+        theta1 = switch_float(flip_domain, theta1_ccw, theta1_cw)
 
         v0x = math_op("COSINE", theta0)
         v0y = math_op("SINE", theta0)
@@ -908,14 +1027,83 @@ def create_charrot_gregory_group():
 
     on_edge = compare_float_less(minD, 1.0e-6)
 
-    # Compute parameter t along domain edge
-    angle_step_local = math_op("DIVIDE", 6.283185307, N_field)
-    # FIX: Align with new domain convention (no PI rotation)
-    angle_offset = math_op("DIVIDE", angle_step_local, 2.0)
+    # --- 12.1 Exact vertex snap (fixes vertex ambiguity) ---
+    # At a domain vertex, TWO domain edges have distance 0, so the "closest edge" choice is ambiguous.
+    # Relying on t_edge to become exactly 0/1 can flip to the opposite endpoint due to tiny numeric drift.
+    # Instead: detect when we're at/near a domain vertex and snap directly to the corresponding mesh corner.
+    repV_in = nodes.new("GeometryNodeRepeatInput")
+    repV_out = nodes.new("GeometryNodeRepeatOutput")
+    repV_in.pair_with_output(repV_out)
 
+    repV_out.repeat_items.new("GEOMETRY", "Geometry")
+    repV_out.repeat_items.new("FLOAT", "MinDV")
+    repV_out.repeat_items.new("INT", "MinVIdx")
+    repV_out.repeat_items.new("INT", "IterIdx")
+
+    links.new(repC_out.outputs["Geometry"], repV_in.inputs["Geometry"])
+    links.new(max_N, repV_in.inputs["Iterations"])
+    repV_in.inputs["MinDV"].default_value = 1.0e20
+    repV_in.inputs["MinVIdx"].default_value = 0
+    repV_in.inputs["IterIdx"].default_value = 0
+
+    V_geo = repV_in.outputs["Geometry"]
+    V_minDV = repV_in.outputs["MinDV"]
+    V_minVIdx = repV_in.outputs["MinVIdx"]
+    V_i = repV_in.outputs["IterIdx"]
+    V_valid = compare_int_less(V_i, N_field)
+
+    # Domain vertex position for index V_i (same convention as domain_pos construction)
+    # Must use flip_domain to match the mean-value coordinate computation
+    v_angle_step = math_op("DIVIDE", 6.283185307, int_to_float(N_field))
+    v_base_angle = math_op("MULTIPLY", math_op("ADD", int_to_float(V_i), 0.5), v_angle_step)
+    v_theta_ccw = math_op("ADD", v_base_angle, 3.14159265)
+    v_theta_cw = math_op("SUBTRACT", 3.14159265, v_base_angle)
+    v_theta = switch_float(flip_domain, v_theta_ccw, v_theta_cw)
+    vpx = math_op("COSINE", v_theta)
+    vpy = math_op("SINE", v_theta)
+
+    dxv = math_op("SUBTRACT", domain_p_x, vpx)
+    dyv = math_op("SUBTRACT", domain_p_y, vpy)
+    dv = math_op("SQRT", math_op("ADD", math_op("MULTIPLY", dxv, dxv), math_op("MULTIPLY", dyv, dyv)))
+
+    v_better = nodes.new("FunctionNodeCompare")
+    v_better.data_type = "FLOAT"
+    v_better.operation = "LESS_THAN"
+    links.new(dv, v_better.inputs["A"])
+    links.new(V_minDV, v_better.inputs["B"])
+
+    v_take = bool_and(V_valid, v_better.outputs["Result"])
+    v_minDV_final = switch_float(v_take, V_minDV, dv)
+    v_minVIdx_final = switch_int(v_take, V_minVIdx, V_i)
+
+    links.new(V_geo, repV_out.inputs["Geometry"])
+    links.new(v_minDV_final, repV_out.inputs["MinDV"])
+    links.new(v_minVIdx_final, repV_out.inputs["MinVIdx"])
+    links.new(int_op("ADD", V_i, 1), repV_out.inputs["IterIdx"])
+
+    minDV = repV_out.outputs["MinDV"]
+    minVIdx = repV_out.outputs["MinVIdx"]
+    on_vertex = compare_float_less(minDV, 1.0e-5)
+
+    # Compute parameter t along domain edge
+    # Must use flip_domain to match domain_pos computation
+    e_angle_step = math_op("DIVIDE", 6.283185307, N_field)
+    
     minIdx_prev = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", minIdx, 1), N_field), N_field)
-    theta0 = math_op("ADD", math_op("MULTIPLY", minIdx_prev, angle_step_local), angle_offset)
-    theta1 = math_op("ADD", math_op("MULTIPLY", minIdx, angle_step_local), angle_offset)
+    minIdx_prev_f = int_to_float(minIdx_prev)
+    minIdx_f = int_to_float(minIdx)
+    
+    # theta for vertex at minIdx_prev
+    e_base0 = math_op("MULTIPLY", math_op("ADD", minIdx_prev_f, 0.5), e_angle_step)
+    e_theta0_ccw = math_op("ADD", e_base0, 3.14159265)
+    e_theta0_cw = math_op("SUBTRACT", 3.14159265, e_base0)
+    theta0 = switch_float(flip_domain, e_theta0_ccw, e_theta0_cw)
+    
+    # theta for vertex at minIdx
+    e_base1 = math_op("MULTIPLY", math_op("ADD", minIdx_f, 0.5), e_angle_step)
+    e_theta1_ccw = math_op("ADD", e_base1, 3.14159265)
+    e_theta1_cw = math_op("SUBTRACT", 3.14159265, e_base1)
+    theta1 = switch_float(flip_domain, e_theta1_ccw, e_theta1_cw)
 
     vx0 = math_op("COSINE", theta0)
     vy0 = math_op("SINE", theta0)
@@ -937,7 +1125,22 @@ def create_charrot_gregory_group():
     P0e, P1e, P2e, P3e = edge_control_points(edge_id, edge_fwd)
     edge_pos = bezier_eval(P0e, P1e, P2e, P3e, t_edge)
 
-    final_pos = switch_vec(on_edge, final_pos_raw, edge_pos)
+    # If on a domain edge, snap to that boundary curve.
+    final_pos_edge = switch_vec(on_edge, final_pos_raw, edge_pos)
+
+    # If on a domain vertex, snap to the exact mesh corner position (overrides edge snap).
+    corner_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    corner_attr.data_type = "FLOAT_VECTOR"
+    corner_attr.inputs["Name"].default_value = "corner_pos"
+    corner_corner_idx = corner_for_idx(minVIdx)
+    sample_corner_vpos = create_node("GeometryNodeSampleIndex", {
+        "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
+        "Index": corner_corner_idx
+    })
+    links.new(corner_attr.outputs[0], sample_corner_vpos.inputs["Value"])
+    corner_vpos = sample_corner_vpos.outputs[0]
+
+    final_pos = switch_vec(on_vertex, final_pos_edge, corner_vpos)
     
     set_pos = nodes.new("GeometryNodeSetPosition")
     links.new(repC_out.outputs["Geometry"], set_pos.inputs["Geometry"])
@@ -946,6 +1149,71 @@ def create_charrot_gregory_group():
     # --- 13. DEBUG ATTRIBUTES ---
     # Store debug values for inspection in Blender spreadsheet
     geo_with_debug = set_pos.outputs[0]
+
+    # debug_point_index: point index in the output mesh (lets us correlate with edge vertex indices)
+    point_index = nodes.new("GeometryNodeInputIndex").outputs[0]
+    store_debug_point_index = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_point_index", "Domain": "POINT", "Data Type": "INT",
+        "Value": point_index
+    })
+    links.new(geo_with_debug, store_debug_point_index.inputs[0])
+    geo_with_debug = store_debug_point_index.outputs[0]
+
+    # debug_orig_loop_start / debug_poly_N: verify per-face constants aren't getting mixed on points
+    store_debug_loop_start = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_orig_loop_start", "Domain": "POINT", "Data Type": "INT",
+        "Value": orig_loop_start_field
+    })
+    links.new(geo_with_debug, store_debug_loop_start.inputs[0])
+    geo_with_debug = store_debug_loop_start.outputs[0]
+
+    store_debug_poly_n = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_poly_N", "Domain": "POINT", "Data Type": "INT",
+        "Value": N_field
+    })
+    links.new(geo_with_debug, store_debug_poly_n.inputs[0])
+    geo_with_debug = store_debug_poly_n.outputs[0]
+
+    # debug_edge_id: which original mesh edge we snapped to (when on_edge)
+    store_debug_edge_id = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_edge_id", "Domain": "POINT", "Data Type": "INT",
+        "Value": edge_id
+    })
+    links.new(geo_with_debug, store_debug_edge_id.inputs[0])
+    geo_with_debug = store_debug_edge_id.outputs[0]
+
+    # debug_edge_fwd: whether edge control points are evaluated forward
+    edge_fwd_int = switch_int(edge_fwd, 0, 1)
+    store_debug_edge_fwd = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_edge_fwd", "Domain": "POINT", "Data Type": "INT",
+        "Value": edge_fwd_int
+    })
+    links.new(geo_with_debug, store_debug_edge_fwd.inputs[0])
+    geo_with_debug = store_debug_edge_fwd.outputs[0]
+
+    # debug_t_edge: parameter along chosen domain edge (0..1)
+    store_debug_t_edge = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_t_edge", "Domain": "POINT", "Data Type": "FLOAT",
+        "Value": t_edge
+    })
+    links.new(geo_with_debug, store_debug_t_edge.inputs[0])
+    geo_with_debug = store_debug_t_edge.outputs[0]
+
+    # debug_on_edge: whether the edge snap path was used
+    store_debug_on_edge = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_on_edge", "Domain": "POINT", "Data Type": "BOOLEAN",
+        "Value": on_edge
+    })
+    links.new(geo_with_debug, store_debug_on_edge.inputs[0])
+    geo_with_debug = store_debug_on_edge.outputs[0]
+    
+    # debug_flip_domain: whether the face required domain flip (CW winding)
+    store_debug_flip = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_flip_domain", "Domain": "POINT", "Data Type": "BOOLEAN",
+        "Value": flip_domain
+    })
+    links.new(geo_with_debug, store_debug_flip.inputs[0])
+    geo_with_debug = store_debug_flip.outputs[0]
     
     # debug_sumB: Sum of blending weights (should be ~1 for interior points)
     store_debug_sumB = create_node("GeometryNodeStoreNamedAttribute", {
@@ -995,17 +1263,31 @@ def create_charrot_gregory_group():
     links.new(geo_with_debug, store_debug_face.inputs[0])
     geo_with_debug = store_debug_face.outputs[0]
     
-    # Merge vertices back together
+    # Optional: merge vertices back together.
+    # NOTE: During debugging, disabling this avoids averaging attributes/positions at shared corners.
     merge = create_node("GeometryNodeMergeByDistance", {
         "Geometry": geo_with_debug, "Distance": 0.0001
     })
+
+    geom_after_merge = switch_node("GEOMETRY",
+                                   group_input.outputs["Merge By Distance"],
+                                   geo_with_debug,
+                                   merge.outputs[0])
     
     # Smooth shading
     set_smooth = nodes.new("GeometryNodeSetShadeSmooth")
-    links.new(merge.outputs[0], set_smooth.inputs[0])
+    links.new(geom_after_merge, set_smooth.inputs[0])
     set_smooth.inputs["Shade Smooth"].default_value = True
+
+    # Final point index (after optional merge). This matches indices used by exported EDGE spreadsheets.
+    out_point_index = nodes.new("GeometryNodeInputIndex").outputs[0]
+    store_debug_out_point_index = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_out_point_index", "Domain": "POINT", "Data Type": "INT",
+        "Value": out_point_index
+    })
+    links.new(set_smooth.outputs[0], store_debug_out_point_index.inputs[0])
     
-    links.new(set_smooth.outputs[0], group_output.inputs[0])
+    links.new(store_debug_out_point_index.outputs[0], group_output.inputs[0])
     
     auto_layout_nodes(group)
     return group

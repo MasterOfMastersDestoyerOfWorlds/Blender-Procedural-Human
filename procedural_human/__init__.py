@@ -42,6 +42,10 @@ if str(_addon_parent) not in sys.path:
 # Fix DLL loading for PyTorch on Windows in Blender's embedded Python
 def _setup_torch_dll_path():
     """Add PyTorch DLL directory to search path before importing."""
+    
+    # Skip if torch is already imported - DLLs are already loaded
+    if "torch" in sys.modules:
+        return
 
     if sys.platform != "win32":
         return
@@ -59,12 +63,18 @@ def _setup_torch_dll_path():
     
     # Add to DLL search path (Windows 10+)
     if hasattr(os, 'add_dll_directory'):
-        os.add_dll_directory(str(torch_lib))
+        try:
+            os.add_dll_directory(str(torch_lib))
+        except OSError:
+            pass  # Already added or path doesn't exist
     
-    # Also add to PATH
-    os.environ["PATH"] = str(torch_lib) + os.pathsep + os.environ.get("PATH", "")
+    # Also add to PATH if not already there
+    current_path = os.environ.get("PATH", "")
+    if str(torch_lib) not in current_path:
+        os.environ["PATH"] = str(torch_lib) + os.pathsep + current_path
     
     # Pre-load critical DLLs in correct order to avoid initialization failures
+    # Only do this on first load - DLLs stay loaded in memory
     dll_load_order = [
         "fbgemm.dll",
         "asmjit.dll", 
@@ -81,7 +91,7 @@ def _setup_torch_dll_path():
             try:
                 ctypes.CDLL(str(dll_path))
             except OSError:
-                pass  # Some DLLs may fail, that's okay
+                pass  # Some DLLs may fail or already loaded, that's okay
 
 # #region agent log - timing torch dll
 _t0 = _time_module.perf_counter()
@@ -92,38 +102,53 @@ _log_timing("setup_torch_dll_path", (_time_module.perf_counter() - _t0) * 1000)
 # Install wheels for development mode, with version tracking
 def _get_wheels_hash():
     """Get a hash of wheel filenames to detect changes."""
+    _t = _time_module.perf_counter()
     import hashlib
     wheels_dir = _addon_dir / "wheels"
     if not wheels_dir.exists():
+        _log_timing("_get_wheels_hash:no_dir", (_time_module.perf_counter() - _t) * 1000)
         return ""
     wheel_names = sorted([f.name for f in wheels_dir.glob("*.whl")])
-    return hashlib.md5("|".join(wheel_names).encode()).hexdigest()[:16]
+    result = hashlib.md5("|".join(wheel_names).encode()).hexdigest()[:16]
+    _log_timing("_get_wheels_hash", (_time_module.perf_counter() - _t) * 1000)
+    return result
 
 def _check_packages_installed():
     """Check if required packages are already importable (without importing them)."""
+    _t = _time_module.perf_counter()
     import importlib.util
     # Use find_spec to check if packages exist without importing them (much faster)
     torch_spec = importlib.util.find_spec("torch")
     transformers_spec = importlib.util.find_spec("transformers")
-    return torch_spec is not None and transformers_spec is not None
+    result = torch_spec is not None and transformers_spec is not None
+    _log_timing(f"_check_packages_installed:torch={torch_spec is not None},transformers={transformers_spec is not None}", (_time_module.perf_counter() - _t) * 1000)
+    return result
 
 def _ensure_wheels_installed():
     """Install wheels from ./wheels/ directory if dependencies are missing or changed."""
+    _t_start = _time_module.perf_counter()
     wheels_dir = _addon_dir / "wheels"
     if not wheels_dir.exists():
         print(f"[Procedural Human] Wheels directory not found: {wheels_dir}")
+        _log_timing("_ensure_wheels_installed:no_dir", (_time_module.perf_counter() - _t_start) * 1000)
         return
     
     # Check if wheels have changed since last install
     marker_file = Path(sys.prefix) / ".procedural_human_wheels_hash"
+    _t = _time_module.perf_counter()
     current_hash = _get_wheels_hash()
+    _log_timing("_ensure_wheels_installed:get_hash", (_time_module.perf_counter() - _t) * 1000)
     needs_install = False
     
     # First check: do packages already import successfully?
+    _t = _time_module.perf_counter()
     packages_already_installed = _check_packages_installed()
+    _log_timing("_ensure_wheels_installed:check_packages", (_time_module.perf_counter() - _t) * 1000)
     
+    _t = _time_module.perf_counter()
     if marker_file.exists():
         stored_hash = marker_file.read_text().strip()
+        _log_timing(f"_ensure_wheels_installed:read_marker(stored={stored_hash},current={current_hash})", (_time_module.perf_counter() - _t) * 1000)
         if stored_hash != current_hash:
             # Hash changed, but if packages are loaded we can't reinstall safely
             if packages_already_installed:
@@ -133,11 +158,13 @@ def _ensure_wheels_installed():
                     marker_file.write_text(current_hash)
                 except Exception:
                     pass
+                _log_timing("_ensure_wheels_installed:skip_reload_loaded", (_time_module.perf_counter() - _t_start) * 1000)
                 return
             else:
                 print(f"[Procedural Human] Wheels changed (hash: {stored_hash} -> {current_hash}), reinstalling...")
                 needs_install = True
     else:
+        _log_timing("_ensure_wheels_installed:no_marker_file", (_time_module.perf_counter() - _t) * 1000)
         # No marker file exists
         if packages_already_installed:
             # Packages are already installed, just write the marker and skip
@@ -146,12 +173,14 @@ def _ensure_wheels_installed():
                 marker_file.write_text(current_hash)
             except Exception:
                 pass
+            _log_timing("_ensure_wheels_installed:skip_already_installed", (_time_module.perf_counter() - _t_start) * 1000)
             return
         else:
             # Packages not installed, need to install
             needs_install = True
     
     if not needs_install:
+        _log_timing("_ensure_wheels_installed:skip_no_change", (_time_module.perf_counter() - _t_start) * 1000)
         return
     
     wheel_files = list(wheels_dir.glob("*.whl"))
@@ -160,12 +189,14 @@ def _ensure_wheels_installed():
     
     if not all_packages:
         print("[Procedural Human] No wheel/zip files found")
+        _log_timing("_ensure_wheels_installed:no_packages", (_time_module.perf_counter() - _t_start) * 1000)
         return
     
     print(f"[Procedural Human] Installing {len(all_packages)} packages for development mode...")
     
     # Install wheels - don't use --force-reinstall to avoid removing locked DLLs
     # Use --ignore-installed instead to install even if already present
+    _t = _time_module.perf_counter()
     try:
         subprocess.check_call([
             sys.executable, "-m", "pip", "install",
@@ -174,6 +205,7 @@ def _ensure_wheels_installed():
             "--quiet",
             *[str(pkg) for pkg in all_packages]
         ])
+        _log_timing("_ensure_wheels_installed:pip_install", (_time_module.perf_counter() - _t) * 1000)
         print("[Procedural Human] Wheels installed successfully")
         # Save the hash marker
         try:
@@ -183,8 +215,11 @@ def _ensure_wheels_installed():
         # Setup DLL path for the newly installed torch
         _setup_torch_dll_path()
     except subprocess.CalledProcessError as e:
+        _log_timing("_ensure_wheels_installed:pip_failed", (_time_module.perf_counter() - _t) * 1000)
         print(f"[Procedural Human] Failed to install wheels: {e}")
-
+    
+    _log_timing("_ensure_wheels_installed:TOTAL", (_time_module.perf_counter() - _t_start) * 1000)
+ 
 # #region agent log - timing wheels
 _t0 = _time_module.perf_counter()
 _ensure_wheels_installed()
@@ -253,7 +288,7 @@ def register():
         try:
             _debug_log_path.unlink()
         except Exception:
-            pass
+            pass 
     
     # #region agent log - timing register
     _t_reg_start = _time_module.perf_counter()
@@ -343,11 +378,29 @@ def register():
         logger.info(f"[Procedural Human] Could not register search asset manager: {e}")
     _log_timing("register:search_asset_manager", (_time_module.perf_counter() - _t0) * 1000)
     
+    # Start the test server for MCP/external tool integration
+    _t0 = _time_module.perf_counter()
+    try:
+        from procedural_human.testing.blender_server import start_server
+        start_server(port=9876)
+        logger.info("[Procedural Human] Started test server on port 9876")
+    except Exception as e:
+        logger.info(f"[Procedural Human] Could not start test server: {e}")
+    _log_timing("register:test_server", (_time_module.perf_counter() - _t0) * 1000)
+    
     _log_timing("register:TOTAL", (_time_module.perf_counter() - _t_reg_start) * 1000)
     _log_timing("startup:TOTAL_FROM_IMPORT", (_time_module.perf_counter() - _startup_start) * 1000)
 
 
 def unregister():
+    # Stop the test server if running (non-blocking)
+    try:
+        from procedural_human.testing.blender_server import stop_server, is_server_running
+        if is_server_running():
+            stop_server()
+    except Exception:
+        pass
+    
     try:
         from procedural_human.utils.curve_serialization import unregister_autosave_handlers
         unregister_autosave_handlers()

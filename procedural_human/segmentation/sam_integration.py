@@ -168,9 +168,9 @@ class SAM3Manager:
             text=text_prompt, 
             return_tensors="pt"
         ).to(self._device)
-        
+
         # Run inference
-        with torch.no_grad():
+        with self._get_torch().no_grad():
             outputs = self._model(**inputs)
         
         # Post-process results

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "blender-coon-tester": {
+      "command": "python",
+      "args": ["-m", "procedural_human.testing.mcp_server"],
+      "cwd": "C:/Code/Blender-Procedural-Human",
+      "env": {}
+    }
+  }
+}
