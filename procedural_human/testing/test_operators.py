@@ -32,13 +32,9 @@ from procedural_human.config import get_codebase_path
 
 def get_tmp_dir() -> Path:
     """Get the tmp directory for test exports."""
-    codebase = get_codebase_path()
-    if codebase:
-        tmp_dir = codebase / "tmp"
-    else:
-        tmp_dir = Path(__file__).parent.parent / "tmp"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    return tmp_dir
+    # Use the same function as export_curve_to_csv for consistency
+    from procedural_human.utils.export_curve_to_csv import get_tmp_base_dir
+    return get_tmp_base_dir()
 
 
 def ensure_edit_mode(obj):
@@ -221,40 +217,37 @@ class PROC_OT_apply_and_export(Operator):
                 self.report({'WARNING'}, "No CoonNGonPatchGenerator modifier found")
         
         # Step 2: Export CSV data
+        # Use direct export function instead of relying on spreadsheet area
+        from procedural_human.utils.export_curve_to_csv import (
+            export_spreadsheet_data, 
+            get_tmp_base_dir
+        )
+        
+        output_dir = get_tmp_base_dir()
         exported_files = []
         
-        # Configure spreadsheet settings and export
-        # We need to find or create a spreadsheet area
-        spreadsheet_area = None
-        for area in context.screen.areas:
-            if area.type == 'SPREADSHEET':
-                spreadsheet_area = area
-                break
-        
         if self.export_points:
-            # Set spreadsheet to POINT domain if available
-            if spreadsheet_area:
-                space = spreadsheet_area.spaces.active
-                space.attribute_domain = 'POINT'
-                space.geometry_component_type = 'MESH'
-            
+            settings = {
+                'domain': 'POINT',
+                'component': 'MESH',
+                'eval_state': 'EVALUATED',
+            }
             try:
-                bpy.ops.curve.export_curve_to_csv()
-                self.report({'INFO'}, "Exported point data")
+                csv_path, row_count, headers = export_spreadsheet_data(obj, settings, output_dir)
+                self.report({'INFO'}, f"Exported {row_count} points to {csv_path.name}")
                 exported_files.append("points")
             except Exception as e:
                 self.report({'WARNING'}, f"Could not export points: {e}")
         
         if self.export_edges:
-            # Set spreadsheet to EDGE domain if available
-            if spreadsheet_area:
-                space = spreadsheet_area.spaces.active
-                space.attribute_domain = 'EDGE'
-                space.geometry_component_type = 'MESH'
-            
+            settings = {
+                'domain': 'EDGE',
+                'component': 'MESH',
+                'eval_state': 'EVALUATED',
+            }
             try:
-                bpy.ops.curve.export_curve_to_csv()
-                self.report({'INFO'}, "Exported edge data")
+                csv_path, row_count, headers = export_spreadsheet_data(obj, settings, output_dir)
+                self.report({'INFO'}, f"Exported {row_count} edges to {csv_path.name}")
                 exported_files.append("edges")
             except Exception as e:
                 self.report({'WARNING'}, f"Could not export edges: {e}")

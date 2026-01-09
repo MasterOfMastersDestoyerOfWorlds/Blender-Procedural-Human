@@ -61,13 +61,13 @@ def discover_modules(
     return modules
 
 
-def import_all_modules(force_reload: bool = False) -> Set[str]:
+def import_all_modules(force_reload: bool = True) -> Set[str]:
     """
     Import all discovered modules to trigger decorators.
 
     Args:
-        force_reload: If True, reload already-imported modules. 
-                      If False (default), skip modules already in sys.modules for faster startup.
+        force_reload: If True (default), reload already-imported modules so decorators re-run.
+                      If False, skip modules already in sys.modules.
 
     Returns:
         Set of successfully imported module names
@@ -82,27 +82,29 @@ def import_all_modules(force_reload: bool = False) -> Set[str]:
 
     for module_name in sorted(modules):
         if module_name in _discovered_modules:
+            skipped += 1
             continue
         
         # Don't reload decorators, as this clears their registry
         if "decorators" in module_name:
              if module_name in sys.modules:
+                 skipped += 1
                  continue
 
         try:
             if module_name in sys.modules:
                 if force_reload:
                     importlib.reload(sys.modules[module_name])
+                    imported.add(module_name)
+                    _discovered_modules.add(module_name)
                 else:
-                    # Skip reload for faster startup - module is already loaded
+                    # Skip reload - module is already loaded
                     skipped += 1
                     _discovered_modules.add(module_name)
-                    continue
             else:
                 importlib.import_module(module_name)
-
-            imported.add(module_name)
-            _discovered_modules.add(module_name)
+                imported.add(module_name)
+                _discovered_modules.add(module_name)
         except ModuleNotFoundError as e:
             missing_module = str(e).split("'")[1] if "'" in str(e) else str(e)
             logger.info(

@@ -102,36 +102,78 @@ class SAM3Manager:
         
         logger.info("Loading SAM3 model...")
         
+        # Show progress indicator in Blender's status bar
+        import bpy
+        wm = bpy.context.window_manager
+        wm.progress_begin(0, 100)
+        
+        def set_status(msg: str):
+            """Set status text in all areas that support it."""
+            try:
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        area.header_text_set(msg)
+            except:
+                pass
+        
         try:
-            # Lazy import heavy dependencies
+            # Step 1: Import dependencies (10%)
+            set_status("Loading SAM3: Importing dependencies...")
+            wm.progress_update(10)
             _patch_transformers_deps()
             import torch
             from transformers import Sam3Processor, Sam3Model
             
-            # Determine device
+            # Step 2: Determine device (20%)
+            wm.progress_update(20)
             if torch.cuda.is_available():
                 self._device = "cuda"
+                set_status("Loading SAM3: Using CUDA GPU...")
             else:
                 logger.warning("CUDA not available. Using CPU (slower performance).")
                 self._device = "cpu"
+                set_status("Loading SAM3: Using CPU (no CUDA)...")
             
             logger.info(f"SAM3 running on: {self._device}")
             
-            # Load model and processor
+            # Step 3: Load model (this is the slow part - 30% to 80%)
+            set_status("Loading SAM3: Loading model weights (this may take a moment)...")
+            wm.progress_update(30)
             self.__class__._model = Sam3Model.from_pretrained(self.MODEL_PATH).to(self._device)
+            
+            # Step 4: Load processor (90%)
+            set_status("Loading SAM3: Loading processor...")
+            wm.progress_update(90)
             self.__class__._processor = Sam3Processor.from_pretrained(self.MODEL_PATH)
             self.__class__._model.eval()
             
+            # Done (100%)
+            wm.progress_update(100)
             self._initialized = True
+            set_status("SAM3 model loaded successfully!")
             logger.info("SAM3 model loaded successfully.")
             
         except ImportError as e:
+            set_status("SAM3 loading failed - missing dependencies")
             logger.error(f"Failed to import SAM3 dependencies: {e}")
             logger.error("Please install: pip install torch torchvision transformers")
             raise
         except Exception as e:
+            set_status(f"SAM3 loading failed: {e}")
             logger.error(f"Failed to load SAM3 model: {e}")
             raise
+        finally:
+            wm.progress_end()
+            # Clear status text after a short delay using a timer
+            def clear_status():
+                try:
+                    for window in bpy.context.window_manager.windows:
+                        for area in window.screen.areas:
+                            area.header_text_set(None)
+                except:
+                    pass
+                return None  # Don't repeat
+            bpy.app.timers.register(clear_status, first_interval=2.0)
     
     def ensure_loaded(self):
         """Ensure the model is loaded (lazy loading)."""

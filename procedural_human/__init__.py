@@ -282,14 +282,9 @@ bl_info = {
 
 
 def register():
-    # Clear debug log on reload for clean logging
-    _debug_log_path = _addon_dir / ".cursor" / "debug.log"
-    if _debug_log_path.exists():
-        try:
-            _debug_log_path.unlink()
-        except Exception:
-            pass 
-    
+    # Log a marker for new reload cycle (don't delete log so we can see unregister timing)
+    _log_timing("=== NEW RELOAD CYCLE ===", 0)
+
     # #region agent log - timing register
     _t_reg_start = _time_module.perf_counter()
     
@@ -312,7 +307,7 @@ def register():
     _t0 = _time_module.perf_counter()
     register_preset_class.discover_and_register_all_decorators()
     _log_timing("register:presets", (_time_module.perf_counter() - _t0) * 1000)
-    
+     
     _t0 = _time_module.perf_counter()
     geo_node_group.discover_and_register_all_decorators()
     _log_timing("register:geo_nodes", (_time_module.perf_counter() - _t0) * 1000)
@@ -393,50 +388,90 @@ def register():
 
 
 def unregister():
+    _t_unreg_start = _time_module.perf_counter()
+    
     # Stop the test server if running (non-blocking)
+    _t0 = _time_module.perf_counter()
     try:
         from procedural_human.testing.blender_server import stop_server, is_server_running
         if is_server_running():
             stop_server()
     except Exception:
         pass
+    _log_timing("unregister:test_server", (_time_module.perf_counter() - _t0) * 1000)
     
+    _t0 = _time_module.perf_counter()
     try:
         from procedural_human.utils.curve_serialization import unregister_autosave_handlers
         unregister_autosave_handlers()
     except ImportError:
         pass
+    _log_timing("unregister:autosave_handlers", (_time_module.perf_counter() - _t0) * 1000)
 
     # Unregister segmentation properties
+    _t0 = _time_module.perf_counter()
     try:
         from procedural_human.segmentation import unregister_segmentation_properties
         unregister_segmentation_properties()
     except ImportError:
         pass
+    _log_timing("unregister:segmentation_props", (_time_module.perf_counter() - _t0) * 1000)
 
     # Cleanup search asset manager
+    _t0 = _time_module.perf_counter()
     try:
         from procedural_human.segmentation import search_asset_manager
         search_asset_manager.unregister()
     except Exception:
         pass
+    _log_timing("unregister:search_asset_manager", (_time_module.perf_counter() - _t0) * 1000)
 
     # Unregister gizmo module first (draw handlers, tools)
+    _t0 = _time_module.perf_counter()
     try:
         from procedural_human import gizmo
         gizmo.unregister()
     except Exception:
         pass
+    _log_timing("unregister:gizmo_module", (_time_module.perf_counter() - _t0) * 1000)
 
+    _t0 = _time_module.perf_counter()
     menus.unregister()
+    _log_timing("unregister:menus", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     procedural_panel.unregister_all_decorators()
+    _log_timing("unregister:panels", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     procedural_operator.unregister_all_decorators()
+    _log_timing("unregister:operators", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     register_preset_class.unregister_all_decorators()
+    _log_timing("unregister:presets", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     geo_node_group.unregister_all_decorators()
+    _log_timing("unregister:geo_nodes", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     procedural_workspace.unregister_all_decorators()
+    _log_timing("unregister:workspace", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     procedural_gizmo.unregister_all_decorators()
+    _log_timing("unregister:gizmo", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     preferences.unregister()
+    _log_timing("unregister:preferences", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _t0 = _time_module.perf_counter()
     clear_discovered()
+    _log_timing("unregister:clear_discovered", (_time_module.perf_counter() - _t0) * 1000)
+    
+    _log_timing("unregister:TOTAL", (_time_module.perf_counter() - _t_unreg_start) * 1000)
 
 
 if __name__ == "__main__":
