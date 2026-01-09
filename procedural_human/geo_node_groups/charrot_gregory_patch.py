@@ -122,6 +122,23 @@ def create_charrot_gregory_group():
         links.new(b, n.inputs[1])
         return n.outputs["Boolean"]
 
+    def int_to_float(a):
+        """Convert integer to float."""
+        n = nodes.new("ShaderNodeMath")
+        n.operation = "ADD"
+        link_or_set(n.inputs[0], a)
+        n.inputs[1].default_value = 0.0
+        return n.outputs["Value"]
+
+    def compare_int_eq(a, b):
+        """Compare two integers for equality."""
+        c = nodes.new("FunctionNodeCompare")
+        c.data_type = "INT"
+        c.operation = "EQUAL"
+        link_or_set(c.inputs["A"], a)
+        link_or_set(c.inputs["B"], b)
+        return c.outputs["Result"]
+
     def switch_node(dtype, sw, false_val, true_val):
         """Generic switch for INT, FLOAT, or VECTOR types."""
         n = nodes.new("GeometryNodeSwitch")
@@ -182,32 +199,37 @@ def create_charrot_gregory_group():
     })
     N_total = accum_N.outputs["Total"]
     
-    # --- 2. STORE DOMAIN POLYGON COORDINATES ON CORNERS ---
-    # angle_step = 2π / N
-    angle_step = math_op('DIVIDE', 6.283185307, N_total)
+    # --- 2. STORE CORNER POSITIONS FOR BARYCENTRIC COMPUTATION ---
+    # FIX: Don't store domain_pos or UV on corners - they don't interpolate correctly for N-gons.
+    # Instead, we'll compute domain_pos at runtime using generalized barycentric coordinates.
+    # Store corner 3D positions so we can compute barycentric coords later.
     
-    # FIX: Align domain with standard UV convention (no PI rotation)
-    # For N=4: corner 0 at 45°, corner 1 at 135°, corner 2 at 225°, corner 3 at 315°
-    # theta = sort_idx * angle_step + angle_step / 2
-    theta = math_op('ADD', 
-        math_op('MULTIPLY', sort_idx, angle_step),
-        math_op('DIVIDE', angle_step, 2.0)
-    )
+    # Get the vertex position at this corner
+    vert_of_corner = nodes.new("GeometryNodeVertexOfCorner")
+    links.new(corner_idx, vert_of_corner.inputs["Corner Index"])
     
-    # domain_pos = (cos(θ), sin(θ), 0)
-    domain_x = math_op('COSINE', theta)
-    domain_y = math_op('SINE', theta)
-    
-    domain_pos_combine = nodes.new("ShaderNodeCombineXYZ")
-    links.new(domain_x, domain_pos_combine.inputs["X"])
-    links.new(domain_y, domain_pos_combine.inputs["Y"])
-    
-    # Store domain position on CORNER domain
-    store_domain_pos = create_node("GeometryNodeStoreNamedAttribute", {
-        "Name": "domain_pos", "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
-        "Value": domain_pos_combine.outputs[0]
+    sample_corner_pos = create_node("GeometryNodeSampleIndex", {
+        "Geometry": orig_geo, "Domain": "POINT", "Data Type": "FLOAT_VECTOR",
+        "Index": vert_of_corner.outputs["Vertex Index"]
     })
-    links.new(orig_geo, store_domain_pos.inputs[0])
+    pos_node = nodes.new("GeometryNodeInputPosition")
+    links.new(pos_node.outputs[0], sample_corner_pos.inputs["Value"])
+    corner_pos = sample_corner_pos.outputs[0]
+    
+    # Store corner position on CORNER domain
+    store_corner_pos = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "corner_pos", "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
+        "Value": corner_pos
+    })
+    links.new(orig_geo, store_corner_pos.inputs[0])
+    
+    # Also store the sort_idx for each corner (needed for domain position calculation)
+    sort_idx_float = int_to_float(sort_idx)
+    store_sort_idx = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "corner_sort_idx", "Domain": "CORNER", "Data Type": "FLOAT",
+        "Value": sort_idx_float
+    })
+    links.new(store_corner_pos.outputs[0], store_sort_idx.inputs[0])
     
     # --- 3. STORE FACE INDEX ON FACE DOMAIN ---
     # This propagates through split/subdivide so we can look up original corners
@@ -217,7 +239,7 @@ def create_charrot_gregory_group():
         "Name": "orig_face_idx", "Domain": "FACE", "Data Type": "INT",
         "Value": face_idx_node.outputs[0]
     })
-    links.new(store_domain_pos.outputs[0], store_face_idx.inputs[0])
+    links.new(store_sort_idx.outputs[0], store_face_idx.inputs[0])
 
     # Store original loop start ("first corner") per face.
     # This is stable for looking up per-face corners later even after subdiv/split,
@@ -294,35 +316,183 @@ def create_charrot_gregory_group():
     })
     subdivided_geo = subdiv.outputs[0]
     
-    # --- 6. READ INTERPOLATED DOMAIN POSITION ---
-    domain_p_attr = get_attr("domain_pos", "FLOAT_VECTOR")
-    
-    sep_domain = nodes.new("ShaderNodeSeparateXYZ")
-    links.new(domain_p_attr, sep_domain.inputs[0])
-    domain_p_x = sep_domain.outputs["X"]
-    domain_p_y = sep_domain.outputs["Y"]
+    # --- 6. COMPUTE DOMAIN POSITION USING MEAN VALUE COORDINATES ---
+    # FIX: Instead of interpolating pre-stored domain positions (which doesn't work),
+    # we compute domain_pos at each point using generalized barycentric coordinates.
+    # 
+    # For each point P after subdivision:
+    # 1. Get the N corner positions C_0, ..., C_{N-1} from original geometry
+    # 2. Compute mean value coordinates λ_i of P w.r.t. C_i
+    # 3. Compute domain_pos = Σ λ_i × domain_corner_i
+    #    where domain_corner_i = (cos((i+0.5)*2π/N), sin((i+0.5)*2π/N))
     
     N_field = get_attr("poly_N", "INT")
     orig_loop_start_field = get_attr("orig_loop_start", "INT")
+    
+    # Get current point position
+    current_pos = nodes.new("GeometryNodeInputPosition").outputs[0]
 
     # --- 6.0 Determine max N across patches (repeat iterations) ---
+    stat_N_temp = create_node("GeometryNodeAttributeStatistic", {
+        "Geometry": subdivided_geo, "Domain": "POINT", "Attribute": N_field
+    })
+    max_N_for_bary = stat_N_temp.outputs["Max"]
+    
+    # --- 6.1 COMPUTE MEAN VALUE COORDINATES ---
+    # Repeat Zone to compute sum of weights and weighted domain position
+    # Mean value coordinates: w_i = (tan(α_{i-1}/2) + tan(α_i/2)) / |P - C_i|
+    # where α_i is the angle at P subtended by edge (C_i, C_{i+1})
+    
+    repMV_in = nodes.new("GeometryNodeRepeatInput")
+    repMV_out = nodes.new("GeometryNodeRepeatOutput")
+    repMV_in.pair_with_output(repMV_out)
+    
+    repMV_out.repeat_items.new("GEOMETRY", "Geometry")
+    repMV_out.repeat_items.new("FLOAT", "SumW")  # Sum of weights
+    repMV_out.repeat_items.new("VECTOR", "SumDomain")  # Weighted sum of domain positions
+    repMV_out.repeat_items.new("INT", "IterIdx")
+    
+    links.new(subdivided_geo, repMV_in.inputs["Geometry"])
+    links.new(max_N_for_bary, repMV_in.inputs["Iterations"])
+    repMV_in.inputs["SumW"].default_value = 0.0
+    repMV_in.inputs["SumDomain"].default_value = (0.0, 0.0, 0.0)
+    repMV_in.inputs["IterIdx"].default_value = 0
+    
+    MV_geo = repMV_in.outputs["Geometry"]
+    MV_sumW = repMV_in.outputs["SumW"]
+    MV_sumDomain = repMV_in.outputs["SumDomain"]
+    MV_i = repMV_in.outputs["IterIdx"]
+    
+    # Check if this iteration is valid for this face
+    MV_valid = compare_int_less(MV_i, N_field)
+    
+    # Get corner index for this iteration
+    MV_corner_idx = int_op("ADD", orig_loop_start_field, MV_i)
+    
+    # Sample corner position from original geometry
+    sample_corner_i = create_node("GeometryNodeSampleIndex", {
+        "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
+        "Index": MV_corner_idx
+    })
+    corner_pos_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    corner_pos_attr.data_type = "FLOAT_VECTOR"
+    corner_pos_attr.inputs["Name"].default_value = "corner_pos"
+    links.new(corner_pos_attr.outputs[0], sample_corner_i.inputs["Value"])
+    corner_i_pos = sample_corner_i.outputs[0]
+    
+    # Get next corner position
+    MV_ip1 = int_op("MODULO", int_op("ADD", MV_i, 1), N_field)
+    MV_corner_ip1 = int_op("ADD", orig_loop_start_field, MV_ip1)
+    sample_corner_ip1 = create_node("GeometryNodeSampleIndex", {
+        "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
+        "Index": MV_corner_ip1
+    })
+    links.new(corner_pos_attr.outputs[0], sample_corner_ip1.inputs["Value"])
+    corner_ip1_pos = sample_corner_ip1.outputs[0]
+    
+    # Get previous corner position
+    MV_im1 = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", MV_i, 1), N_field), N_field)
+    MV_corner_im1 = int_op("ADD", orig_loop_start_field, MV_im1)
+    sample_corner_im1 = create_node("GeometryNodeSampleIndex", {
+        "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
+        "Index": MV_corner_im1
+    })
+    links.new(corner_pos_attr.outputs[0], sample_corner_im1.inputs["Value"])
+    corner_im1_pos = sample_corner_im1.outputs[0]
+    
+    # Compute vectors from current point to corners
+    v_to_i = vec_math_op("SUBTRACT", corner_i_pos, current_pos)
+    v_to_ip1 = vec_math_op("SUBTRACT", corner_ip1_pos, current_pos)
+    v_to_im1 = vec_math_op("SUBTRACT", corner_im1_pos, current_pos)
+    
+    # Distance to corner i
+    dist_i = vec_math_op("LENGTH", v_to_i)
+    dist_i_safe = math_op("MAXIMUM", dist_i, 1e-8)
+    
+    # Compute angle α_i at P subtended by edge (C_i, C_{i+1})
+    # cos(α_i) = dot(v_to_i, v_to_ip1) / (|v_to_i| * |v_to_ip1|)
+    dot_i_ip1 = vec_math_op("DOT_PRODUCT", v_to_i, v_to_ip1)
+    dist_ip1 = vec_math_op("LENGTH", v_to_ip1)
+    cos_alpha_i = math_op("DIVIDE", dot_i_ip1, 
+                          math_op("MAXIMUM", math_op("MULTIPLY", dist_i, dist_ip1), 1e-8))
+    cos_alpha_i = clamp01(math_op("ADD", cos_alpha_i, 1.0))  # Shift to [0, 2] then clamp
+    cos_alpha_i = math_op("SUBTRACT", cos_alpha_i, 1.0)  # Back to [-1, 1]
+    
+    # Compute angle α_{i-1} at P subtended by edge (C_{i-1}, C_i)
+    dot_im1_i = vec_math_op("DOT_PRODUCT", v_to_im1, v_to_i)
+    dist_im1 = vec_math_op("LENGTH", v_to_im1)
+    cos_alpha_im1 = math_op("DIVIDE", dot_im1_i,
+                            math_op("MAXIMUM", math_op("MULTIPLY", dist_im1, dist_i), 1e-8))
+    
+    # tan(α/2) = sqrt((1 - cos(α)) / (1 + cos(α)))
+    def tan_half_angle(cos_a):
+        # Clamp to avoid numerical issues
+        cos_clamped = math_op("MINIMUM", 0.9999, math_op("MAXIMUM", -0.9999, cos_a))
+        numer = math_op("SUBTRACT", 1.0, cos_clamped)
+        denom = math_op("ADD", 1.0, cos_clamped)
+        return math_op("SQRT", math_op("DIVIDE", numer, math_op("MAXIMUM", denom, 1e-8)))
+    
+    tan_half_i = tan_half_angle(cos_alpha_i)
+    tan_half_im1 = tan_half_angle(cos_alpha_im1)
+    
+    # Mean value weight: w_i = (tan(α_{i-1}/2) + tan(α_i/2)) / |P - C_i|
+    weight_i = math_op("DIVIDE", 
+                       math_op("ADD", tan_half_im1, tan_half_i),
+                       dist_i_safe)
+    
+    # Compute domain position for corner i
+    # theta_i = (i + 0.5) * 2π / N
+    N_float = int_to_float(N_field)
+    i_float = int_to_float(MV_i)
+    theta_i = math_op("MULTIPLY",
+                      math_op("ADD", i_float, 0.5),
+                      math_op("DIVIDE", 6.283185307, N_float))
+    domain_corner_x = math_op("COSINE", theta_i)
+    domain_corner_y = math_op("SINE", theta_i)
+    
+    # Weighted domain position contribution
+    domain_contrib = nodes.new("ShaderNodeCombineXYZ")
+    links.new(math_op("MULTIPLY", weight_i, domain_corner_x), domain_contrib.inputs["X"])
+    links.new(math_op("MULTIPLY", weight_i, domain_corner_y), domain_contrib.inputs["Y"])
+    
+    # Accumulate (only if valid)
+    new_sumW = switch_float(MV_valid, MV_sumW, math_op("ADD", MV_sumW, weight_i))
+    new_sumDomain = switch_vec(MV_valid, MV_sumDomain, 
+                               vec_math_op("ADD", MV_sumDomain, domain_contrib.outputs[0]))
+    
+    # Output from repeat
+    links.new(MV_geo, repMV_out.inputs["Geometry"])
+    links.new(new_sumW, repMV_out.inputs["SumW"])
+    links.new(new_sumDomain, repMV_out.inputs["SumDomain"])
+    links.new(int_op("ADD", MV_i, 1), repMV_out.inputs["IterIdx"])
+    
+    # Normalize to get final domain position
+    final_sumW = repMV_out.outputs["SumW"]
+    final_sumDomain = repMV_out.outputs["SumDomain"]
+    inv_sumW = math_op("DIVIDE", 1.0, math_op("MAXIMUM", final_sumW, 1e-8))
+    domain_pos_vec = vec_math_op("SCALE", final_sumDomain, inv_sumW)
+    
+    sep_domain_final = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(domain_pos_vec, sep_domain_final.inputs[0])
+    domain_p_x = sep_domain_final.outputs["X"]
+    domain_p_y = sep_domain_final.outputs["Y"]
+
+    # --- 6.2 Determine max N across patches (repeat iterations) ---
     stat_N = create_node("GeometryNodeAttributeStatistic", {
         "Geometry": subdivided_geo, "Domain": "POINT", "Attribute": N_field
     })
     max_N = stat_N.outputs["Max"]
 
     # --- 6.1 ALIGN DOMAIN TO TOPOLOGY ---
-    # FIX: With new domain orientation (no PI rotation):
-    # - Domain Edge 0 (right) maps to Mesh Corner 1's Next Edge
-    # - Domain Edge 1 (top) maps to Mesh Corner 2's Next Edge
-    # - Domain Edge 2 (left) maps to Mesh Corner 3's Next Edge
-    # - Domain Edge 3 (bottom) maps to Mesh Corner 0's Next Edge
-    # So: mesh_corner = (domain_idx + 1) % N
+    # With domain orientation (no PI rotation):
+    # - Domain Edge 0 (RIGHT, 315°→45°)  → Mesh Corner 3's Next Edge (RIGHT)
+    # - Domain Edge 1 (TOP, 45°→135°)    → Mesh Corner 0's Next Edge (TOP)
+    # - Domain Edge 2 (LEFT, 135°→225°)  → Mesh Corner 1's Next Edge (LEFT)
+    # - Domain Edge 3 (BOTTOM, 225°→315°) → Mesh Corner 2's Next Edge (BOTTOM)
+    # So: mesh_corner = (domain_idx + N - 1) % N = (domain_idx - 1 + N) % N
     
-    # corner_shift = 1 (constant, not N-1)
-    corner_shift_node = nodes.new("FunctionNodeInputInt")
-    corner_shift_node.integer = 1
-    corner_shift = corner_shift_node.outputs[0]
+    # corner_shift = N - 1
+    corner_shift = int_op("SUBTRACT", N_field, 1)
     
     need_flip = nodes.new("FunctionNodeInputBool")
     need_flip.boolean = False
@@ -342,13 +512,13 @@ def create_charrot_gregory_group():
     def mapped_index(idx):
         """Domain index -> mesh corner sort index.
         
-        VERIFIED MAPPING for N=4 with corner_shift=1:
-        - Domain Edge 0 (RIGHT, 315°→45°)  → Mesh Corner 1 → RIGHT edge ✓
-        - Domain Edge 1 (TOP, 45°→135°)    → Mesh Corner 2 → TOP edge ✓
-        - Domain Edge 2 (LEFT, 135°→225°)  → Mesh Corner 3 → LEFT edge ✓
-        - Domain Edge 3 (BOTTOM, 225°→315°) → Mesh Corner 0 → BOTTOM edge ✓
+        MAPPING for N=4 with corner_shift = N-1 = 3:
+        - Domain Edge 0 (RIGHT)  → Mesh Corner 3 → RIGHT edge
+        - Domain Edge 1 (TOP)    → Mesh Corner 0 → TOP edge
+        - Domain Edge 2 (LEFT)   → Mesh Corner 1 → LEFT edge
+        - Domain Edge 3 (BOTTOM) → Mesh Corner 2 → BOTTOM edge
         
-        Formula: mesh_corner = (corner_shift + idx) % N = (1 + idx) % N
+        Formula: mesh_corner = (N-1 + idx) % N = (idx - 1 + N) % N
         """
         add = int_op("MODULO", int_op("ADD", corner_shift, idx), N_field)
         sub = int_op("MODULO", int_op("ADD", int_op("SUBTRACT", corner_shift, idx), N_field), N_field)
@@ -800,6 +970,30 @@ def create_charrot_gregory_group():
     })
     links.new(geo_with_debug, store_debug_minIdx.inputs[0])
     geo_with_debug = store_debug_minIdx.outputs[0]
+    
+    # debug_domain_x: Computed domain X coordinate (from mean value coords)
+    store_debug_domain_x = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_domain_x", "Domain": "POINT", "Data Type": "FLOAT",
+        "Value": domain_p_x
+    })
+    links.new(geo_with_debug, store_debug_domain_x.inputs[0])
+    geo_with_debug = store_debug_domain_x.outputs[0]
+    
+    # debug_domain_y: Computed domain Y coordinate (from mean value coords)
+    store_debug_domain_y = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_domain_y", "Domain": "POINT", "Data Type": "FLOAT",
+        "Value": domain_p_y
+    })
+    links.new(geo_with_debug, store_debug_domain_y.inputs[0])
+    geo_with_debug = store_debug_domain_y.outputs[0]
+    
+    # debug_orig_face_idx: Which original face this point belongs to
+    store_debug_face = create_node("GeometryNodeStoreNamedAttribute", {
+        "Name": "debug_orig_face_idx", "Domain": "POINT", "Data Type": "INT",
+        "Value": get_attr("orig_face_idx", "INT")
+    })
+    links.new(geo_with_debug, store_debug_face.inputs[0])
+    geo_with_debug = store_debug_face.outputs[0]
     
     # Merge vertices back together
     merge = create_node("GeometryNodeMergeByDistance", {

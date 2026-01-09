@@ -185,6 +185,105 @@ def export_bmesh_edge_layers(obj, output_dir):
     return csv_path, row_count, headers
 
 
+def read_attr_float(attr, buf_len):
+    """Read a FLOAT attribute, with fallback to direct item access."""
+    try:
+        buf = [0.0] * buf_len
+        attr.data.foreach_get("value", buf)
+        return buf
+    except Exception:
+        # Fallback to direct access
+        return [attr.data[i].value for i in range(buf_len)]
+
+
+def read_attr_int(attr, buf_len):
+    """Read an INT attribute, with fallback to direct item access."""
+    try:
+        buf = [0] * buf_len
+        attr.data.foreach_get("value", buf)
+        return buf
+    except Exception:
+        # Fallback to direct access
+        return [attr.data[i].value for i in range(buf_len)]
+
+
+def read_attr_bool(attr, buf_len):
+    """Read a BOOLEAN attribute, with fallback to direct item access."""
+    try:
+        buf = [False] * buf_len
+        attr.data.foreach_get("value", buf)
+        return buf
+    except Exception:
+        # Fallback to direct access
+        return [attr.data[i].value for i in range(buf_len)]
+
+
+def read_attr_vector(attr, buf_len, components):
+    """Read a vector attribute (FLOAT_VECTOR, FLOAT2, QUATERNION), with fallback."""
+    try:
+        buf = [0.0] * (buf_len * components)
+        # Try 'vector' first (for FLOAT_VECTOR, FLOAT2)
+        try:
+            attr.data.foreach_get("vector", buf)
+        except Exception:
+            # Try 'value' (for QUATERNION)
+            attr.data.foreach_get("value", buf)
+        return buf
+    except Exception:
+        # Fallback to direct access
+        result = []
+        for i in range(buf_len):
+            item = attr.data[i]
+            # Try different attribute names
+            if hasattr(item, 'vector'):
+                vec = item.vector
+            elif hasattr(item, 'value'):
+                vec = item.value
+            else:
+                vec = [0.0] * components
+            result.extend(vec[:components])
+        return result
+
+
+def read_attr_color(attr, buf_len):
+    """Read a color attribute (FLOAT_COLOR, BYTE_COLOR), with fallback."""
+    try:
+        buf = [0.0] * (buf_len * 4)
+        attr.data.foreach_get("color", buf)
+        return buf
+    except Exception:
+        # Fallback to direct access
+        result = []
+        for i in range(buf_len):
+            c = attr.data[i].color
+            result.extend([c[0], c[1], c[2], c[3]])
+        return result
+
+
+def read_attr_generic(attr, buf_len):
+    """Try to read any attribute type by probing for common properties."""
+    try:
+        item = attr.data[0]
+        
+        # Try common property names
+        for prop in ['value', 'vector', 'color']:
+            if hasattr(item, prop):
+                val = getattr(item, prop)
+                if isinstance(val, (int, float, bool)):
+                    return [getattr(attr.data[i], prop) for i in range(buf_len)]
+                elif hasattr(val, '__iter__'):
+                    # It's a sequence
+                    result = []
+                    for i in range(buf_len):
+                        v = getattr(attr.data[i], prop)
+                        result.extend(list(v))
+                    return result
+        
+        return None
+    except Exception:
+        return None
+
+
 def export_spreadsheet_data(obj, settings, output_dir):
     """
     Export data based on spreadsheet settings.
@@ -241,6 +340,8 @@ def export_spreadsheet_data(obj, settings, output_dir):
     
     # --- Export all attributes matching the domain ---
     if hasattr(data, 'attributes'):
+        print(f"Found {len(data.attributes)} total attributes, filtering for domain '{domain}'")
+        
         for name, attr in data.attributes.items():
             if attr.domain != domain:
                 continue
@@ -264,38 +365,34 @@ def export_spreadsheet_data(obj, settings, output_dir):
             buf_len = actual_len if actual_len > 0 else row_count
             
             d_type = attr.data_type
+            print(f"  Processing attribute '{name}': type={d_type}, len={buf_len}")
             
             try:
                 if d_type == 'FLOAT':
-                    buf = [0.0] * buf_len
-                    attr.data.foreach_get("value", buf)
+                    buf = read_attr_float(attr, buf_len)
                     columns[name] = buf
                     headers.append(name)
                     
-                elif d_type == 'INT':
-                    buf = [0] * buf_len
-                    attr.data.foreach_get("value", buf)
+                elif d_type in ('INT', 'INT32'):
+                    buf = read_attr_int(attr, buf_len)
                     columns[name] = buf
                     headers.append(name)
                     
                 elif d_type == 'FLOAT_VECTOR':
-                    buf = [0.0] * (buf_len * 3)
-                    attr.data.foreach_get("vector", buf)
+                    buf = read_attr_vector(attr, buf_len, 3)
                     columns[f"{name}_X"] = buf[0::3]
                     columns[f"{name}_Y"] = buf[1::3]
                     columns[f"{name}_Z"] = buf[2::3]
                     headers.extend([f"{name}_X", f"{name}_Y", f"{name}_Z"])
                     
-                elif d_type == 'FLOAT2':
-                    buf = [0.0] * (buf_len * 2)
-                    attr.data.foreach_get("vector", buf)
+                elif d_type in ('FLOAT2', 'INT32_2D'):
+                    buf = read_attr_vector(attr, buf_len, 2)
                     columns[f"{name}_X"] = buf[0::2]
                     columns[f"{name}_Y"] = buf[1::2]
                     headers.extend([f"{name}_X", f"{name}_Y"])
                     
                 elif d_type == 'FLOAT_COLOR' or d_type == 'BYTE_COLOR':
-                    buf = [0.0] * (buf_len * 4)
-                    attr.data.foreach_get("color", buf)
+                    buf = read_attr_color(attr, buf_len)
                     columns[f"{name}_R"] = buf[0::4]
                     columns[f"{name}_G"] = buf[1::4]
                     columns[f"{name}_B"] = buf[2::4]
@@ -303,28 +400,35 @@ def export_spreadsheet_data(obj, settings, output_dir):
                     headers.extend([f"{name}_R", f"{name}_G", f"{name}_B", f"{name}_A"])
                     
                 elif d_type == 'BOOLEAN':
-                    buf = [False] * buf_len
-                    attr.data.foreach_get("value", buf)
+                    buf = read_attr_bool(attr, buf_len)
                     columns[name] = buf
                     headers.append(name)
                     
                 elif d_type == 'INT8':
-                    buf = [0] * buf_len
-                    attr.data.foreach_get("value", buf)
+                    buf = read_attr_int(attr, buf_len)
                     columns[name] = buf
                     headers.append(name)
                     
                 elif d_type == 'QUATERNION':
-                    buf = [0.0] * (buf_len * 4)
-                    attr.data.foreach_get("value", buf)
+                    buf = read_attr_vector(attr, buf_len, 4)
                     columns[f"{name}_W"] = buf[0::4]
                     columns[f"{name}_X"] = buf[1::4]
                     columns[f"{name}_Y"] = buf[2::4]
                     columns[f"{name}_Z"] = buf[3::4]
                     headers.extend([f"{name}_W", f"{name}_X", f"{name}_Y", f"{name}_Z"])
                     
+                else:
+                    # Try generic fallback for unknown types
+                    print(f"    Unknown type '{d_type}', trying generic read...")
+                    buf = read_attr_generic(attr, buf_len)
+                    if buf:
+                        columns[name] = buf
+                        headers.append(name)
+                    
             except Exception as e:
+                import traceback
                 print(f"Warning: Could not export attribute '{name}': {e}")
+                traceback.print_exc()
     
     if not headers:
         # List what we found for debugging
