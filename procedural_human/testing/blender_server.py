@@ -48,11 +48,13 @@ def handle_run_test(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run the full Coon patch test."""
     subdivisions = params.get("subdivisions", 2)
     create_new = params.get("create_new_cube", True)
+    subdivide_edge = params.get("subdivide_edge", False)
     
     try:
         result = bpy.ops.procedural.run_full_coon_test(
             subdivisions=subdivisions,
-            create_new_cube=create_new
+            create_new_cube=create_new,
+            subdivide_edge=subdivide_edge
         )
         
         # Get test results from scene

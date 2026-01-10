@@ -796,7 +796,7 @@ class LoftHandleGizmoGroup(GizmoGroup):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'WINDOW'
     bl_options = {'3D', 'PERSISTENT', 'DEPTH_3D'}
-
+ 
     @classmethod
     def poll(cls, context):
         """Only show in edit mode with a mesh that has BMesh handle layers."""

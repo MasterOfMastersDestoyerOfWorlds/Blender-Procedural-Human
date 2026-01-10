@@ -137,7 +137,8 @@ class MCPTool:
 
 async def tool_run_coon_patch_test(
     subdivisions: int = 2,
-    create_new_cube: bool = True
+    create_new_cube: bool = True,
+    subdivide_edge: bool = False
 ) -> Dict[str, Any]:
     """
     Run the full Coon/Charrot-Gregory patch test cycle.
@@ -145,14 +146,16 @@ async def tool_run_coon_patch_test(
     This will:
     1. Create or use a cube mesh
     2. Initialize bezier handles
-    3. Add the CoonNGonPatchGenerator geometry node
-    4. Apply the modifier
-    5. Export point and edge data to CSV
-    6. Verify topology for star patterns
+    3. Optionally subdivide an edge to create pentagon faces
+    4. Add the CoonNGonPatchGenerator geometry node
+    5. Apply the modifier
+    6. Export point and edge data to CSV
+    7. Verify topology for star patterns
     
     Args:
         subdivisions: Number of subdivisions (1-5, default 2)
         create_new_cube: Whether to create a fresh cube (default True)
+        subdivide_edge: Whether to subdivide an edge to create pentagon faces (default False)
     
     Returns:
         Test results including pass/fail status and details
@@ -160,7 +163,31 @@ async def tool_run_coon_patch_test(
     client = get_client()
     return await client.send_command("run_test", {
         "subdivisions": subdivisions,
-        "create_new_cube": create_new_cube
+        "create_new_cube": create_new_cube,
+        "subdivide_edge": subdivide_edge
+    })
+
+
+async def tool_run_pentagon_test(
+    subdivisions: int = 2
+) -> Dict[str, Any]:
+    """
+    Run Coon patch test with pentagon faces (5-sided N-gons).
+    
+    Creates a cube with one edge subdivided, resulting in two pentagon faces.
+    This tests N-gon support beyond simple quads.
+    
+    Args:
+        subdivisions: Number of subdivisions (1-5, default 2)
+    
+    Returns:
+        Test results including pass/fail status and details
+    """
+    client = get_client()
+    return await client.send_command("run_test", {
+        "subdivisions": subdivisions,
+        "create_new_cube": True,
+        "subdivide_edge": True
     })
 
 

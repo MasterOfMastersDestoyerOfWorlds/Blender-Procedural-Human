@@ -18,8 +18,8 @@ def create_charrot_gregory_group():
     - We store domain polygon coordinates per CORNER before subdivision and rely on interpolation.
     - We split edges so each face is an island (prevents attribute averaging across faces).
     - We sample edge curve data (endpoints + handle_start/handle_end) from the ORIGINAL mesh.
-    """
-    group_name = "CoonNGonPatchGenerator"
+    """   
+    group_name = "CoonNGonPatchGenerator"     
     if group_name in bpy.data.node_groups:
         bpy.data.node_groups.remove(bpy.data.node_groups[group_name])
 
@@ -32,19 +32,19 @@ def create_charrot_gregory_group():
     # and can create "star" connectivity when multiple face-islands collapse together.
     group.interface.new_socket(name="Merge By Distance", in_out="INPUT", socket_type="NodeSocketBool").default_value = False
     group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-
-    nodes = group.nodes
-    links = group.links
+  
+    nodes = group.nodes    
+    links = group.links  
     
     # --- Helpers ---
     def is_socket(obj):
-        return isinstance(obj, bpy.types.NodeSocket)
+        return isinstance(obj, bpy.types.NodeSocket) 
 
     def link_or_set(socket_in, value):
         if is_socket(value):
             links.new(value, socket_in)
         elif isinstance(value, (int, float, bool, str)):
-            socket_in.default_value = value
+            socket_in.default_value = value 
         elif isinstance(value, (tuple, list)):
             socket_in.default_value = value
 
@@ -369,12 +369,12 @@ def create_charrot_gregory_group():
         corner_pos_attr_w.data_type = "FLOAT_VECTOR"
         corner_pos_attr_w.inputs["Name"].default_value = "corner_pos"
         links.new(corner_pos_attr_w.outputs[0], sample.inputs["Value"])
-        return sample.outputs[0]
-    
+        return sample.outputs[0] 
+
     wc0 = sample_face_corner_pos(0)
     wc1 = sample_face_corner_pos(1)
     wc2 = sample_face_corner_pos(2)
-    wc3 = sample_face_corner_pos(3)
+    wc3 = sample_face_corner_pos(3) 
     
     # Compute cross product of two edges to get face normal direction
     edge01_w = vec_math_op("SUBTRACT", wc1, wc0)
@@ -793,7 +793,8 @@ def create_charrot_gregory_group():
 
     D_i = domain_edge_distance(A_i)
     D_i_clamp = math_op("MAXIMUM", D_i, 1.0e-8)
-    add_log = math_op("ADD", A_log, math_op("LOGARITHM", D_i_clamp))
+    # FIX: Explicitly use base e (2.718281828) for natural log - Blender defaults to base 2!
+    add_log = math_op("ADD", A_log, math_op("LOGARITHM", D_i_clamp, 2.718281828))
 
     A_log_final = switch_float(A_valid, A_log, add_log)
 
@@ -829,7 +830,8 @@ def create_charrot_gregory_group():
     D1c = math_op("MAXIMUM", D1, 1.0e-8)
     
     # log_w = LogTotal - (LogD_In + LogD_Out)
-    log_w = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", D0c), math_op("LOGARITHM", D1c)))
+    # FIX: Explicitly use base e for natural log
+    log_w = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", D0c, 2.718281828), math_op("LOGARITHM", D1c, 2.718281828)))
     
     w_i = math_op("EXPONENT", log_w)
     sum_new = math_op("ADD", B_sumw, w_i)
@@ -874,14 +876,16 @@ def create_charrot_gregory_group():
     Di = math_op("MAXIMUM", domain_edge_distance(C_i), 1.0e-8)
     Dip1 = math_op("MAXIMUM", domain_edge_distance(ip1), 1.0e-8)
     
-    log_w_i = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Di), math_op("LOGARITHM", Dip1)))
+    # FIX: Explicitly use base e for natural log
+    log_w_i = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Di, 2.718281828), math_op("LOGARITHM", Dip1, 2.718281828)))
     wcur = math_op("EXPONENT", log_w_i)
     lam_i = math_op("DIVIDE", wcur, sumW)
-
+ 
     # Wachspress λ_{i-1} for vertex (i-1): excludes edges (i-1) and i meeting at vertex (i-1)
     Dim1 = math_op("MAXIMUM", domain_edge_distance(im1), 1.0e-8)
 
-    log_w_im1 = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Dim1), math_op("LOGARITHM", Di)))
+    # FIX: Explicitly use base e for natural log
+    log_w_im1 = math_op("SUBTRACT", logD_total, math_op("ADD", math_op("LOGARITHM", Dim1, 2.718281828), math_op("LOGARITHM", Di, 2.718281828)))
     wprev = math_op("EXPONENT", log_w_im1)
     lam_im1 = math_op("DIVIDE", wprev, sumW)
     denom = math_op("MAXIMUM", math_op("ADD", lam_im1, lam_i), 1.0e-8)
@@ -903,7 +907,7 @@ def create_charrot_gregory_group():
     # and for opp curve derivatives:
     #   C'_{i+2}(0) -> edge_for_idx(i+2)
     #   C'_{i-2}(1) -> edge_for_idx(i-2)
-    e_i, f_i = edge_for_idx(C_i)     # C_i
+    e_i, f_i = edge_for_idx(C_i)     # C_i 
     e_im1, f_im1 = edge_for_idx(im1) # C_{i-1}
     e_ip1, f_ip1 = edge_for_idx(ip1) # C_{i+1}
 

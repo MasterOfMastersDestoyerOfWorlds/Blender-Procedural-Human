@@ -355,6 +355,12 @@ class PROC_OT_run_full_coon_test(Operator):
         default=True
     )
     
+    subdivide_edge: BoolProperty(
+        name="Subdivide Edge",
+        description="Subdivide one edge to create pentagon faces",
+        default=False
+    )
+    
     def execute(self, context):
         # Step 1: Setup
         self.report({'INFO'}, "Setting up test...")
@@ -364,6 +370,28 @@ class PROC_OT_run_full_coon_test(Operator):
         )
         if result != {'FINISHED'}:
             return result
+        
+        # Step 1.5: Subdivide an edge if requested (creates pentagons)
+        if self.subdivide_edge:
+            obj = context.active_object
+            if obj and obj.type == 'MESH':
+                ensure_edit_mode(obj)
+                bpy.ops.mesh.select_all(action='DESELECT')
+                bpy.ops.mesh.select_mode(type='EDGE')
+                
+                # Select first edge
+                bpy.ops.object.mode_set(mode='OBJECT')
+                if len(obj.data.edges) > 0:
+                    obj.data.edges[0].select = True
+                bpy.ops.object.mode_set(mode='EDIT')
+                
+                # Subdivide the selected edge
+                bpy.ops.mesh.subdivide(number_cuts=1)
+                ensure_object_mode(obj)
+                
+                # Re-initialize bezier handles after topology change
+                bpy.ops.mesh.initialize_loft_handles()
+                self.report({'INFO'}, "Subdivided edge to create pentagon faces")
         
         # Step 2: Apply and Export
         self.report({'INFO'}, "Applying modifier and exporting...")

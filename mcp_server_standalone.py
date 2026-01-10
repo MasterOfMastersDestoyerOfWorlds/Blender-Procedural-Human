@@ -84,11 +84,21 @@ _client = BlenderClient()
 # MCP TOOL HANDLERS
 # ============================================================================
 
-async def tool_run_coon_patch_test(subdivisions: int = 2, create_new_cube: bool = True) -> Dict[str, Any]:
+async def tool_run_coon_patch_test(subdivisions: int = 2, create_new_cube: bool = True, subdivide_edge: bool = False) -> Dict[str, Any]:
     """Run the full Coon/Charrot-Gregory patch test cycle."""
     return await _client.send_command("run_test", {
         "subdivisions": subdivisions,
-        "create_new_cube": create_new_cube
+        "create_new_cube": create_new_cube,
+        "subdivide_edge": subdivide_edge
+    })
+
+
+async def tool_run_pentagon_test(subdivisions: int = 2) -> Dict[str, Any]:
+    """Run Coon patch test with pentagon faces (5-sided N-gons)."""
+    return await _client.send_command("run_test", {
+        "subdivisions": subdivisions,
+        "create_new_cube": True,
+        "subdivide_edge": True
     })
 
 
@@ -156,10 +166,22 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "subdivisions": {"type": "integer", "description": "Number of subdivisions (1-5)", "default": 2},
-                "create_new_cube": {"type": "boolean", "description": "Create a fresh cube", "default": True}
+                "create_new_cube": {"type": "boolean", "description": "Create a fresh cube", "default": True},
+                "subdivide_edge": {"type": "boolean", "description": "Subdivide one edge to create pentagon faces", "default": False}
             }
         },
         "handler": tool_run_coon_patch_test
+    },
+    {
+        "name": "run_pentagon_test",
+        "description": "Run Coon patch test with pentagon faces (5-sided N-gons). Creates a cube with one edge subdivided.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "subdivisions": {"type": "integer", "description": "Number of subdivisions (1-5)", "default": 2}
+            }
+        },
+        "handler": tool_run_pentagon_test
     },
     {
         "name": "get_point_data",
