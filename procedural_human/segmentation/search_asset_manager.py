@@ -1,8 +1,9 @@
 """
-Search Asset Manager for Yandex image search results.
+Search Asset Manager for image search results and local folder images.
 
-This module manages a temporary asset library that stores downloaded search results,
-making them available in Blender's Asset Browser for easy browsing and selection.
+This module manages a temporary asset library that stores downloaded search results
+and local folder images, making them available in Blender's Asset Browser for easy
+browsing and selection.
 """
 
 import bpy
@@ -17,16 +18,20 @@ from procedural_human.logger import logger
 
 class SearchAssetManager:
     """
-    Manages a temporary asset library for Yandex image search results.
+    Manages a temporary asset library for image search results and local folder images.
     
     This class:
-    - Creates and manages a temp directory for downloaded images
+    - Creates and manages a temp directory for downloaded/copied images
     - Registers this directory as a Blender Asset Library
-    - Provides methods to add images as assets with previews
+    - Provides methods to add images as assets with previews (yandex_ and local_ prefixes)
     - Handles cleanup on addon unload
     """
     
-    LIBRARY_NAME = "Yandex Search Results"
+    LIBRARY_NAME = "Search Results"
+    
+    # Catalog UUIDs for different sources (must be valid UUIDs - hex only: 0-9, a-f)
+    CATALOG_SEARCH = "7a1c5e2d-8f3b-4a9e-b6c1-2d3e4f5a6b7c"
+    CATALOG_LOCAL = "8b2d6f3e-9a4c-5b0f-c7d2-3e4f5a6a7b8d"
     _temp_dir: Optional[Path] = None
     _registered: bool = False
     _assets: List[str] = []  # Track loaded asset names
@@ -55,7 +60,7 @@ class SearchAssetManager:
             return
             
         catalog_file = cls._temp_dir / "blender_assets.cats.txt"
-        catalog_content = """# This is an Asset Catalog Definition file for Blender.
+        catalog_content = f"""# This is an Asset Catalog Definition file for Blender.
 #
 # Empty lines and lines starting with `#` will be ignored.
 # The first non-ignored line should be the version indicator.
@@ -63,8 +68,11 @@ class SearchAssetManager:
 
 VERSION 1
 
-# Yandex Search Results catalog
-7a1c5e2d-8f3b-4a9e-b6c1-2d3e4f5a6b7c:search_results:Search Results
+# Web Search Results catalog
+{cls.CATALOG_SEARCH}:search_results:Web Search
+
+# Local Folder catalog
+{cls.CATALOG_LOCAL}:local_folder:Local Folder
 """
         try:
             with open(catalog_file, 'w') as f:
@@ -119,15 +127,22 @@ VERSION 1
     
     @classmethod
     def clear_assets(cls):
-        """Clear all downloaded assets from the temp directory."""
-        # Clear the preview collection first
+        """Clear web search assets only (preserves local folder assets)."""
+        # Clear only yandex previews from the preview collection
         try:
-            from procedural_human.segmentation.panels.search_panel import clear_search_previews
-            clear_search_previews()
+            from procedural_human.segmentation.panels.search_panel import get_search_preview_collection
+            pcoll = get_search_preview_collection()
+            # Only remove search_ prefixed previews (web search), not local_
+            search_keys = [k for k in pcoll.keys() if k.startswith("search_")]
+            for key in search_keys:
+                try:
+                    del pcoll[key]
+                except Exception:
+                    pass
         except Exception:
             pass
         
-        # Remove any loaded materials from Blender
+        # Remove only yandex materials from Blender
         for mat_name in list(bpy.data.materials.keys()):
             if mat_name.startswith("yandex_"):
                 try:
@@ -136,7 +151,7 @@ VERSION 1
                 except Exception:
                     pass
         
-        # Remove any loaded images from Blender
+        # Remove only yandex images from Blender
         for img_name in list(bpy.data.images.keys()):
             if img_name.startswith("yandex_"):
                 try:
@@ -146,13 +161,14 @@ VERSION 1
                     pass
         
         if cls._temp_dir is None or not cls._temp_dir.exists():
-            cls._assets.clear()
-            logger.info("Cleared all search assets")
+            # Only clear yandex assets from tracking
+            cls._assets = [a for a in cls._assets if not a.startswith("yandex_")]
+            logger.info("Cleared web search assets")
             return
             
-        # Remove all files except the catalog file
+        # Remove only yandex files from temp directory (preserve local_ files)
         for item in cls._temp_dir.iterdir():
-            if item.name != "blender_assets.cats.txt":
+            if item.name.startswith("yandex_"):
                 try:
                     if item.is_file():
                         item.unlink()
@@ -161,22 +177,31 @@ VERSION 1
                 except Exception as e:
                     logger.error(f"Failed to remove {item}: {e}")
         
-        # Clear tracked assets
-        cls._assets.clear()
+        # Clear only yandex assets from tracking
+        cls._assets = [a for a in cls._assets if not a.startswith("yandex_")]
         
-        logger.info("Cleared all search assets")
+        logger.info("Cleared web search assets")
     
     @classmethod
-    def add_image_asset(cls, image_path: str, name: str) -> Optional[bpy.types.Material]:
+    def _create_material_asset(
+        cls, 
+        image_path: str, 
+        name: str, 
+        prefix: str, 
+        catalog_id: str,
+        description_prefix: str
+    ) -> Optional[bpy.types.Material]:
         """
-        Create a Material asset with the image as a texture.
+        Internal method to create a Material asset with the image as a texture.
         
-        The Asset Browser displays Materials better than raw Images.
-        This follows the Asset Bridge approach.
+        This is the single code path used by both web search and local folder assets.
         
         Args:
             image_path: Path to the image file
-            name: Name for the asset
+            name: Name for the asset (without prefix)
+            prefix: Prefix for asset name (e.g., 'yandex_' or 'local_')
+            catalog_id: UUID of the catalog to assign
+            description_prefix: Prefix for the description (e.g., 'Search result' or 'Local folder')
             
         Returns:
             The created Material data-block, or None if failed
@@ -189,14 +214,14 @@ VERSION 1
             
             # Copy image to temp directory if not already there
             temp_dir = cls.get_temp_dir()
-            image_filename = f"yandex_{name}{Path(image_path).suffix}"
+            image_filename = f"{prefix}{name}{Path(image_path).suffix}"
             dest_path = temp_dir / image_filename
             
             if str(image_path) != str(dest_path):
                 shutil.copy2(image_path, dest_path)
             
             # Create material asset name
-            asset_name = f"yandex_{name}"
+            asset_name = f"{prefix}{name}"
             
             # Remove existing material with same name
             if asset_name in bpy.data.materials:
@@ -234,8 +259,8 @@ VERSION 1
             mat.asset_mark()
             
             # Set asset metadata
-            mat.asset_data.description = f"Search result: {name}"
-            mat.asset_data.catalog_id = "7a1c5e2d-8f3b-4a9e-b6c1-2d3e4f5a6b7c"
+            mat.asset_data.description = f"{description_prefix}: {name}"
+            mat.asset_data.catalog_id = catalog_id
             
             # Load custom preview using the image file
             try:
@@ -253,10 +278,50 @@ VERSION 1
             return mat
             
         except Exception as e:
-            logger.error(f"Failed to add material asset '{name}': {e}")
+            logger.error(f"Failed to add material asset '{prefix}{name}': {e}")
             import traceback
             traceback.print_exc()
             return None
+    
+    @classmethod
+    def add_image_asset(cls, image_path: str, name: str) -> Optional[bpy.types.Material]:
+        """
+        Create a Material asset from a web search result.
+        
+        Args:
+            image_path: Path to the image file
+            name: Name for the asset
+            
+        Returns:
+            The created Material data-block, or None if failed
+        """
+        return cls._create_material_asset(
+            image_path=image_path,
+            name=name,
+            prefix="yandex_",
+            catalog_id=cls.CATALOG_SEARCH,
+            description_prefix="Search result"
+        )
+    
+    @classmethod
+    def add_local_image_asset(cls, image_path: str, name: str) -> Optional[bpy.types.Material]:
+        """
+        Create a Material asset from a local folder image.
+        
+        Args:
+            image_path: Path to the image file
+            name: Name for the asset
+            
+        Returns:
+            The created Material data-block, or None if failed
+        """
+        return cls._create_material_asset(
+            image_path=image_path,
+            name=name,
+            prefix="local_",
+            catalog_id=cls.CATALOG_LOCAL,
+            description_prefix="Local folder"
+        )
     
     @classmethod
     def save_assets_to_blend(cls):
@@ -270,8 +335,12 @@ VERSION 1
         blend_file = temp_dir / "search_results.blend"
         
         try:
-            # Get list of yandex materials to save
-            mats_to_save = [mat for mat in bpy.data.materials if mat.name.startswith("yandex_") and mat.asset_data is not None]
+            # Get list of yandex and local materials to save
+            mats_to_save = [
+                mat for mat in bpy.data.materials 
+                if (mat.name.startswith("yandex_") or mat.name.startswith("local_")) 
+                and mat.asset_data is not None
+            ]
             
             if not mats_to_save:
                 logger.warning("No material assets to save")
@@ -372,7 +441,12 @@ def _load_material_image_to_editor(mat_name: str) -> bool:
     Returns True if successful.
     """
     mat = bpy.data.materials.get(mat_name)
-    if not mat or not mat.node_tree:
+    if not mat:
+        logger.warning(f"Material not found: {mat_name}")
+        return False
+    
+    if not mat.node_tree:
+        logger.warning(f"Material has no node tree: {mat_name}")
         return False
     
     for node in mat.node_tree.nodes:
@@ -386,6 +460,7 @@ def _load_material_image_to_editor(mat_name: str) -> bool:
                 pass
             
             # Load into all Image Editors
+            loaded_count = 0
             for window in bpy.context.window_manager.windows:
                 for area in window.screen.areas:
                     if area.type == 'IMAGE_EDITOR':
@@ -393,17 +468,24 @@ def _load_material_image_to_editor(mat_name: str) -> bool:
                             if space.type == 'IMAGE_EDITOR':
                                 space.image = image
                                 area.tag_redraw()
+                                loaded_count += 1
             
-            logger.info(f"Loaded image from material: {image.name}")
+            logger.info(f"Loaded image '{image.name}' from material '{mat_name}' into {loaded_count} editor(s)")
             return True
     
+    logger.warning(f"No image texture node found in material: {mat_name}")
     return False
+
+
+def _is_segmentation_asset(name: str) -> bool:
+    """Check if an asset name is a segmentation asset (yandex or local)."""
+    return name.startswith("yandex_") or name.startswith("local_")
 
 
 def _watch_asset_selection():
     """
     Timer callback to watch for asset selection changes in the Asset Browser.
-    When a yandex asset is selected, load its image into the Image Editor.
+    When a yandex or local folder asset is selected, load its image into the Image Editor.
     """
     global _last_active_asset, _asset_watch_timer_running
     
@@ -425,26 +507,27 @@ def _watch_asset_selection():
                                     if active_file:
                                         asset_name = getattr(active_file, 'name', '')
                                         
-                                        # Only process yandex materials and if it changed
-                                        if asset_name and asset_name.startswith("yandex_") and asset_name != _last_active_asset:
+                                        # Process yandex or local materials if changed
+                                        if asset_name and _is_segmentation_asset(asset_name) and asset_name != _last_active_asset:
                                             _last_active_asset = asset_name
                                             logger.info(f"Asset selected: {asset_name}")
-                                            _load_material_image_to_editor(asset_name)
+                                            success = _load_material_image_to_editor(asset_name)
+                                            if not success:
+                                                logger.warning(f"Failed to load image for asset: {asset_name}")
                             except Exception as e:
-                                # Context override may fail, try direct access
-                                pass
+                                logger.debug(f"Context override failed: {e}")
         
         return 0.2  # Check every 200ms
         
     except Exception as e:
-        logger.debug(f"Asset watch error: {e}")
+        logger.warning(f"Asset watch error: {e}")
         return 0.5
 
 
 def _on_depsgraph_update(scene, depsgraph):
     """
-    Handler to detect when a yandex material is applied to an object.
-    When a yandex material is applied (e.g., by drag-drop in Asset Browser),
+    Handler to detect when a segmentation material is applied to an object.
+    When a yandex or local material is applied (e.g., by drag-drop in Asset Browser),
     automatically load its image into the Image Editor.
     """
     global _last_active_asset
@@ -463,8 +546,8 @@ def _on_depsgraph_update(scene, depsgraph):
         if mat is None:
             return
         
-        # Only process yandex materials
-        if not mat.name.startswith("yandex_"):
+        # Only process segmentation materials (yandex or local)
+        if not _is_segmentation_asset(mat.name):
             return
         
         # Avoid processing the same material multiple times
@@ -499,7 +582,7 @@ def _on_depsgraph_update(scene, depsgraph):
     except Exception as e:
         # Silently ignore errors in depsgraph handler
         pass
-
+ 
 
 def register():
     """Register the search asset manager."""

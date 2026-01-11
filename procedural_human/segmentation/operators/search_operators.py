@@ -1,5 +1,7 @@
 """
-Yandex Search operators for the segmentation workflow.
+Search operators for the segmentation workflow.
+
+Includes Yandex/web image search and local folder loading operators.
 """
 
 import bpy
@@ -159,15 +161,19 @@ class YandexImageSearchOperator(Operator):
             
             # Download and add each result as an asset
             success_count = 0
-            cached_results = []
+            web_results = []
             for i, result in enumerate(results[:20]):  # Limit to first 20 results
                 result_info = download_and_add_asset(result, i)
                 if result_info:
                     success_count += 1
-                    cached_results.append(result_info)
+                    web_results.append(result_info)
             
-            # Store cached results for panel display
-            context.scene["yandex_search_cached_results"] = cached_results
+            # Store cached results for panel display - MERGE with local folder results
+            existing_results = context.scene.get("yandex_search_cached_results", [])
+            # Keep local folder results, replace web search results
+            local_results = [r for r in existing_results if r.get("name", "").startswith("local_")]
+            combined_results = web_results + local_results
+            context.scene["yandex_search_cached_results"] = combined_results
                     
             # Refresh asset browser
             SearchAssetManager.refresh_asset_browser()
@@ -584,5 +590,152 @@ class LoadImageFromDiskOperator(Operator):
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
+
+
+# ============================================================================
+# Local Folder Operators
+# ============================================================================
+
+@procedural_operator
+class BrowseLocalFolderOperator(Operator):
+    """Browse for a local folder containing images"""
+    
+    bl_idname = "segmentation.browse_local_folder"
+    bl_label = "Browse Local Folder"
+    bl_description = "Select a folder containing images to load into the Asset Browser"
+    bl_options = {'REGISTER'}
+    
+    directory: StringProperty(
+        subtype='DIR_PATH',
+        default=""
+    )
+    
+    def execute(self, context):
+        if not self.directory:
+            self.report({'WARNING'}, "No folder selected")
+            return {'CANCELLED'}
+        
+        try:
+            from procedural_human.segmentation.local_folder_manager import LocalFolderManager
+            
+            # Set the folder and load images
+            count = LocalFolderManager.set_folder(self.directory)
+            
+            if count == 0:
+                self.report({'WARNING'}, "No images found in folder")
+                return {'CANCELLED'}
+            
+            # Store folder path in scene for UI display
+            context.scene.segmentation_local_folder = self.directory
+            context.scene["segmentation_local_image_count"] = count
+            
+            # Auto-load the first image into the Image Editor
+            self._auto_load_first_image(context)
+            
+            self.report({'INFO'}, f"Loaded {count} images from folder")
+            return {'FINISHED'}
+            
+        except Exception as e:
+            logger.error(f"Failed to load folder: {e}")
+            import traceback
+            traceback.print_exc()
+            self.report({'ERROR'}, f"Failed to load folder: {e}")
+            return {'CANCELLED'}
+    
+    def _auto_load_first_image(self, context):
+        """Load the first local image into the Image Editor."""
+        # Find the first local material
+        for mat in bpy.data.materials:
+            if mat.name.startswith("local_") and mat.node_tree:
+                for node in mat.node_tree.nodes:
+                    if node.type == 'TEX_IMAGE' and node.image:
+                        image = node.image
+                        context.scene["segmentation_image"] = image.name
+                        
+                        # Load into Image Editors
+                        for area in context.screen.areas:
+                            if area.type == 'IMAGE_EDITOR':
+                                for space in area.spaces:
+                                    if space.type == 'IMAGE_EDITOR':
+                                        space.image = image
+                                        area.tag_redraw()
+                                        break
+                        
+                        logger.info(f"Auto-loaded first local image: {image.name}")
+                        return
+    
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+
+@procedural_operator
+class RefreshLocalFolderOperator(Operator):
+    """Refresh the local folder to detect new images"""
+    
+    bl_idname = "segmentation.refresh_local_folder"
+    bl_label = "Refresh Local Folder"
+    bl_description = "Scan the folder again for new images"
+    bl_options = {'REGISTER'}
+    
+    def execute(self, context):
+        try:
+            from procedural_human.segmentation.local_folder_manager import LocalFolderManager
+            
+            folder = LocalFolderManager.get_watched_folder()
+            if folder is None:
+                self.report({'WARNING'}, "No folder is being watched. Browse for a folder first.")
+                return {'CANCELLED'}
+            
+            # Refresh the folder
+            new_count = LocalFolderManager.refresh_folder()
+            
+            # Update count in scene
+            context.scene["segmentation_local_image_count"] = LocalFolderManager.get_image_count()
+            
+            if new_count > 0:
+                self.report({'INFO'}, f"Added {new_count} new image(s)")
+            else:
+                self.report({'INFO'}, "No new images found")
+            
+            return {'FINISHED'}
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh folder: {e}")
+            self.report({'ERROR'}, f"Failed to refresh folder: {e}")
+            return {'CANCELLED'}
+
+
+@procedural_operator
+class ClearLocalFolderOperator(Operator):
+    """Clear local folder images and stop watching"""
+    
+    bl_idname = "segmentation.clear_local_folder"
+    bl_label = "Clear Local Folder"
+    bl_description = "Remove all loaded local folder images and stop watching for changes"
+    bl_options = {'REGISTER'}
+    
+    def execute(self, context):
+        try:
+            from procedural_human.segmentation.local_folder_manager import LocalFolderManager
+            from procedural_human.segmentation.search_asset_manager import SearchAssetManager
+            
+            # Clear local assets
+            LocalFolderManager.clear_local_assets()
+            
+            # Clear scene properties
+            context.scene.segmentation_local_folder = ""
+            context.scene["segmentation_local_image_count"] = 0
+            
+            # Refresh asset browser
+            SearchAssetManager.refresh_asset_browser()
+            
+            self.report({'INFO'}, "Local folder cleared")
+            return {'FINISHED'}
+            
+        except Exception as e:
+            logger.error(f"Failed to clear local folder: {e}")
+            self.report({'ERROR'}, f"Failed to clear: {e}")
+            return {'CANCELLED'}
 
 

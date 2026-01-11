@@ -1,8 +1,9 @@
 """
 Search panel for the segmentation workflow.
 
-Provides UI for Yandex image search with filters, history, and thumbnail grid.
-Uses Blender's preview collection system for displaying search result thumbnails.
+Provides UI for web image search and local folder loading with filters,
+history, and thumbnail grid. Uses Blender's preview collection system
+for displaying search result thumbnails.
 """
 
 import os
@@ -170,6 +171,14 @@ def register_search_properties():
         name="Selected Index",
         default=0
     )
+    
+    # Local folder properties
+    bpy.types.Scene.segmentation_local_folder = StringProperty(
+        name="Local Folder",
+        description="Path to a folder containing images to load",
+        subtype='DIR_PATH',
+        default=""
+    )
 
 
 def unregister_search_properties():
@@ -180,6 +189,14 @@ def unregister_search_properties():
         del bpy.types.Scene.yandex_search_size
         del bpy.types.Scene.yandex_search_thumbnails
         del bpy.types.Scene.yandex_search_selected_index
+        del bpy.types.Scene.segmentation_local_folder
+    except:
+        pass
+    
+    # Clean up local folder manager
+    try:
+        from procedural_human.segmentation.local_folder_manager import LocalFolderManager
+        LocalFolderManager.cleanup()
     except:
         pass
     
@@ -191,7 +208,7 @@ def unregister_search_properties():
 
 @procedural_panel
 class SegmentationSearchPanel(Panel):
-    """Yandex Image Search panel for finding reference images"""
+    """Image search and local folder panel for finding reference images"""
     
     bl_label = "Image Search"
     bl_idname = "PROCEDURAL_PT_segmentation_search"
@@ -203,9 +220,28 @@ class SegmentationSearchPanel(Panel):
         layout = self.layout
         scene = context.scene
         
-        # Search input section
+        # Local folder section
         box = layout.box()
-        box.label(text="Yandex Image Search", icon='VIEWZOOM')
+        box.label(text="Local Folder", icon='FILE_FOLDER')
+        
+        # Folder path display and browse button
+        row = box.row(align=True)
+        row.prop(scene, "segmentation_local_folder", text="")
+        row.operator("segmentation.browse_local_folder", text="", icon='FILEBROWSER')
+        
+        # Show folder status and controls
+        folder = scene.segmentation_local_folder
+        if folder:
+            image_count = scene.get("segmentation_local_image_count", 0)
+            box.label(text=f"{image_count} image(s) loaded")
+            row = box.row(align=True)
+            row.operator("segmentation.refresh_local_folder", text="Refresh", icon='FILE_REFRESH')
+            row.operator("segmentation.clear_local_folder", text="", icon='X')
+        
+        # Search input section
+        layout.separator()
+        box = layout.box()
+        box.label(text="Web Image Search", icon='VIEWZOOM')
         
         # Search query input
         row = box.row(align=True)
