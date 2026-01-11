@@ -73,3 +73,4 @@ htmlcov/
 
 *.safetensors
 *.pt
+*.ckpt
