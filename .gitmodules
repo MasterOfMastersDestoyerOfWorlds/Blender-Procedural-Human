@@ -1,0 +1,3 @@
+[submodule "procedural_human/novel_view_gen/Hunyuan3D-2"]
+	path = procedural_human/novel_view_gen/Hunyuan3D-2
+	url = https://github.com/Tencent-Hunyuan/Hunyuan3D-2.git
