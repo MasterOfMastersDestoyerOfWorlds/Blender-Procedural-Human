@@ -38,7 +38,7 @@ def discover_modules(
 
     modules = set()
 
-    skip_dirs = {"__pycache__", ".git", "masonry", ".venv", "venv", "node_modules", "image_seg", "tmp"}
+    skip_dirs = {"__pycache__", ".git", "masonry", ".venv", "venv", "node_modules", "image_seg", "tmp", "Hunyuan3D-2"}
     skip_files = {"__init__.py"}
 
     for dirpath, dirnames, filenames in os.walk(root_path):

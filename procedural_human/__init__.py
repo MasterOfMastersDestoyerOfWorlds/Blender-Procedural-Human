@@ -9,6 +9,7 @@ For development mode (VS Code), wheels are installed on first run.
 
 import sys
 import subprocess
+import atexit
 from pathlib import Path
 import os
 import time as _time_module
@@ -305,7 +306,7 @@ def register():
     _log_timing("register:operators", (_time_module.perf_counter() - _t0) * 1000)
     
     _t0 = _time_module.perf_counter()
-    register_preset_class.discover_and_register_all_decorators()
+    register_preset_class.discover_and_register_all_decorators() 
     _log_timing("register:presets", (_time_module.perf_counter() - _t0) * 1000)
      
     _t0 = _time_module.perf_counter()
@@ -382,6 +383,35 @@ def register():
     except Exception as e:
         logger.info(f"[Procedural Human] Could not start test server: {e}")
     _log_timing("register:test_server", (_time_module.perf_counter() - _t0) * 1000)
+    
+    # Start the Hunyuan3D API server for novel view generation
+    # The server is stopped via atexit when Blender quits (not on addon reload)
+    _t0 = _time_module.perf_counter()
+    try:
+        from procedural_human.novel_view_gen.server_manager import (
+            start_hunyuan_server,
+            stop_hunyuan_server,
+        )
+        # Only start if not already running (prevents double-start on addon reload)
+        from procedural_human.novel_view_gen.server_manager import is_server_running
+        if not is_server_running():
+            # Start server in background - don't block addon registration
+            # Server will be ready when first novel view request is made
+            def _start_hunyuan_deferred():
+                try:
+                    start_hunyuan_server()
+                except Exception as e:
+                    logger.info(f"[Procedural Human] Hunyuan3D server not available: {e}")
+                return None  # Don't repeat
+            bpy.app.timers.register(_start_hunyuan_deferred, first_interval=2.0)
+        
+        # Register atexit handler to stop server when Blender quits
+        # atexit runs on Python interpreter exit, not on addon reload
+        atexit.register(stop_hunyuan_server)
+        logger.info("[Procedural Human] Hunyuan3D server manager registered")
+    except Exception as e:
+        logger.info(f"[Procedural Human] Could not register Hunyuan3D server: {e}")
+    _log_timing("register:hunyuan_server", (_time_module.perf_counter() - _t0) * 1000)
     
     _log_timing("register:TOTAL", (_time_module.perf_counter() - _t_reg_start) * 1000)
     _log_timing("startup:TOTAL_FROM_IMPORT", (_time_module.perf_counter() - _startup_start) * 1000)

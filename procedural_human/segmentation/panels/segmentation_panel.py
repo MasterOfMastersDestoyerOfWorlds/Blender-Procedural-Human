@@ -61,6 +61,56 @@ class SegmentationControlsPanel(Panel):
             row.operator("segmentation.masks_to_curves", text="Convert to Curves", icon='CURVE_DATA')
             row.operator("segmentation.clear_masks", text="", icon='X')
         
+        # Novel View Generation
+        layout.separator()
+        box = layout.box()
+        box.label(text="3D Novel View", icon='VIEW3D')
+        
+        # Server status (uses cached value to avoid blocking UI)
+        try:
+            from procedural_human.novel_view_gen.server_manager import (
+                is_server_running_cached,
+                is_server_starting,
+                get_server_start_error,
+            )
+            if is_server_running_cached():
+                box.label(text="  Hunyuan3D: Running", icon='CHECKMARK')
+            elif is_server_starting():
+                box.label(text="  Hunyuan3D: Starting...", icon='TIME')
+            else:
+                error = get_server_start_error()
+                if error:
+                    box.label(text="  Hunyuan3D: Failed", icon='ERROR')
+                    # Show truncated error
+                    col = box.column()
+                    col.scale_y = 0.6
+                    col.label(text=f"    {error[:50]}...")
+                else:
+                    box.label(text="  Hunyuan3D: Not running", icon='TIME')
+            box.operator("segmentation.check_hunyuan_server", text="Check Server", icon='FILE_REFRESH')
+        except:
+            box.label(text="  Hunyuan3D: Not available", icon='ERROR')
+        
+        # Novel view operators
+        col = box.column(align=True)
+        if mask_count > 0:
+            col.operator("segmentation.generate_novel_view", text="Generate Novel View", icon='MESH_MONKEY')
+        else:
+            col.enabled = False
+            col.operator("segmentation.generate_novel_view", text="Generate Novel View (need masks)", icon='MESH_MONKEY')
+        
+        # Novel view contour info
+        front_pts = context.scene.get("novel_view_front_points", 0)
+        side_pts = context.scene.get("novel_view_side_points", 0)
+        
+        if front_pts > 0 and side_pts > 0:
+            row = box.row()
+            row.label(text=f"  Front: {front_pts} pts, Side: {side_pts} pts")
+            
+            row = box.row(align=True)
+            row.operator("segmentation.create_dual_mesh_curves", text="Create Mesh Curves", icon='MESH_DATA')
+            row.operator("segmentation.clear_novel_contours", text="", icon='X')
+        
         # Instructions
         layout.separator()
         box = layout.box()
@@ -69,8 +119,10 @@ class SegmentationControlsPanel(Panel):
         col.scale_y = 0.7
         col.label(text="1. Load an image (search or disk)")
         col.label(text="2. Use prompt or click to segment")
-        col.label(text="3. Convert masks to curves")
-        col.label(text="4. Insert curves into 3D scene")
+        col.label(text="3a. Convert masks to curves, OR")
+        col.label(text="3b. Generate novel view (3D)")
+        col.label(text="4. Create mesh curves from contours")
+        col.label(text="5. Coons patch generates surface")
 
 
 @procedural_panel
@@ -119,6 +171,16 @@ class SegmentationAdvancedPanel(Panel):
                 box.label(text="Model not loaded")
         except:
             box.label(text="SAM3 not available")
+        
+        # Test mesh curves
+        layout.separator()
+        box = layout.box()
+        box.label(text="Testing", icon='EXPERIMENTAL')
+        box.operator(
+            "segmentation.create_mesh_from_test_contours",
+            text="Create Test Mesh Curves",
+            icon='MESH_TORUS'
+        )
 
 
 # Operator to unload SAM model
