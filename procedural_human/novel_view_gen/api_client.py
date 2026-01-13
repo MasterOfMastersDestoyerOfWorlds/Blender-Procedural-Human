@@ -80,6 +80,8 @@ def validate_image_for_generation(image) -> Tuple[bool, str]:
         white_pixels = np.all(rgb > 250, axis=2)
         white_ratio = np.mean(white_pixels)
         
+        # NOTE: Background is now gray (127), so white pixels are likely subject highlights
+        # But if the user provides an image that is naturally very white, we still warn
         if white_ratio > 0.95:  # More than 95% white
             return False, f"Image is {white_ratio*100:.0f}% white. Need more subject content."
         
@@ -96,8 +98,10 @@ def validate_image_for_generation(image) -> Tuple[bool, str]:
             return False, "Image is almost entirely transparent."
     
     # Check variance (if image is too uniform)
-    variance = np.var(img_array)
-    if variance < 100:
+    # With gray background (127), variance might be lower if subject is also gray
+    # But 100 is very low (basically solid color)
+    variance = np.var(img_array[:, :, :3])
+    if variance < 50:
         return False, "Image has very low contrast. Ensure subject is visible."
     
     return True, ""

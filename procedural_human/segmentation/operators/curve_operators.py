@@ -13,6 +13,7 @@ from bpy.props import (
     StringProperty,
 )
 from mathutils import Vector, Matrix, Euler
+import numpy as np
 
 from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.logger import logger
@@ -234,6 +235,133 @@ class SelectCurvesFromSegmentationOperator(Operator):
             self.report({'INFO'}, f"Selected {count} segmentation curves")
         else:
             self.report({'INFO'}, "No segmentation curves found")
+        
+        return {'FINISHED'}
+
+
+@procedural_operator
+class SimpleRotateMeshCurveOperator(Operator):
+    """
+    Create a mesh by rotating the segmentation mask 90 degrees.
+    Uses depth estimation to scale the rotated view (thickness).
+    """
+    
+    bl_idname = "segmentation.simple_rotate_mesh"
+    bl_label = "Simple Rotate Mesh"
+    bl_description = "Create a mesh by rotating the mask 90 degrees, scaled by estimated depth"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    use_depth_estimation: BoolProperty(
+        name="Use Depth Estimation",
+        description="Estimate object thickness from image to scale the side view",
+        default=True
+    )
+    
+    thickness_scale: FloatProperty(
+        name="Thickness Scale",
+        description="Manual scaling factor for the side view thickness",
+        default=1.0,
+        min=0.1,
+        max=5.0
+    )
+    
+    def execute(self, context):
+        from procedural_human.segmentation.operators.segmentation_operators import (
+            get_current_masks,
+            get_active_image,
+            blender_image_to_pil,
+            get_enabled_mask_indices,
+            get_original_image_pixels,
+        )
+        from procedural_human.segmentation.operators.novel_view_operators import set_contours
+        from procedural_human.segmentation.mask_to_curve import find_contours, simplify_contour
+        
+        # Get masks and image
+        masks = get_current_masks()
+        enabled_indices = get_enabled_mask_indices(context)
+        image = get_active_image(context)
+        
+        if not masks or not enabled_indices or not image:
+            self.report({'WARNING'}, "No masks or image available")
+            return {'CANCELLED'}
+        
+        # Use first enabled mask
+        mask_idx = enabled_indices[0]
+        mask = masks[mask_idx]
+        
+        # Get PIL image for depth estimation
+        original_pixels = get_original_image_pixels()
+        if original_pixels is not None:
+            from PIL import Image as PILImage
+            width, height = image.size
+            pixels = np.array(original_pixels).reshape((height, width, 4))
+            pixels = np.flipud(pixels)
+            pixels = (pixels[:, :, :3] * 255).astype(np.uint8)
+            pil_image = PILImage.fromarray(pixels, mode='RGB')
+        else:
+            pil_image = blender_image_to_pil(image)
+        
+        # 1. Extract Front Contour
+        # Use bottom-left mask for contour extraction (Blender coords)
+        mask_bottom_left = np.flipud(mask)
+        front_contours = find_contours(mask_bottom_left.astype(np.uint8))
+        
+        if not front_contours:
+            self.report({'ERROR'}, "Could not extract contour from mask")
+            return {'CANCELLED'}
+            
+        front_contour = simplify_contour(max(front_contours, key=len), epsilon=0.005)
+        
+        # 2. Estimate Depth / Scaling
+        scaling_factor = self.thickness_scale
+        
+        if self.use_depth_estimation:
+            try:
+                from procedural_human.depth_estimation.depth_estimator import DepthEstimator
+                estimator = DepthEstimator.get_instance()
+                
+                # Check if loaded, if not, warn but continue (or load?)
+                # For responsiveness, we might want to load it. 
+                # But loading is blocking here? DepthEstimator.ensure_loaded is blocking.
+                # Let's trust it loads reasonably fast or is already loaded.
+                if not estimator.is_loaded() and not estimator.is_loading():
+                    self.report({'INFO'}, "Loading depth model...")
+                
+                # Calculate ratio
+                # Note: mask passed to get_thickness_ratio should match PIL image (top-left)
+                ratio = estimator.get_thickness_ratio(pil_image, mask)
+                
+                # Apply to scaling factor
+                scaling_factor *= ratio
+                logger.info(f"Depth estimation ratio: {ratio:.3f}, Final scale: {scaling_factor:.3f}")
+                
+            except Exception as e:
+                logger.warning(f"Depth estimation failed: {e}")
+                self.report({'WARNING'}, f"Depth estimation failed, using manual scale. {e}")
+        
+        # 3. Create Side Contour (Scaled copy of front)
+        # We scale the X coordinates (which correspond to width in 2D profile)
+        side_contour = front_contour.copy()
+        
+        # Center X around 0 before scaling?
+        # normalize_contour in mesh_curve_operators centers it anyway.
+        # But we want to scale the 'width' relative to its own center.
+        x_center = side_contour[:, 0].mean()
+        side_contour[:, 0] = (side_contour[:, 0] - x_center) * scaling_factor + x_center
+        
+        # 4. Store Contours
+        # We don't use convex hull for simple rotation typically, as the profile shape IS the shape.
+        # But CreateDualMeshCurvesOperator has a flag for it.
+        # We'll set both to same contour for now.
+        set_contours(front_contour, side_contour, None)
+        
+        # 5. Call CreateDualMeshCurvesOperator
+        # We invoke it to run immediately
+        bpy.ops.segmentation.create_dual_mesh_curves(
+            'EXEC_DEFAULT', 
+            use_convex_hull=False,  # Don't hull the side view, use the actual rotated profile
+            points_per_half=32
+        )
         
         return {'FINISHED'}
 

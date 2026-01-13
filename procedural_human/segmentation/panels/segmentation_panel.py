@@ -153,7 +153,8 @@ class SegmentationControlsPanel(Panel):
             col.label(text=progress, icon='TIME')
             col.operator("segmentation.cancel_novel_view", text="Cancel", icon='CANCEL')
         elif mask_count > 0:
-            col.operator("segmentation.generate_novel_view", text="Generate Novel View", icon='MESH_MONKEY')
+            col.operator("segmentation.generate_novel_view", text="Generate Novel View (Hunyuan)", icon='MESH_MONKEY')
+            col.operator("segmentation.simple_rotate_mesh", text="Simple Rotate Mesh", icon='MOD_SCREW')
         else:
             col.enabled = False
             col.operator("segmentation.generate_novel_view", text="Generate Novel View (need masks)", icon='MESH_MONKEY')
@@ -172,7 +173,9 @@ class SegmentationControlsPanel(Panel):
             row.label(text=f"  Front: {front_pts} pts, Side: {side_pts} pts")
             
             row = box.row(align=True)
-            row.operator("segmentation.create_dual_mesh_curves", text="Create Mesh Curves", icon='MESH_DATA')
+            # This operator is now mainly for manual contour adjustments or debugging
+            # as both GenerateNovelView and SimpleRotateMesh call it automatically
+            row.operator("segmentation.create_dual_mesh_curves", text="Recreate Mesh", icon='MESH_DATA')
             row.operator("segmentation.clear_novel_contours", text="", icon='X')
         
         # Instructions

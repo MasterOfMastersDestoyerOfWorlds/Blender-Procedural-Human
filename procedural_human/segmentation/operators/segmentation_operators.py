@@ -393,8 +393,17 @@ def get_active_image(context):
     return None
 
 
-def blender_image_to_pil(image):
-    """Convert a Blender image to a PIL Image."""
+def blender_image_to_pil(image, flip_vertical=True):
+    """
+    Convert a Blender image to a PIL Image.
+    
+    Args:
+        image: Blender image object
+        flip_vertical: Whether to flip the image vertically (default True for Blender coords)
+        
+    Returns:
+        PIL Image object
+    """
     from PIL import Image as PILImage
     
     # Get pixel data
@@ -404,8 +413,9 @@ def blender_image_to_pil(image):
     # Reshape to (height, width, 4) RGBA
     pixels = pixels.reshape((height, width, 4))
     
-    # Flip vertically (Blender's origin is bottom-left)
-    pixels = np.flipud(pixels)
+    # Flip vertically (Blender's origin is bottom-left, PIL is top-left)
+    if flip_vertical:
+        pixels = np.flipud(pixels)
     
     # Convert to 8-bit RGB
     pixels = (pixels[:, :, :3] * 255).astype(np.uint8)

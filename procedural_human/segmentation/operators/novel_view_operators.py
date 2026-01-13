@@ -670,6 +670,7 @@ class GenerateNovelViewOperator(Operator):
             get_active_image,
             blender_image_to_pil,
             get_enabled_mask_indices,
+            get_original_image_pixels,
         )
         
         masks = get_current_masks()
@@ -687,6 +688,9 @@ class GenerateNovelViewOperator(Operator):
             self.report({'WARNING'}, "No image loaded in Image Editor")
             return {'CANCELLED'}
         
+        # Check if we have original pixels to avoid using the overlaid image
+        original_pixels = get_original_image_pixels()
+        
         from procedural_human.novel_view_gen.server_manager import is_server_running
         
         if not is_server_running():
@@ -700,7 +704,21 @@ class GenerateNovelViewOperator(Operator):
             from procedural_human.segmentation.mask_to_curve import find_contours, simplify_contour
             from procedural_human.novel_view_gen.api_client import crop_to_mask_bounds
             
-            pil_image = blender_image_to_pil(image)
+            # Construct PIL image from original pixels if available (to get clean image without overlay)
+            if original_pixels is not None:
+                # Use stored original pixels
+                width, height = image.size
+                pixels = np.array(original_pixels)
+                pixels = pixels.reshape((height, width, 4))
+                # Flip to top-left for PIL
+                pixels = np.flipud(pixels)
+                # Convert to 8-bit RGB
+                pixels = (pixels[:, :, :3] * 255).astype(np.uint8)
+                pil_image = PILImage.fromarray(pixels, mode='RGB')
+            else:
+                # Fallback to current image (might have overlay)
+                pil_image = blender_image_to_pil(image)
+            
             img_array = np.array(pil_image)
             
             mask_data = []
@@ -711,30 +729,34 @@ class GenerateNovelViewOperator(Operator):
                 
                 mask = masks[mask_idx]
                 
-                # Flip mask to match image coordinates
-                mask_flipped = np.flipud(mask)
+                # Masks from SAM are top-left (matching PIL/img_array)
+                # We need a bottom-left mask for contour extraction (Blender coords)
+                mask_bottom_left = np.flipud(mask)
                 
-                # Resize mask if needed
-                if mask_flipped.shape != (img_array.shape[0], img_array.shape[1]):
-                    mask_pil = PILImage.fromarray(mask_flipped.astype(np.uint8) * 255)
+                # Resize mask if needed (ensure it matches image size)
+                if mask.shape != (img_array.shape[0], img_array.shape[1]):
+                    mask_pil = PILImage.fromarray(mask.astype(np.uint8) * 255)
                     mask_pil = mask_pil.resize((img_array.shape[1], img_array.shape[0]), PILImage.NEAREST)
-                    mask_flipped = np.array(mask_pil) > 127
+                    mask = np.array(mask_pil) > 127
+                    mask_bottom_left = np.flipud(mask)
                 
-                # Apply mask: keep masked pixels, white background
-                masked_img = np.ones_like(img_array) * 255
+                # Apply mask to image: keep masked pixels, neutral gray background
+                # Both img_array and mask are top-left, so they align correctly
+                masked_img = np.ones_like(img_array) * 127  # Neutral gray (127)
                 for c in range(3):
-                    masked_img[:, :, c] = np.where(mask_flipped, img_array[:, :, c], 255)
+                    masked_img[:, :, c] = np.where(mask, img_array[:, :, c], 127)
                 
                 masked_pil = PILImage.fromarray(masked_img.astype(np.uint8))
                 
-                # Store uncropped image for debug plane (if enabled)
-                debug_image = masked_pil.copy() if self.debug_mask else None
+                # Crop to mask bounding box (no padding, min size enforced)
+                cropped_pil, bounds = crop_to_mask_bounds(masked_pil, mask)
                 
-                # Crop to mask bounding box (no padding)
-                cropped_pil, bounds = crop_to_mask_bounds(masked_pil, mask_flipped)
+                # Store cropped image for debug plane (if enabled)
+                # Store it BEFORE generating mesh so we can see what was sent
+                debug_image = cropped_pil.copy() if self.debug_mask else None
                 
-                # Extract front contour
-                front_contours = find_contours(mask_flipped.astype(np.uint8))
+                # Extract front contour using bottom-left mask (for Blender 3D space)
+                front_contours = find_contours(mask_bottom_left.astype(np.uint8))
                 front_contour = None
                 if front_contours:
                     front_contour = simplify_contour(max(front_contours, key=len), epsilon=0.005)
@@ -742,7 +764,7 @@ class GenerateNovelViewOperator(Operator):
                 mask_data.append({
                     "mask_idx": mask_idx,
                     "masked_image": cropped_pil,  # Use cropped image for generation
-                    "debug_image": debug_image,   # Original uncropped for debug plane
+                    "debug_image": debug_image,   # Cropped image for debug plane
                     "front_contour": front_contour,
                     "crop_bounds": bounds,
                 })
