@@ -59,6 +59,12 @@ class SAM3Manager:
     _torch = None  # Lazily imported torch module
     _np = None  # Lazily imported numpy module
     
+    # Loading state tracking
+    _is_loading: bool = False
+    _loading_progress: str = ""
+    _loading_error: Optional[str] = None
+    _loading_thread = None  # Threading for async loading
+    
     @classmethod
     def _get_torch(cls):
         """Get lazily imported torch module."""
@@ -95,12 +101,35 @@ class SAM3Manager:
         """Check if the model is currently loaded."""
         return cls._model is not None
     
+    @classmethod
+    def is_loading(cls) -> bool:
+        """Check if the model is currently being loaded."""
+        return cls._is_loading
+    
+    @classmethod
+    def get_loading_progress(cls) -> str:
+        """Get the current loading progress message."""
+        return cls._loading_progress
+    
+    @classmethod
+    def get_loading_error(cls) -> Optional[str]:
+        """Get the last loading error, if any."""
+        return cls._loading_error
+    
     def _load_model(self):
         """Load the SAM3 model and processor."""
         if self._initialized:
             return
         
+        if self.__class__._is_loading:
+            logger.warning("SAM3 model is already loading...")
+            return
+        
         logger.info("Loading SAM3 model...")
+        
+        self.__class__._is_loading = True
+        self.__class__._loading_error = None
+        self.__class__._loading_progress = "Starting..."
         
         # Show progress indicator in Blender's status bar
         import bpy
@@ -109,10 +138,13 @@ class SAM3Manager:
         
         def set_status(msg: str):
             """Set status text in all areas that support it."""
+            self.__class__._loading_progress = msg
             try:
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
                         area.header_text_set(msg)
+                        if area.type == 'IMAGE_EDITOR':
+                            area.tag_redraw()
             except:
                 pass
         
@@ -154,18 +186,22 @@ class SAM3Manager:
             logger.info("SAM3 model loaded successfully.")
             
         except ImportError as e:
+            self.__class__._loading_error = f"Missing dependencies: {e}"
             set_status("SAM3 loading failed - missing dependencies")
             logger.error(f"Failed to import SAM3 dependencies: {e}")
             logger.error("Please install: pip install torch torchvision transformers")
             raise
         except Exception as e:
+            self.__class__._loading_error = str(e)
             set_status(f"SAM3 loading failed: {e}")
             logger.error(f"Failed to load SAM3 model: {e}")
             raise
         finally:
+            self.__class__._is_loading = False
             wm.progress_end()
             # Clear status text after a short delay using a timer
             def clear_status():
+                self.__class__._loading_progress = ""
                 try:
                     for window in bpy.context.window_manager.windows:
                         for area in window.screen.areas:
@@ -179,6 +215,93 @@ class SAM3Manager:
         """Ensure the model is loaded (lazy loading)."""
         if not self._initialized:
             self._load_model()
+    
+    @classmethod
+    def start_loading_async(cls):
+        """
+        Start loading the model in a background thread.
+        
+        Returns True if loading started, False if already loaded/loading.
+        """
+        if cls._initialized:
+            return False  # Already loaded
+        
+        if cls._is_loading:
+            return False  # Already loading
+        
+        import threading
+        
+        cls._is_loading = True
+        cls._loading_error = None
+        cls._loading_progress = "Starting..."
+        
+        def load_thread():
+            try:
+                cls._load_model_internal()
+            except Exception as e:
+                cls._loading_error = str(e)
+                logger.error(f"SAM3 async load failed: {e}")
+            finally:
+                cls._is_loading = False
+        
+        cls._loading_thread = threading.Thread(target=load_thread, daemon=True)
+        cls._loading_thread.start()
+        return True
+    
+    @classmethod
+    def _load_model_internal(cls):
+        """
+        Internal model loading - can be called from thread.
+        Does not use Blender UI functions (not thread-safe).
+        """
+        if cls._initialized:
+            return
+        
+        logger.info("Loading SAM3 model (async)...")
+        
+        cls._loading_progress = "Importing dependencies..."
+        
+        try:
+            # Step 1: Import dependencies
+            _patch_transformers_deps()
+            import torch
+            from transformers import Sam3Processor, Sam3Model
+            
+            # Step 2: Determine device
+            cls._loading_progress = "Detecting device..."
+            if torch.cuda.is_available():
+                device = "cuda"
+            else:
+                logger.warning("CUDA not available. Using CPU (slower performance).")
+                device = "cpu"
+            
+            logger.info(f"SAM3 running on: {device}")
+            
+            # Store torch for later use
+            cls._torch = torch
+            
+            # Step 3: Load model (slow part)
+            cls._loading_progress = "Loading model weights..."
+            cls._model = Sam3Model.from_pretrained(cls.MODEL_PATH).to(device)
+            
+            # Step 4: Load processor
+            cls._loading_progress = "Loading processor..."
+            cls._processor = Sam3Processor.from_pretrained(cls.MODEL_PATH)
+            cls._model.eval()
+            
+            cls._device = device
+            cls._initialized = True
+            cls._loading_progress = "Ready"
+            logger.info("SAM3 model loaded successfully (async).")
+            
+        except ImportError as e:
+            cls._loading_error = f"Missing dependencies: {e}"
+            logger.error(f"Failed to import SAM3 dependencies: {e}")
+            raise
+        except Exception as e:
+            cls._loading_error = str(e)
+            logger.error(f"Failed to load SAM3 model: {e}")
+            raise
     
     def segment_by_prompt(
         self, 

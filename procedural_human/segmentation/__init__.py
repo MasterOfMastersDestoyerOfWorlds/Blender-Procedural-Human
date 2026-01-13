@@ -33,12 +33,16 @@ __all__ = [
 def register_segmentation_properties():
     """Register all segmentation-related properties."""
     from procedural_human.segmentation.panels.search_panel import register_search_properties
+    from procedural_human.segmentation.operators.segmentation_operators import register_mask_properties
     register_search_properties()
+    register_mask_properties()
 
 
 def unregister_segmentation_properties():
     """Unregister all segmentation-related properties."""
     from procedural_human.segmentation.panels.search_panel import unregister_search_properties
+    from procedural_human.segmentation.operators.segmentation_operators import unregister_mask_properties
+    unregister_mask_properties()
     unregister_search_properties()
 
 

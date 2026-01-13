@@ -296,6 +296,54 @@ _server_starting: bool = False
 _server_start_error: Optional[str] = None
 
 
+def is_port_in_use(port: int) -> bool:
+    """
+    Check if a port is already in use (checks both IPv4 and IPv6).
+    
+    This uses a direct socket connection to detect if something (even a crashed
+    or non-responding process) is holding the port.
+    
+    Args:
+        port: Port number to check
+        
+    Returns:
+        True if port is in use, False if available
+    """
+    import socket
+    
+    # Check IPv4
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex(("127.0.0.1", port))
+        sock.close()
+        if result == 0:
+            return True
+    except socket.error:
+        pass
+    
+    # Check IPv6
+    try:
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex(("::1", port))
+        sock.close()
+        if result == 0:
+            return True
+    except socket.error:
+        pass
+    
+    # Also try to bind to the port to see if it's truly available
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", port))
+        sock.close()
+        return False  # Port is available
+    except socket.error:
+        return True  # Port is in use
+
+
 def is_server_starting() -> bool:
     """Check if server is currently starting up."""
     return _server_starting
@@ -330,13 +378,68 @@ def start_hunyuan_server(
     """
     global _server_process, _server_port, _server_host, _server_starting, _server_start_error
     
+    # Update port/host first so is_server_running checks the correct address
+    if port:
+        _server_port = port
+    if host:
+        _server_host = host
+    
+    # Check if we already have a subprocess running
     if _server_process is not None:
-        logger.info("[Hunyuan3D] Server already running")
+        logger.info("[Hunyuan3D] Server subprocess already running")
         return True
     
     if _server_starting:
         logger.info("[Hunyuan3D] Server already starting...")
         return True
+    
+    # Check if server is already running externally (different process or previous session)
+    logger.info(f"[Hunyuan3D] Checking if server is already running on port {_server_port}...")
+    
+    if is_server_running(use_cache=False):
+        logger.info(f"[Hunyuan3D] Server already running on http://{_server_host}:{_server_port} (reusing)")
+        return True
+    
+    # Check if port is already in use (even by a non-responding process)
+    # If something is on the port, it might be a Hunyuan server still starting up
+    if is_port_in_use(_server_port):
+        logger.info(f"[Hunyuan3D] Port {_server_port} is in use, waiting for server to become ready...")
+        
+        # Wait for the server to respond (it might be loading models)
+        if blocking:
+            logger.info(f"[Hunyuan3D] Blocking wait for existing server...")
+            ready = _wait_for_server_ready(timeout=120)
+            if ready:
+                logger.info(f"[Hunyuan3D] External server is now responding (reusing)")
+                return True
+            else:
+                _server_start_error = f"Port {_server_port} is in use but server not responding"
+                logger.warning(f"[Hunyuan3D] {_server_start_error}. Try restarting Blender.")
+                return False
+        else:
+            # Non-blocking: Start a thread to wait for the existing server
+            logger.info(f"[Hunyuan3D] Starting background check for existing server...")
+            
+            def wait_for_existing_server():
+                global _server_starting, _server_start_error
+                _server_starting = True
+                _server_start_error = None
+                
+                try:
+                    ready = _wait_for_server_ready(timeout=120)
+                    if ready:
+                        logger.info(f"[Hunyuan3D] Existing server is now ready and responding!")
+                    else:
+                        _server_start_error = f"Port {_server_port} is in use but server failed to respond"
+                        logger.warning(f"[Hunyuan3D] {_server_start_error}")
+                finally:
+                    _server_starting = False
+            
+            thread = threading.Thread(target=wait_for_existing_server, daemon=True)
+            thread.start()
+            return True
+    
+    logger.info(f"[Hunyuan3D] Port {_server_port} is available, starting new server...")
     
     hunyuan_path = get_hunyuan_path()
     if hunyuan_path is None:
@@ -350,11 +453,6 @@ def start_hunyuan_server(
         _server_start_error = f"api_server.py not found at {api_server_script}"
         logger.error(f"[Hunyuan3D] {_server_start_error}")
         return False
-    
-    if port:
-        _server_port = port
-    if host:
-        _server_host = host
     
     python_exe = get_python_executable()
     

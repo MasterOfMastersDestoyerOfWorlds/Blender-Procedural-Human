@@ -51,6 +51,141 @@ def image_to_base64(image) -> str:
     return base64.b64encode(buffer.read()).decode("utf-8")
 
 
+def validate_image_for_generation(image) -> Tuple[bool, str]:
+    """
+    Validate that an image is suitable for 3D generation.
+    
+    Args:
+        image: PIL Image
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    from PIL import Image as PILImage
+    import numpy as np
+    
+    # Check size - require at least 128x128 for reasonable generation
+    width, height = image.size
+    if width < 128 or height < 128:
+        return False, f"Image too small ({width}x{height}). Minimum 128x128."
+    
+    # Convert to numpy for analysis
+    img_array = np.array(image)
+    
+    # Check if image is mostly white (bad for 3D generation)
+    if len(img_array.shape) == 3:
+        # RGB/RGBA - check what percentage of pixels are white/near-white
+        rgb = img_array[:, :, :3]
+        # Count pixels where all RGB values are > 250 (near-white)
+        white_pixels = np.all(rgb > 250, axis=2)
+        white_ratio = np.mean(white_pixels)
+        
+        if white_ratio > 0.95:  # More than 95% white
+            return False, f"Image is {white_ratio*100:.0f}% white. Need more subject content."
+        
+        # Also check mean but with a higher tolerance
+        mean_value = rgb.mean()
+        if mean_value > 252:
+            return False, "Image is almost entirely white. Add a subject with non-white pixels."
+    
+    # Check if image has content (not empty/transparent)
+    if len(img_array.shape) == 3 and img_array.shape[2] == 4:
+        # Has alpha channel - check if mostly transparent
+        alpha_mean = img_array[:, :, 3].mean()
+        if alpha_mean < 10:
+            return False, "Image is almost entirely transparent."
+    
+    # Check variance (if image is too uniform)
+    variance = np.var(img_array)
+    if variance < 100:
+        return False, "Image has very low contrast. Ensure subject is visible."
+    
+    return True, ""
+
+
+def crop_to_mask_bounds(image, mask, min_size: int = 256) -> Tuple:
+    """
+    Crop image to the bounding box of the mask with minimum size enforcement.
+    
+    Args:
+        image: PIL Image
+        mask: numpy boolean array (H, W) - True where mask is present
+        min_size: Minimum dimension size for the crop (will pad if smaller)
+        
+    Returns:
+        Tuple of (cropped_image, bounds) where bounds is (x_min, y_min, x_max, y_max)
+        Returns (original_image, None) if mask is empty or invalid
+    """
+    import numpy as np
+    from PIL import Image as PILImage
+    
+    # Find rows and columns that contain mask pixels
+    rows = np.any(mask, axis=1)
+    cols = np.any(mask, axis=0)
+    
+    if not np.any(rows) or not np.any(cols):
+        logger.warning("[Hunyuan3D] Mask is empty, cannot crop")
+        return image, None
+    
+    # Get bounding box
+    row_indices = np.where(rows)[0]
+    col_indices = np.where(cols)[0]
+    
+    y_min, y_max = int(row_indices[0]), int(row_indices[-1])
+    x_min, x_max = int(col_indices[0]), int(col_indices[-1])
+    
+    # Ensure valid bounds
+    if y_max <= y_min or x_max <= x_min:
+        logger.warning("[Hunyuan3D] Invalid mask bounds, cannot crop")
+        return image, None
+    
+    # Calculate current size
+    crop_width = x_max - x_min + 1
+    crop_height = y_max - y_min + 1
+    
+    img_width, img_height = image.size
+    
+    # Expand bounds if crop is too small (center the expansion)
+    if crop_width < min_size:
+        expand = (min_size - crop_width) // 2
+        x_min = max(0, x_min - expand)
+        x_max = min(img_width - 1, x_max + expand)
+        # If still not enough, expand more on whichever side has room
+        while (x_max - x_min + 1) < min_size and (x_min > 0 or x_max < img_width - 1):
+            if x_min > 0:
+                x_min -= 1
+            if x_max < img_width - 1:
+                x_max += 1
+    
+    if crop_height < min_size:
+        expand = (min_size - crop_height) // 2
+        y_min = max(0, y_min - expand)
+        y_max = min(img_height - 1, y_max + expand)
+        # If still not enough, expand more on whichever side has room
+        while (y_max - y_min + 1) < min_size and (y_min > 0 or y_max < img_height - 1):
+            if y_min > 0:
+                y_min -= 1
+            if y_max < img_height - 1:
+                y_max += 1
+    
+    # Crop image (PIL uses x_min, y_min, x_max+1, y_max+1 for crop box)
+    bounds = (x_min, y_min, x_max + 1, y_max + 1)
+    cropped = image.crop(bounds)
+    
+    logger.info(f"[Hunyuan3D] Cropped image from {image.size} to {cropped.size} (bounds: {bounds})")
+    
+    # If still too small after expansion (small image), resize up
+    final_width, final_height = cropped.size
+    if final_width < min_size or final_height < min_size:
+        # Scale up to minimum size while maintaining aspect
+        scale = max(min_size / final_width, min_size / final_height)
+        new_size = (int(final_width * scale), int(final_height * scale))
+        cropped = cropped.resize(new_size, PILImage.Resampling.LANCZOS)
+        logger.info(f"[Hunyuan3D] Scaled up small crop to {cropped.size}")
+    
+    return cropped, bounds
+
+
 def generate_3d_mesh(
     image,
     num_steps: int = 5,
@@ -83,6 +218,15 @@ def generate_3d_mesh(
     if isinstance(image, (str, Path)):
         image = Image.open(image)
     
+    # Validate image
+    is_valid, error_msg = validate_image_for_generation(image)
+    if not is_valid:
+        logger.error(f"[Hunyuan3D] Image validation failed: {error_msg}")
+        return None
+    
+    # Log image info for debugging
+    logger.info(f"[Hunyuan3D] Image info: size={image.size}, mode={image.mode}")
+    
     # Convert to base64
     image_b64 = image_to_base64(image)
     
@@ -103,7 +247,7 @@ def generate_3d_mesh(
         "Content-Type": "application/json",
     }
     
-    logger.info(f"[Hunyuan3D] Sending image to API (size: {image.size})")
+    logger.info(f"[Hunyuan3D] Sending image to API (size: {image.size}, payload: {len(data)} bytes)")
     
     try:
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
@@ -112,6 +256,12 @@ def generate_3d_mesh(
             if response.status == 200:
                 glb_bytes = response.read()
                 logger.info(f"[Hunyuan3D] Received GLB mesh ({len(glb_bytes)} bytes)")
+                
+                # Validate GLB data
+                if len(glb_bytes) < 100:
+                    logger.error("[Hunyuan3D] Received suspiciously small GLB data - generation may have failed")
+                    return None
+                
                 return glb_bytes
             else:
                 logger.error(f"[Hunyuan3D] API returned status {response.status}")
@@ -122,6 +272,15 @@ def generate_3d_mesh(
         try:
             error_body = e.read().decode("utf-8")
             logger.error(f"[Hunyuan3D] Error details: {error_body}")
+            
+            # Parse common error messages
+            if "min()" in error_body and "non-zero size" in error_body:
+                logger.error("[Hunyuan3D] Empty mesh error - the model produced no geometry. "
+                           "This usually means the input image doesn't contain a clear subject "
+                           "or the model configuration is incorrect.")
+            elif "NETWORK ERROR" in error_body:
+                logger.error("[Hunyuan3D] Server reported network error - this is likely a model/inference issue, not network.")
+                
         except:
             pass
         return None
@@ -136,6 +295,8 @@ def generate_3d_mesh(
         
     except Exception as e:
         logger.error(f"[Hunyuan3D] Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 

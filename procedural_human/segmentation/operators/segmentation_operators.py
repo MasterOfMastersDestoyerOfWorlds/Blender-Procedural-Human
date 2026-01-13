@@ -4,14 +4,256 @@ SAM3 Segmentation operators for the segmentation workflow.
 
 import bpy
 import numpy as np
-from bpy.types import Operator
-from bpy.props import StringProperty, FloatProperty, BoolProperty
+from bpy.types import Operator, PropertyGroup, UIList
+from bpy.props import (
+    StringProperty, FloatProperty, BoolProperty, IntProperty,
+    FloatVectorProperty, CollectionProperty, PointerProperty
+)
 
 from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.logger import logger
 
 
+# ============================================================================
+# Mask Item PropertyGroup and UIList
+# ============================================================================
+
+class SegmentationMaskItem(PropertyGroup):
+    """Property group for individual segmentation mask data."""
+    
+    enabled: BoolProperty(
+        name="Enabled",
+        description="Include this mask in operations",
+        default=True
+    )
+    
+    color: FloatVectorProperty(
+        name="Color",
+        description="Display color for this mask",
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.8, 0.3, 0.5)
+    )
+    
+    area: IntProperty(
+        name="Area",
+        description="Number of pixels in this mask",
+        default=0
+    )
+    
+    # Index into the global _current_masks list
+    mask_index: IntProperty(
+        name="Mask Index",
+        default=-1
+    )
+
+
+class SEGMENTATION_UL_masks(UIList):
+    """UIList for displaying segmentation masks."""
+    
+    bl_idname = "SEGMENTATION_UL_masks"
+    
+    def draw_item(self, context, layout, data, item, icon, active_data, active_property, index):
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            row = layout.row(align=True)
+            
+            # Enable/disable checkbox
+            row.prop(item, "enabled", text="", icon='CHECKBOX_HLT' if item.enabled else 'CHECKBOX_DEHLT')
+            
+            # Color swatch
+            row.prop(item, "color", text="")
+            
+            # Mask name/index
+            row.label(text=f"Mask {index + 1}")
+            
+            # Area info (compact)
+            if item.area > 0:
+                if item.area >= 1000000:
+                    area_str = f"{item.area / 1000000:.1f}M px"
+                elif item.area >= 1000:
+                    area_str = f"{item.area / 1000:.1f}K px"
+                else:
+                    area_str = f"{item.area} px"
+                row.label(text=area_str)
+        
+        elif self.layout_type == 'GRID':
+            layout.alignment = 'CENTER'
+            layout.prop(item, "enabled", text="", icon='CHECKBOX_HLT' if item.enabled else 'CHECKBOX_DEHLT')
+
+
+class SegmentationMaskSettings(PropertyGroup):
+    """Scene-level settings for segmentation masks."""
+    
+    masks: CollectionProperty(type=SegmentationMaskItem)
+    active_mask_index: IntProperty(name="Active Mask Index", default=0)
+
+
+def generate_distinct_colors(n: int) -> list:
+    """Generate n visually distinct colors using HSV rotation."""
+    colors = []
+    for i in range(n):
+        # Rotate through hue, with some variation in saturation/value
+        hue = (i * 0.618033988749895) % 1.0  # Golden ratio for good distribution
+        saturation = 0.7 + (i % 3) * 0.1  # Vary saturation slightly
+        value = 0.9 - (i % 2) * 0.1  # Vary value slightly
+        
+        # HSV to RGB conversion
+        import colorsys
+        r, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
+        colors.append((r, g, b, 0.5))  # Add alpha
+    
+    return colors
+
+
+def sync_masks_to_collection(context, masks: list):
+    """
+    Synchronize the global masks list with the scene's CollectionProperty.
+    
+    Args:
+        context: Blender context
+        masks: List of numpy mask arrays
+    """
+    settings = context.scene.segmentation_mask_settings
+    
+    # Clear existing items
+    settings.masks.clear()
+    
+    # Generate colors for masks
+    colors = generate_distinct_colors(len(masks))
+    
+    # Add new items
+    for i, mask in enumerate(masks):
+        item = settings.masks.add()
+        item.enabled = True
+        item.color = colors[i] if i < len(colors) else (0.5, 0.5, 0.5, 0.5)
+        item.area = int(np.sum(mask))
+        item.mask_index = i
+    
+    # Reset active index
+    settings.active_mask_index = 0 if len(masks) > 0 else -1
+
+
+def get_enabled_mask_indices(context) -> list:
+    """Get list of indices for enabled masks."""
+    settings = context.scene.segmentation_mask_settings
+    return [item.mask_index for item in settings.masks if item.enabled and item.mask_index >= 0]
+
+
+def get_mask_colors(context) -> list:
+    """Get list of colors for all masks."""
+    settings = context.scene.segmentation_mask_settings
+    return [tuple(item.color) for item in settings.masks]
+
+
+# ============================================================================
+# Mask Selection Operators
+# ============================================================================
+
+@procedural_operator
+class SelectAllMasksOperator(Operator):
+    """Select all segmentation masks"""
+    
+    bl_idname = "segmentation.select_all_masks"
+    bl_label = "Select All Masks"
+    bl_description = "Enable all segmentation masks"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        settings = context.scene.segmentation_mask_settings
+        for item in settings.masks:
+            item.enabled = True
+        
+        # Refresh overlay
+        refresh_mask_overlay(context)
+        return {'FINISHED'}
+
+
+@procedural_operator
+class DeselectAllMasksOperator(Operator):
+    """Deselect all segmentation masks"""
+    
+    bl_idname = "segmentation.deselect_all_masks"
+    bl_label = "Deselect All Masks"
+    bl_description = "Disable all segmentation masks"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        settings = context.scene.segmentation_mask_settings
+        for item in settings.masks:
+            item.enabled = False
+        
+        # Refresh overlay
+        refresh_mask_overlay(context)
+        return {'FINISHED'}
+
+
+@procedural_operator
+class InvertMaskSelectionOperator(Operator):
+    """Invert mask selection"""
+    
+    bl_idname = "segmentation.invert_mask_selection"
+    bl_label = "Invert Selection"
+    bl_description = "Toggle enabled state for all masks"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        settings = context.scene.segmentation_mask_settings
+        for item in settings.masks:
+            item.enabled = not item.enabled
+        
+        # Refresh overlay
+        refresh_mask_overlay(context)
+        return {'FINISHED'}
+
+
+@procedural_operator
+class RefreshMaskOverlayOperator(Operator):
+    """Refresh the mask overlay display"""
+    
+    bl_idname = "segmentation.refresh_overlay"
+    bl_label = "Refresh Overlay"
+    bl_description = "Update the mask color overlay in the Image Editor"
+    bl_options = {'REGISTER'}
+    
+    def execute(self, context):
+        refresh_mask_overlay(context)
+        self.report({'INFO'}, "Mask overlay refreshed")
+        return {'FINISHED'}
+
+
+def refresh_mask_overlay(context):
+    """Refresh the mask overlay with current colors and enabled states."""
+    from procedural_human.segmentation.operators.segmentation_operators import (
+        get_current_masks, get_active_image, get_original_image_pixels, restore_original_image
+    )
+    
+    masks = get_current_masks()
+    image = get_active_image(context)
+    
+    if not masks or image is None:
+        return
+    
+    # Restore original image first
+    if get_original_image_pixels() is not None:
+        restore_original_image(image)
+    
+    # Apply color overlay for each enabled mask with its color
+    settings = context.scene.segmentation_mask_settings
+    
+    for item in settings.masks:
+        if item.enabled and 0 <= item.mask_index < len(masks):
+            mask = masks[item.mask_index]
+            color = tuple(item.color[:3])  # RGB only
+            alpha = item.color[3]
+            apply_mask_overlay(image, [mask], color=color, alpha=alpha)
+
+
+# ============================================================================
 # Global storage for current masks and original image
+# ============================================================================
+
 _current_masks = []
 _current_image = None
 _original_image_pixels = None  # Store original pixels for reset
@@ -22,11 +264,22 @@ def get_current_masks():
     return _current_masks
 
 
-def set_current_masks(masks, image):
-    """Store segmentation masks for later use."""
+def set_current_masks(masks, image, context=None):
+    """
+    Store segmentation masks for later use.
+    
+    Args:
+        masks: List of numpy mask arrays
+        image: Blender image object
+        context: Blender context (optional, for syncing to collection)
+    """
     global _current_masks, _current_image
     _current_masks = masks
     _current_image = image
+    
+    # Sync to scene collection if context provided
+    if context is not None and masks:
+        sync_masks_to_collection(context, masks)
 
 
 def store_original_image(image):
@@ -99,6 +352,37 @@ def apply_mask_overlay(image, masks, color=(0.0, 0.8, 0.3), alpha=0.5):
                 area.tag_redraw()
 
 
+def apply_colored_mask_overlays(context, image, masks):
+    """
+    Apply color-coded overlays for all masks using their assigned colors.
+    
+    Args:
+        context: Blender context
+        image: Blender image to modify
+        masks: List of numpy mask arrays
+    """
+    if not masks or image is None:
+        return
+    
+    settings = context.scene.segmentation_mask_settings
+    
+    # If no mask items yet, use default colors
+    if len(settings.masks) == 0:
+        colors = generate_distinct_colors(len(masks))
+        for i, mask in enumerate(masks):
+            color = colors[i][:3] if i < len(colors) else (0.5, 0.5, 0.5)
+            alpha = colors[i][3] if i < len(colors) else 0.5
+            apply_mask_overlay(image, [mask], color=color, alpha=alpha)
+    else:
+        # Use colors from the collection
+        for item in settings.masks:
+            if item.enabled and 0 <= item.mask_index < len(masks):
+                mask = masks[item.mask_index]
+                color = tuple(item.color[:3])
+                alpha = item.color[3]
+                apply_mask_overlay(image, [mask], color=color, alpha=alpha)
+
+
 def get_active_image(context):
     """Get the currently active image in the IMAGE_EDITOR."""
     for area in context.screen.areas:
@@ -163,6 +447,19 @@ class SegmentByPromptOperator(Operator):
             self.report({'WARNING'}, "No image loaded in Image Editor")
             return {'CANCELLED'}
         
+        # Check SAM3 model status
+        from procedural_human.segmentation.sam_integration import SAM3Manager
+        
+        if SAM3Manager.is_loading():
+            self.report({'WARNING'}, "SAM3 model is still loading. Please wait...")
+            return {'CANCELLED'}
+        
+        if not SAM3Manager.is_loaded():
+            # Start async loading and tell user to wait
+            SAM3Manager.start_loading_async()
+            self.report({'INFO'}, "SAM3 model loading started. Please try again in a moment.")
+            return {'CANCELLED'}
+        
         try:
             # Store original image pixels before any modification
             if get_original_image_pixels() is None:
@@ -175,7 +472,6 @@ class SegmentByPromptOperator(Operator):
             pil_image = blender_image_to_pil(image)
             
             # Get SAM3 manager
-            from procedural_human.segmentation.sam_integration import SAM3Manager
             sam = SAM3Manager.get_instance()
             
             # Run segmentation
@@ -186,15 +482,15 @@ class SegmentByPromptOperator(Operator):
                 threshold=self.threshold
             )
             
-            # Store masks for later use
-            set_current_masks(masks, image)
+            # Store masks for later use (with context to sync to collection)
+            set_current_masks(masks, image, context)
             
             # Update scene property
             context.scene["segmentation_mask_count"] = len(masks)
             
-            # Apply mask overlay to display the segmentation result
+            # Apply color-coded mask overlays
             if masks:
-                apply_mask_overlay(image, masks, color=(0.0, 0.8, 0.3), alpha=0.5)
+                apply_colored_mask_overlays(context, image, masks)
             
             self.report({'INFO'}, f"Found {len(masks)} segments")
             return {'FINISHED'}
@@ -258,6 +554,19 @@ class SegmentByPointOperator(Operator):
             self.report({'WARNING'}, "Use this in the Image Editor")
             return {'CANCELLED'}
         
+        # Check SAM3 model status before starting
+        from procedural_human.segmentation.sam_integration import SAM3Manager
+        
+        if SAM3Manager.is_loading():
+            self.report({'WARNING'}, "SAM3 model is still loading. Please wait...")
+            return {'CANCELLED'}
+        
+        if not SAM3Manager.is_loaded():
+            # Start async loading and tell user to wait
+            SAM3Manager.start_loading_async()
+            self.report({'INFO'}, "SAM3 model loading started. Please try again in a moment.")
+            return {'CANCELLED'}
+        
         context.window_manager.modal_handler_add(self)
         self.report({'INFO'}, "Click on the object you want to segment")
         return {'RUNNING_MODAL'}
@@ -267,6 +576,13 @@ class SegmentByPointOperator(Operator):
         image = get_active_image(context)
         if image is None:
             self.report({'WARNING'}, "No image loaded")
+            return
+        
+        # Double-check SAM is loaded
+        from procedural_human.segmentation.sam_integration import SAM3Manager
+        
+        if not SAM3Manager.is_loaded():
+            self.report({'WARNING'}, "SAM3 model not loaded")
             return
         
         try:
@@ -286,7 +602,6 @@ class SegmentByPointOperator(Operator):
             pil_image = blender_image_to_pil(image)
             
             # Get SAM3 manager
-            from procedural_human.segmentation.sam_integration import SAM3Manager
             sam = SAM3Manager.get_instance()
             
             # Run segmentation with point prompt
@@ -297,13 +612,13 @@ class SegmentByPointOperator(Operator):
                 threshold=self.threshold
             )
             
-            # Store masks
-            set_current_masks(masks, image)
+            # Store masks (with context to sync to collection)
+            set_current_masks(masks, image, context)
             context.scene["segmentation_mask_count"] = len(masks)
             
-            # Apply mask overlay to display the segmentation result
+            # Apply color-coded mask overlays
             if masks:
-                apply_mask_overlay(image, masks, color=(0.0, 0.8, 0.3), alpha=0.5)
+                apply_colored_mask_overlays(context, image, masks)
             
             self.report({'INFO'}, f"Found {len(masks)} segments at ({point_x}, {point_y})")
             
@@ -344,10 +659,23 @@ class ConvertMasksToCurvesOperator(Operator):
     )
     
     def execute(self, context):
-        masks = get_current_masks()
+        all_masks = get_current_masks()
+        
+        if not all_masks:
+            self.report({'WARNING'}, "No segmentation masks available. Run segmentation first.")
+            return {'CANCELLED'}
+        
+        # Get only enabled masks
+        enabled_indices = get_enabled_mask_indices(context)
+        if not enabled_indices:
+            self.report({'WARNING'}, "No masks selected. Enable at least one mask in the list.")
+            return {'CANCELLED'}
+        
+        # Filter masks by enabled indices
+        masks = [all_masks[i] for i in enabled_indices if i < len(all_masks)]
         
         if not masks:
-            self.report({'WARNING'}, "No segmentation masks available. Run segmentation first.")
+            self.report({'WARNING'}, "Could not get selected masks")
             return {'CANCELLED'}
         
         try:
@@ -418,6 +746,12 @@ class ClearSegmentationMasksOperator(Operator):
         
         set_current_masks([], None)
         context.scene["segmentation_mask_count"] = 0
+        
+        # Clear the mask collection
+        settings = context.scene.segmentation_mask_settings
+        settings.masks.clear()
+        settings.active_mask_index = -1
+        
         self.report({'INFO'}, "Segmentation masks cleared, image restored")
         return {'FINISHED'}
 
@@ -437,4 +771,113 @@ class ResetOriginalImageOperator(Operator):
         self.report({'INFO'}, "Original image reference cleared")
         return {'FINISHED'}
 
+
+@procedural_operator
+class LoadSAM3ModelOperator(Operator):
+    """Load the SAM3 model asynchronously (non-blocking)"""
+    
+    bl_idname = "segmentation.load_sam3_model"
+    bl_label = "Load SAM3 Model"
+    bl_description = "Pre-load the SAM3 segmentation model in the background"
+    bl_options = {'REGISTER'}
+    
+    _timer = None
+    
+    def modal(self, context, event):
+        from procedural_human.segmentation.sam_integration import SAM3Manager
+        
+        if event.type == 'TIMER':
+            # Check loading status
+            if SAM3Manager.is_loaded():
+                self.cancel(context)
+                self.report({'INFO'}, "SAM3 model loaded successfully")
+                return {'FINISHED'}
+            
+            if SAM3Manager.get_loading_error():
+                error = SAM3Manager.get_loading_error()
+                self.cancel(context)
+                self.report({'ERROR'}, f"SAM3 loading failed: {error}")
+                return {'CANCELLED'}
+            
+            if not SAM3Manager.is_loading():
+                # Loading finished but not loaded and no error - unexpected state
+                self.cancel(context)
+                self.report({'WARNING'}, "SAM3 loading ended unexpectedly")
+                return {'CANCELLED'}
+            
+            # Still loading - update UI
+            progress = SAM3Manager.get_loading_progress()
+            context.workspace.status_text_set(f"Loading SAM3: {progress}")
+            
+            # Redraw panels
+            for area in context.screen.areas:
+                if area.type == 'IMAGE_EDITOR':
+                    area.tag_redraw()
+        
+        return {'PASS_THROUGH'}
+    
+    def execute(self, context):
+        from procedural_human.segmentation.sam_integration import SAM3Manager
+        
+        if SAM3Manager.is_loaded():
+            self.report({'INFO'}, "SAM3 model is already loaded")
+            return {'FINISHED'}
+        
+        if SAM3Manager.is_loading():
+            self.report({'INFO'}, "SAM3 model is already loading...")
+            return {'CANCELLED'}
+        
+        # Start async loading
+        SAM3Manager.start_loading_async()
+        
+        # Start timer to poll for completion
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.2, window=context.window)
+        wm.modal_handler_add(self)
+        
+        context.workspace.status_text_set("Loading SAM3 model...")
+        self.report({'INFO'}, "Loading SAM3 model in background...")
+        
+        return {'RUNNING_MODAL'}
+    
+    def cancel(self, context):
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+        context.workspace.status_text_set(None)
+
+
+# ============================================================================
+# Registration
+# ============================================================================
+
+# Classes to register (order matters for PropertyGroups)
+_mask_classes = [
+    SegmentationMaskItem,
+    SEGMENTATION_UL_masks,
+    SegmentationMaskSettings,
+]
+
+
+def register_mask_properties():
+    """Register mask-related PropertyGroups and UIList."""
+    for cls in _mask_classes:
+        bpy.utils.register_class(cls)
+    
+    # Add scene property
+    bpy.types.Scene.segmentation_mask_settings = PointerProperty(type=SegmentationMaskSettings)
+
+
+def unregister_mask_properties():
+    """Unregister mask-related PropertyGroups and UIList."""
+    # Remove scene property
+    if hasattr(bpy.types.Scene, 'segmentation_mask_settings'):
+        del bpy.types.Scene.segmentation_mask_settings
+    
+    # Unregister classes in reverse order
+    for cls in reversed(_mask_classes):
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass
 

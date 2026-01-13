@@ -29,10 +29,26 @@ class SegmentationControlsPanel(Panel):
         
         try:
             from procedural_human.segmentation.sam_integration import SAM3Manager
-            if SAM3Manager.is_loaded():
+            if SAM3Manager.is_loading():
+                # Show loading progress
+                progress = SAM3Manager.get_loading_progress()
+                box.label(text="  Model: Loading...", icon='TIME')
+                if progress:
+                    col = box.column()
+                    col.scale_y = 0.7
+                    col.label(text=f"    {progress[:40]}...")
+            elif SAM3Manager.is_loaded():
                 box.label(text="  Model: Loaded", icon='CHECKMARK')
             else:
-                box.label(text="  Model: Not loaded (loads on first use)", icon='TIME')
+                error = SAM3Manager.get_loading_error()
+                if error:
+                    box.label(text="  Model: Load failed", icon='ERROR')
+                    col = box.column()
+                    col.scale_y = 0.6
+                    col.label(text=f"    {error[:40]}...")
+                else:
+                    box.label(text="  Model: Not loaded", icon='TIME')
+                    box.operator("segmentation.load_sam3_model", text="Load Model", icon='IMPORT')
         except:
             box.label(text="  Model: Not available", icon='ERROR')
         
@@ -48,18 +64,45 @@ class SegmentationControlsPanel(Panel):
         # Point click segmentation
         col.operator("segmentation.segment_by_point", text="Click to Segment", icon='PIVOT_CURSOR')
         
-        # Current masks info
+        # Current masks info with UIList
         layout.separator()
         box = layout.box()
         box.label(text="Current Masks", icon='MOD_MASK')
         
         mask_count = context.scene.get("segmentation_mask_count", 0)
-        box.label(text=f"  {mask_count} mask(s) available")
         
         if mask_count > 0:
+            # Mask list with selection
+            settings = context.scene.segmentation_mask_settings
+            
+            row = box.row()
+            row.template_list(
+                "SEGMENTATION_UL_masks",
+                "",
+                settings,
+                "masks",
+                settings,
+                "active_mask_index",
+                rows=min(4, max(2, len(settings.masks)))
+            )
+            
+            # Selection buttons
+            row = box.row(align=True)
+            row.operator("segmentation.select_all_masks", text="All", icon='CHECKBOX_HLT')
+            row.operator("segmentation.deselect_all_masks", text="None", icon='CHECKBOX_DEHLT')
+            row.operator("segmentation.invert_mask_selection", text="Invert", icon='ARROW_LEFTRIGHT')
+            row.operator("segmentation.refresh_overlay", text="", icon='FILE_REFRESH')
+            
+            # Count enabled masks
+            enabled_count = sum(1 for m in settings.masks if m.enabled)
+            box.label(text=f"  {enabled_count}/{mask_count} mask(s) selected")
+            
+            # Action buttons
             row = box.row(align=True)
             row.operator("segmentation.masks_to_curves", text="Convert to Curves", icon='CURVE_DATA')
             row.operator("segmentation.clear_masks", text="", icon='X')
+        else:
+            box.label(text="  No masks available")
         
         # Novel View Generation
         layout.separator()
@@ -91,13 +134,34 @@ class SegmentationControlsPanel(Panel):
         except:
             box.label(text="  Hunyuan3D: Not available", icon='ERROR')
         
+        # Check if generation is in progress
+        try:
+            from procedural_human.segmentation.operators.novel_view_operators import (
+                is_generation_running,
+                get_generation_progress,
+            )
+            generation_running = is_generation_running()
+        except:
+            generation_running = False
+        
         # Novel view operators
         col = box.column(align=True)
-        if mask_count > 0:
+        
+        if generation_running:
+            # Show progress
+            progress = get_generation_progress()
+            col.label(text=progress, icon='TIME')
+            col.operator("segmentation.cancel_novel_view", text="Cancel", icon='CANCEL')
+        elif mask_count > 0:
             col.operator("segmentation.generate_novel_view", text="Generate Novel View", icon='MESH_MONKEY')
         else:
             col.enabled = False
             col.operator("segmentation.generate_novel_view", text="Generate Novel View (need masks)", icon='MESH_MONKEY')
+        
+        # Show generated mesh count
+        hunyuan_count = context.scene.get("hunyuan_mesh_count", 0)
+        if hunyuan_count > 0:
+            box.label(text=f"  {hunyuan_count} mesh(es) in Hunyuan_Meshes")
         
         # Novel view contour info
         front_pts = context.scene.get("novel_view_front_points", 0)
