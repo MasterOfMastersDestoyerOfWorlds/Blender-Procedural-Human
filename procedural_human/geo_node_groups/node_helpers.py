@@ -2,9 +2,22 @@ import bpy
 
 # --- Helpers ---
 def is_socket(obj):
+    """Check if an object is a Blender node socket.
+    
+    :param obj: Object to check.
+    :returns: True if obj is a NodeSocket instance, False otherwise.
+    """
     return isinstance(obj, bpy.types.NodeSocket) 
 
 def link_or_set(group, socket_in, value):
+    """Link a socket to another socket, or set a default value.
+    
+    If value is a socket, creates a link. Otherwise, sets the default value.
+    
+    :param group: The node group to create links in.
+    :param socket_in: The input socket to link to or set value for.
+    :param value: Either a NodeSocket to link, or a primitive value (int, float, bool, str, tuple, list) to set as default.
+    """
     if is_socket(value):
         group.links.new(value, socket_in)
     elif isinstance(value, (int, float, bool, str)):
@@ -13,6 +26,14 @@ def link_or_set(group, socket_in, value):
         socket_in.default_value = value
 
 def create_node(group, type_name, inputs=None, **properties):
+    """Create a new node in the node group and configure it.
+    
+    :param group: The node group to add the node to.
+    :param type_name: The type name of the node to create (e.g., "ShaderNodeMath").
+    :param inputs: Optional dictionary of input socket names to values.
+    :param properties: Additional properties to set on the node.
+    :returns: The created node.
+    """
     node = group.nodes.new(type_name)
     if inputs:
         for k, v in inputs.items():
@@ -33,6 +54,14 @@ def create_node(group, type_name, inputs=None, **properties):
     return node
 
 def math_op(group, op, a, b=None):
+    """Create a math operation node.
+    
+    :param group: The node group to add the node to.
+    :param op: The math operation (e.g., "ADD", "SUBTRACT", "MULTIPLY", "DIVIDE", "POWER", "COSINE", "SINE", "SQRT", "ABSOLUTE").
+    :param a: First operand (socket or value).
+    :param b: Optional second operand (socket or value). Required for binary operations.
+    :returns: The output socket of the math node.
+    """
     n = group.nodes.new("ShaderNodeMath")
     n.operation = op
     link_or_set(group, n.inputs[0], a)
@@ -41,6 +70,14 @@ def math_op(group, op, a, b=None):
     return n.outputs[0]
 
 def vec_math_op(group, op, a, b=None):
+    """Create a vector math operation node.
+    
+    :param group: The node group to add the node to.
+    :param op: The vector math operation (e.g., "ADD", "SUBTRACT", "SCALE", "DOT_PRODUCT", "LENGTH", "DISTANCE").
+    :param a: First operand (socket or value).
+    :param b: Optional second operand (socket or value). For SCALE, this is the scale factor.
+    :returns: The output socket. For DOT_PRODUCT, LENGTH, and DISTANCE, returns the scalar output (outputs[1]). Otherwise returns the vector output (outputs[0]).
+    """
     n = group.nodes.new("ShaderNodeVectorMath")
     n.operation = op
     link_or_set(group, n.inputs[0], a)
@@ -54,12 +91,27 @@ def vec_math_op(group, op, a, b=None):
     return n.outputs[0]
 
 def get_attr(group, name, dtype='INT'):
+    """Get a named attribute from the geometry.
+    
+    :param group: The node group to add the node to.
+    :param name: The name of the attribute to retrieve.
+    :param dtype: The data type of the attribute. Defaults to 'INT'. Options: 'INT', 'FLOAT', 'FLOAT_VECTOR', 'BOOLEAN', etc.
+    :returns: The output socket containing the attribute value.
+    """
     n = group.nodes.new("GeometryNodeInputNamedAttribute")
     n.data_type = dtype
     n.inputs["Name"].default_value = name
     return n.outputs[0]
 
 def int_op(group, op, a, b):
+    """Create an integer math operation node.
+    
+    :param group: The node group to add the node to.
+    :param op: The integer math operation (e.g., "ADD", "SUBTRACT", "MULTIPLY", "DIVIDE", "MODULO").
+    :param a: First operand (socket or integer value).
+    :param b: Second operand (socket or integer value).
+    :returns: The output socket of the integer math node.
+    """
     n = group.nodes.new("FunctionNodeIntegerMath")
     n.operation = op
     link_or_set(group, n.inputs[0], a)
@@ -67,6 +119,13 @@ def int_op(group, op, a, b):
     return n.outputs[0]
 
 def compare_int_less(group, a, b):
+    """Compare two integer values (a < b).
+    
+    :param group: The node group to add the node to.
+    :param a: First integer value (socket or integer).
+    :param b: Second integer value (socket or integer).
+    :returns: Boolean output socket, True if a < b, False otherwise.
+    """
     c = group.nodes.new("FunctionNodeCompare")
     c.data_type = "INT"
     c.operation = "LESS_THAN"
@@ -75,6 +134,13 @@ def compare_int_less(group, a, b):
     return c.outputs["Result"]
 
 def compare_float_less(group, a, b_val):
+    """Compare a float value to a constant (a < b_val).
+    
+    :param group: The node group to add the node to.
+    :param a: Float value to compare (socket or float).
+    :param b_val: Constant float value to compare against.
+    :returns: Boolean output socket, True if a < b_val, False otherwise.
+    """
     c = group.nodes.new("FunctionNodeCompare")
     c.data_type = "FLOAT"
     c.operation = "LESS_THAN"
@@ -83,6 +149,13 @@ def compare_float_less(group, a, b_val):
     return c.outputs["Result"]
 
 def bool_and(group, a, b):
+    """Perform boolean AND operation on two boolean values.
+    
+    :param group: The node group to add the node to.
+    :param a: First boolean value (socket or bool).
+    :param b: Second boolean value (socket or bool).
+    :returns: Boolean output socket, True if both a and b are True, False otherwise.
+    """
     n = group.nodes.new("FunctionNodeBooleanMath")
     n.operation = "AND"
     group.links.new(a, n.inputs[0])
@@ -90,7 +163,12 @@ def bool_and(group, a, b):
     return n.outputs["Boolean"]
 
 def int_to_float(group, a):
-    """Convert integer to float."""
+    """Convert integer to float.
+    
+    :param group: The node group to add the node to.
+    :param a: Integer value to convert (socket or integer).
+    :returns: Float output socket with the converted value.
+    """
     n = group.nodes.new("ShaderNodeMath")
     n.operation = "ADD"
     link_or_set(group, n.inputs[0], a)
@@ -98,7 +176,15 @@ def int_to_float(group, a):
     return n.outputs["Value"]
 
 def switch_node(group, dtype, sw, false_val, true_val):
-    """Generic switch for INT, FLOAT, or VECTOR types."""
+    """Generic switch for INT, FLOAT, or VECTOR types.
+    
+    :param group: The node group to add the node to.
+    :param dtype: The data type for the switch ("INT", "FLOAT", or "VECTOR").
+    :param sw: Boolean switch value (socket or bool). If True, returns true_val; if False, returns false_val.
+    :param false_val: Value to return when switch is False (socket or value matching dtype).
+    :param true_val: Value to return when switch is True (socket or value matching dtype).
+    :returns: Output socket with the selected value based on the switch.
+    """
     n = group.nodes.new("GeometryNodeSwitch")
     n.input_type = dtype
     group.links.new(sw, n.inputs["Switch"])
@@ -107,20 +193,55 @@ def switch_node(group, dtype, sw, false_val, true_val):
     return n.outputs["Output"]
 
 def switch_int(group, sw, false_val, true_val):
+    """Switch node for integer type.
+    
+    :param group: The node group to add the node to.
+    :param sw: Boolean switch value (socket or bool).
+    :param false_val: Integer value to return when switch is False (socket or int).
+    :param true_val: Integer value to return when switch is True (socket or int).
+    :returns: Output socket with the selected integer value.
+    """
     return switch_node(group, "INT", sw, false_val, true_val)
 
 def switch_vec(group,sw, false_val, true_val):
+    """Switch node for vector type.
+    
+    :param group: The node group to add the node to.
+    :param sw: Boolean switch value (socket or bool).
+    :param false_val: Vector value to return when switch is False (socket or tuple/list).
+    :param true_val: Vector value to return when switch is True (socket or tuple/list).
+    :returns: Output socket with the selected vector value.
+    """
     return switch_node(group, "VECTOR", sw, false_val, true_val)
 
 def switch_float(group, sw, false_val, true_val):
+    """Switch node for float type.
+    
+    :param group: The node group to add the node to.
+    :param sw: Boolean switch value (socket or bool).
+    :param false_val: Float value to return when switch is False (socket or float).
+    :param true_val: Float value to return when switch is True (socket or float).
+    :returns: Output socket with the selected float value.
+    """
     return switch_node(group, "FLOAT", sw, false_val, true_val)
 
 def clamp01(group, x):
+    """Clamp a value between 0.0 and 1.0.
+    
+    :param group: The node group to add the node to.
+    :param x: Value to clamp (socket or float).
+    :returns: Output socket with the clamped value.
+    """
     return math_op(group, "MINIMUM", 1.0, math_op(group, "MAXIMUM", 0.0, x))
 
 def smoother_step(group, t):
     """Quintic smoothstep: t^3 * (6t^2 - 15t + 10) for C2 continuity.
-    Matches coon_patch.py's blending function."""
+    Matches coon_patch.py's blending function.
+    
+    :param group: The node group to add the node to.
+    :param t: Input parameter (socket or float).
+    :returns: Output socket with the smoothstep value.
+    """
     # s1 = 6*t - 15
     s1 = math_op(group, "SUBTRACT", math_op(group, "MULTIPLY", t, 6.0), 15.0)
     # s2 = t * s1 + 10 = 6t^2 - 15t + 10
@@ -131,6 +252,12 @@ def smoother_step(group, t):
 
 # tan(α/2) = sqrt((1 - cos(α)) / (1 + cos(α)))
 def tan_half_angle(group, cos_a):
+    """Calculate tan(α/2) from cos(α).
+    
+    :param group: The node group to add the node to.
+    :param cos_a: Cosine of the angle (socket or float). Clamped to avoid numerical issues.
+    :returns: Output socket with tan(α/2).
+    """
     # Clamp to avoid numerical issues
     cos_clamped = math_op(group, "MINIMUM", 0.9999, math_op(group, "MAXIMUM", -0.9999, cos_a))
     numer = math_op(group, "SUBTRACT", 1.0, cos_clamped)
@@ -138,6 +265,15 @@ def tan_half_angle(group, cos_a):
     return math_op(group, "SQRT", math_op(group, "DIVIDE", numer, math_op(group, "MAXIMUM", denom, 1e-8)))
 
 def sample_from_orig_corner(group, attr_name, dtype, corner_idx_val, prepared_geo):
+    """Sample a named attribute from a corner in the prepared geometry.
+    
+    :param group: The node group to add the node to.
+    :param attr_name: Name of the attribute to sample.
+    :param dtype: Data type of the attribute (e.g., "INT", "FLOAT", "FLOAT_VECTOR", "BOOLEAN").
+    :param corner_idx_val: Corner index to sample from (socket or int).
+    :param prepared_geo: Geometry to sample from (socket or geometry).
+    :returns: Output socket with the sampled attribute value.
+    """
     s = create_node(group,"GeometryNodeSampleIndex", {
         "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": dtype, "Index": corner_idx_val
     })
@@ -148,20 +284,47 @@ def sample_from_orig_corner(group, attr_name, dtype, corner_idx_val, prepared_ge
     return s.outputs[0]
 
 def mapped_index(idx):
-    """Identity mapping: domain vertex i == mesh corner i (within the face's corner order)."""
+    """Identity mapping: domain vertex i == mesh corner i (within the face's corner order).
+    
+    :param idx: Index value.
+    :returns: The same index value (identity mapping).
+    """
     return idx
 
 def corner_for_idx(group,idx,orig_loop_start_field):
+    """Calculate the corner index for a given domain index.
+    
+    :param group: The node group to add the node to.
+    :param idx: Domain index (socket or int).
+    :param orig_loop_start_field: Original loop start field (socket or int).
+    :returns: Output socket with the corner index.
+    """
     return int_op(group, "ADD", orig_loop_start_field, mapped_index(idx))
 
 def edge_for_idx(group, idx, orig_loop_start_field, prepared_geo):
+    """Get the edge index and forward direction for a given domain index.
+    
+    :param group: The node group to add the node to.
+    :param idx: Domain index (socket or int).
+    :param orig_loop_start_field: Original loop start field (socket or int).
+    :param prepared_geo: Geometry to sample from (socket or geometry).
+    :returns: Tuple of (edge_index, forward_direction) output sockets.
+    """
     cidx = corner_for_idx(group, idx, orig_loop_start_field)
     e = sample_from_orig_corner(group, "corner_edge_idx", "INT", cidx, prepared_geo)
     d = sample_from_orig_corner(group, "edge_is_forward", "BOOLEAN", cidx, prepared_geo)
     return e, d
 
 def get_edge_control_points_group():
-    """Creates or retrieves a singleton Node Group for Edge Control Points calculation."""
+    """Creates or retrieves a singleton Node Group that calculates cubic Bezier control points for an edge.
+    
+    The node group samples vertex positions and handle vectors from the geometry, then computes
+    the four control points (P0, P1, P2, P3) for a cubic Bezier curve representing the edge.
+    The control points are direction-dependent, mixing forward and backward configurations based
+    on the edge direction flag.
+    
+    :returns: The node group for calculating edge control points.
+    """
     group_name = "Math_EdgeControlPoints"
     if group_name in bpy.data.node_groups:
         return bpy.data.node_groups[group_name]
@@ -255,7 +418,14 @@ def get_edge_control_points_group():
     return ng
 
 def edge_control_points_node(group, edge_id, fwd, orig_geo):
-    """Instantiates the Node Group instead of raw math."""
+    """Instantiates the edge control points node group to compute cubic Bezier control points for an edge.
+    
+    :param group: The node group to add the node to.
+    :param edge_id: Edge index (socket or int).
+    :param fwd: Forward direction boolean (socket or bool).
+    :param orig_geo: Original geometry (socket or geometry).
+    :returns: Tuple of (P0, P1, P2, P3) control point output sockets.
+    """
     ecp = get_edge_control_points_group()
     n = group.nodes.new("GeometryNodeGroup")
     n.node_tree = ecp
@@ -268,7 +438,15 @@ def edge_control_points_node(group, edge_id, fwd, orig_geo):
 
 
 def get_bezier_eval_group():
-    """Creates or retrieves a singleton Node Group for Bezier Evaluation."""
+    """Creates or retrieves a singleton Node Group that evaluates a cubic Bezier curve at parameter t.
+    
+    The node group implements the standard cubic Bezier evaluation formula:
+    B(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃
+    
+    where P₀, P₁, P₂, P₃ are the four control points and t is the parameter in [0, 1].
+    
+    :returns: The node group for evaluating cubic Bezier curves.
+    """
     group_name = "Math_BezierEval"
     if group_name in bpy.data.node_groups:
         return bpy.data.node_groups[group_name]
@@ -298,7 +476,16 @@ def get_bezier_eval_group():
     return ng
 
 def bezier_eval_node(group, P0, P1, P2, P3, t):
-    """Instantiates the Node Group instead of raw math."""
+    """Instantiates the Bezier evaluation node group to compute a point on a cubic Bezier curve.
+    
+    :param group: The node group to add the node to.
+    :param P0: First control point (socket or vector).
+    :param P1: Second control point (socket or vector).
+    :param P2: Third control point (socket or vector).
+    :param P3: Fourth control point (socket or vector).
+    :param t: Parameter value along the curve (socket or float).
+    :returns: Output socket with the evaluated point on the Bezier curve.
+    """
     bg = get_bezier_eval_group()
     n = group.nodes.new("GeometryNodeGroup")
     n.node_tree = bg
@@ -311,6 +498,16 @@ def bezier_eval_node(group, P0, P1, P2, P3, t):
     return n.outputs["Result"]
 
 def bezier_deriv(group, P0, P1, P2, P3, t):
+    """Calculate the derivative of a cubic Bezier curve at parameter t.
+    
+    :param group: The node group to add the node to.
+    :param P0: First control point (socket or vector).
+    :param P1: Second control point (socket or vector).
+    :param P2: Third control point (socket or vector).
+    :param P3: Fourth control point (socket or vector).
+    :param t: Parameter value along the curve (socket or float).
+    :returns: Output socket with the derivative vector at parameter t.
+    """
     omt = math_op(group, "SUBTRACT", 1.0, t)
     omt2 = math_op(group, "POWER", omt, 2.0)
     t2 = math_op(group, "POWER", t, 2.0)
@@ -326,6 +523,14 @@ def bezier_deriv(group, P0, P1, P2, P3, t):
     
 # Sample corner_pos at corners 0, 1, 2, 3 of each face
 def sample_face_corner_pos(group, face_idx_node, prepared_geo, sort_index):
+    """Sample corner position at a specific sort index for a face.
+    
+    :param group: The node group to add the node to.
+    :param face_idx_node: Face index node (socket or int).
+    :param prepared_geo: Geometry to sample from (socket or geometry).
+    :param sort_index: Sort index of the corner within the face (0, 1, 2, or 3).
+    :returns: Output socket with the corner position vector.
+    """
     # Get the corner index for this face at the given sort position
     cof_corner = group.nodes.new("GeometryNodeCornersOfFace")
     group.links.new(face_idx_node.outputs[0], cof_corner.inputs["Face Index"])
@@ -346,7 +551,15 @@ def sample_face_corner_pos(group, face_idx_node, prepared_geo, sort_index):
     return sample.outputs[0] 
 
 def get_domain_edge_distance_group():
-    """Creates or retrieves a singleton Node Group for Domain Edge Distance calculation."""
+    """Creates or retrieves a singleton Node Group that calculates the perpendicular distance from a point to an edge in a regular N-sided polygon domain.
+    
+    The node group computes the distance from a point (domain_p_x, domain_p_y) to edge i_idx
+    in a regular N-sided polygon. It uses the same angle calculation as mean-value coordinates
+    to ensure domain edge positions match the computed domain coordinates. The distance is
+    calculated using the cross product method for point-to-line distance.
+    
+    :returns: The node group for calculating domain edge distances.
+    """
     group_name = "Math_DomainEdgeDistance"
     if group_name in bpy.data.node_groups:
         return bpy.data.node_groups[group_name]
@@ -397,7 +610,15 @@ def get_domain_edge_distance_group():
     return ng
 
 def domain_edge_distance_node(group, i_idx, N_field, domain_p_x, domain_p_y):
-    """Instantiates the Node Group instead of raw math."""
+    """Instantiates the domain edge distance node group to compute the perpendicular distance from a point to an edge.
+    
+    :param group: The node group to add the node to.
+    :param i_idx: Edge index (socket or int).
+    :param N_field: Number of edges/vertices in the domain (socket or int).
+    :param domain_p_x: X coordinate of the domain point (socket or float).
+    :param domain_p_y: Y coordinate of the domain point (socket or float).
+    :returns: Output socket with the distance from the point to the edge.
+    """
     dg = get_domain_edge_distance_group()
     n = group.nodes.new("GeometryNodeGroup")
     n.node_tree = dg
