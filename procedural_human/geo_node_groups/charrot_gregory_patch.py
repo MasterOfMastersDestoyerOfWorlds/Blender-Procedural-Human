@@ -47,25 +47,6 @@ def create_charrot_gregory_group():
     links.new(corner_idx, face_of_corner.inputs["Corner Index"])
     face_idx = face_of_corner.outputs["Face Index"]
     
-    # --- 2. STORE CORNER POSITIONS ---
-    vert_of_corner = nodes.new("GeometryNodeVertexOfCorner")
-    links.new(corner_idx, vert_of_corner.inputs["Corner Index"])
-    
-    sample_corner_pos = create_node(group,"GeometryNodeSampleIndex", {
-        "Geometry": orig_geo, "Domain": "POINT", "Data Type": "FLOAT_VECTOR",
-        "Index": vert_of_corner.outputs["Vertex Index"]
-    })
-    pos_node = nodes.new("GeometryNodeInputPosition")
-    links.new(pos_node.outputs[0], sample_corner_pos.inputs["Value"])
-    corner_pos = sample_corner_pos.outputs[0]
-
-    store_corner_pos = create_node(group,"GeometryNodeStoreNamedAttribute", {
-        "Name": "corner_pos", "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
-        "Value": corner_pos
-    })
-    links.new(orig_geo, store_corner_pos.inputs[0])
-    
-    
     # --- 3. STORE FACE INDEX ON FACE DOMAIN ---
     # This propagates through split/subdivide so we can look up original corners
     face_idx_node = nodes.new("GeometryNodeInputIndex")  # In FACE context this gives face index
@@ -81,7 +62,7 @@ def create_charrot_gregory_group():
         "Name": "orig_loop_start", "Domain": "FACE", "Data Type": "INT",
         "Value": corners_of_face.outputs["Corner Index"]
     })
-    links.new(store_corner_pos.outputs[0], store_loop_start.inputs[0])
+    links.new(orig_geo, store_loop_start.inputs[0])
 
     accum_N = create_node(group, "GeometryNodeAccumulateField", {
         "Value": 1, "Group ID": face_idx, "Domain": "CORNER"
@@ -294,9 +275,9 @@ def create_charrot_gregory_group():
     Cm10, Cm11, Cm12, Cm13 = edge_control_points(group, e_im1, f_im1, orig_geo)  # C_{i-1}
     Cp10, Cp11, Cp12, Cp13 = edge_control_points(group, e_ip1, f_ip1, orig_geo)  # C_{i+1}
 
-    Ci_si = bezier_eval(group, C0, C1, C2, C3, s_i)
-    Cim1_1md = bezier_eval(group, Cm10, Cm11, Cm12, Cm13, math_op(group, "SUBTRACT", 1.0, d_i))
-    Cip1_d = bezier_eval(group, Cp10, Cp11, Cp12, Cp13, d_i)
+    Ci_si = bezier_eval_node(group, C0, C1, C2, C3, s_i)
+    Cim1_1md = bezier_eval_node(group, Cm10, Cm11, Cm12, Cm13, math_op(group, "SUBTRACT", 1.0, d_i))
+    Cip1_d = bezier_eval_node(group, Cp10, Cp11, Cp12, Cp13, d_i)
 
     # Build C_i^{opp} (Eq. 2–3)
     e_ip2, f_ip2 = edge_for_idx(group, ip2, orig_loop_start_field, prepared_geo) # C_{i+2}
@@ -308,12 +289,12 @@ def create_charrot_gregory_group():
     d_ip2_0 = bezier_deriv(group, Cp20, Cp21, Cp22, Cp23, 0.0)  # C'_{i+2}(0)
     d_im2_1 = bezier_deriv(group, Cm20, Cm21, Cm22, Cm23, 1.0)  # C'_{i-2}(1)
 
-    P0_opp = bezier_eval(group, Cp10, Cp11, Cp12, Cp13, 1.0)    # C_{i+1}(1)
-    P3_opp = bezier_eval(group, Cm10, Cm11, Cm12, Cm13, 0.0)    # C_{i-1}(0)
+    P0_opp = bezier_eval_node(group, Cp10, Cp11, Cp12, Cp13, 1.0)    # C_{i+1}(1)
+    P3_opp = bezier_eval_node(group, Cm10, Cm11, Cm12, Cm13, 0.0)    # C_{i-1}(0)
     P1_opp = vec_math_op(group, "ADD", P0_opp, vec_math_op(group, "SCALE", d_ip2_0, (1.0 / 3.0)))
     P2_opp = vec_math_op(group, "SUBTRACT", P3_opp, vec_math_op(group, "SCALE", d_im2_1, (1.0 / 3.0)))
 
-    Copp_1ms = bezier_eval(group, P0_opp, P1_opp, P2_opp, P3_opp, math_op(group, "SUBTRACT", 1.0, s_i))
+    Copp_1ms = bezier_eval_node(group, P0_opp, P1_opp, P2_opp, P3_opp, math_op(group, "SUBTRACT", 1.0, s_i))
 
     # Coons ribbon R_i(s_i, d_i) (Eq. 1)
     termA = vec_math_op(group, "SCALE", Ci_si, math_op(group, "SUBTRACT", 1.0, d_i))
@@ -322,10 +303,10 @@ def create_charrot_gregory_group():
     termD = vec_math_op(group, "SCALE", Cip1_d, s_i)
 
     # Bilinear correction (Eq. 1 matrix term)
-    Ci0 = bezier_eval(group, C0, C1, C2, C3, 0.0)
-    Ci1 = bezier_eval(group, C0, C1, C2, C3, 1.0)
-    Cim10 = bezier_eval(group, Cm10, Cm11, Cm12, Cm13, 0.0)
-    Cip11 = bezier_eval(group, Cp10, Cp11, Cp12, Cp13, 1.0)
+    Ci0 = bezier_eval_node(group, C0, C1, C2, C3, 0.0)
+    Ci1 = bezier_eval_node(group, C0, C1, C2, C3, 1.0)
+    Cim10 = bezier_eval_node(group, Cm10, Cm11, Cm12, Cm13, 0.0)
+    Cip11 = bezier_eval_node(group, Cp10, Cp11, Cp12, Cp13, 1.0)
 
     # lerp along d
     l0 = vec_math_op(group, "ADD", vec_math_op(group, "SCALE", Ci0, math_op(group, "SUBTRACT", 1.0, d_i)),

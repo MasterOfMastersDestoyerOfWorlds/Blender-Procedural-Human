@@ -232,15 +232,50 @@ def edge_control_points(group, edge_id, fwd, orig_geo):
 
     return P0, P1, P2, P3
 
-def bezier_eval(group, P0, P1, P2, P3, t):
-    omt = math_op(group, "SUBTRACT", 1.0, t)
-    c0 = math_op(group,"POWER", omt, 3.0)
-    c1 = math_op(group,"MULTIPLY", math_op(group,"MULTIPLY", 3.0, math_op(group,"POWER", omt, 2.0)), t)
-    c2 = math_op(group,"MULTIPLY", math_op(group,"MULTIPLY", 3.0, omt), math_op(group,"POWER", t, 2.0))
-    c3 = math_op(group, "POWER", t, 3.0)
-    return vec_math_op(group, "ADD",
-                        vec_math_op(group, "ADD", vec_math_op(group, "SCALE", P0, c0), vec_math_op(group, "SCALE", P1, c1)),
-                        vec_math_op(group, "ADD", vec_math_op(group, "SCALE", P2, c2), vec_math_op(group, "SCALE", P3, c3)))
+
+
+def get_bezier_eval_group():
+    """Creates or retrieves a singleton Node Group for Bezier Evaluation."""
+    group_name = "Math_BezierEval"
+    if group_name in bpy.data.node_groups:
+        return bpy.data.node_groups[group_name]
+    
+    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng.interface.new_socket("P0", in_out="INPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("P1", in_out="INPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("P2", in_out="INPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("P3", in_out="INPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("t", in_out="INPUT", socket_type="NodeSocketFloat")
+    ng.interface.new_socket("Result", in_out="OUTPUT", socket_type="NodeSocketVector")
+    
+    # Internal Logic (Your original bezier_eval logic goes here)
+    in_node = ng.nodes.new("NodeGroupInput")
+    out_node = ng.nodes.new("NodeGroupOutput")
+    
+    omt = math_op(ng, "SUBTRACT", 1.0, in_node.outputs["t"])
+    c0 = math_op(ng,"POWER", omt, 3.0)
+    c1 = math_op(ng,"MULTIPLY", math_op(ng,"MULTIPLY", 3.0, math_op(ng,"POWER", omt, 2.0)), in_node.outputs["t"])
+    c2 = math_op(ng,"MULTIPLY", math_op(ng,"MULTIPLY", 3.0, omt), math_op(ng,"POWER", in_node.outputs["t"], 2.0))
+    c3 = math_op(ng, "POWER", in_node.outputs["t"], 3.0)
+    result_vec = vec_math_op(ng, "ADD",
+                        vec_math_op(ng, "ADD", vec_math_op(ng, "SCALE", in_node.outputs["P0"], c0), vec_math_op(ng, "SCALE", in_node.outputs["P1"], c1)),
+                        vec_math_op(ng, "ADD", vec_math_op(ng, "SCALE", in_node.outputs["P2"], c2), vec_math_op(ng, "SCALE", in_node.outputs["P3"], c3)))
+    
+    ng.links.new(result_vec, out_node.inputs["Result"])
+    return ng
+
+def bezier_eval_node(group, P0, P1, P2, P3, t):
+    """Instantiates the Node Group instead of raw math."""
+    bg = get_bezier_eval_group()
+    n = group.nodes.new("GeometryNodeGroup")
+    n.node_tree = bg
+    
+    link_or_set(group, n.inputs["P0"], P0)
+    link_or_set(group, n.inputs["P1"], P1)
+    link_or_set(group, n.inputs["P2"], P2)
+    link_or_set(group, n.inputs["P3"], P3)
+    link_or_set(group, n.inputs["t"], t)
+    return n.outputs["Result"]
 
 def bezier_deriv(group, P0, P1, P2, P3, t):
     omt = math_op(group, "SUBTRACT", 1.0, t)
