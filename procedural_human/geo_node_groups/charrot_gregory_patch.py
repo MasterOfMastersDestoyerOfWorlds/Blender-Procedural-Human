@@ -184,8 +184,8 @@ def create_charrot_gregory_group():
     B_valid = compare_int_less(group, B_i, N_field)
     B_ip1 = int_op(group, "MODULO", int_op(group, "ADD", B_i, 1), N_field)
     
-    D0 = domain_edge_distance(group, B_i, N_field, domain_p_x, domain_p_y)
-    D1 = domain_edge_distance(group, B_ip1, N_field, domain_p_x, domain_p_y)
+    D0 = domain_edge_distance_node(group, B_i, N_field, domain_p_x, domain_p_y)
+    D1 = domain_edge_distance_node(group, B_ip1, N_field, domain_p_x, domain_p_y)
     
     # w_i = 1.0 / (D0 * D1)
     # Clamp distances to avoid division by zero
@@ -231,20 +231,11 @@ def create_charrot_gregory_group():
     ip1 = int_op(group, "MODULO", int_op(group, "ADD", C_i, 1), N_field)
     im2 = int_op(group, "MODULO", int_op(group, "ADD", int_op(group, "SUBTRACT", C_i, 2), N_field), N_field)
     ip2 = int_op(group, "MODULO", int_op(group, "ADD", C_i, 2), N_field)
-
-    # Calculate w_i for current i
-    Di = math_op(group, "MAXIMUM", domain_edge_distance(group, C_i, N_field, domain_p_x, domain_p_y), 1.0e-8)
-    Dip1 = math_op(group, "MAXIMUM", domain_edge_distance(group, ip1, N_field, domain_p_x, domain_p_y), 1.0e-8)
+    Di = math_op(group, "MAXIMUM", domain_edge_distance_node(group, C_i, N_field, domain_p_x, domain_p_y), 1.0e-8)
+    Dip1 = math_op(group, "MAXIMUM", domain_edge_distance_node(group, ip1, N_field, domain_p_x, domain_p_y), 1.0e-8)
     wcur = math_op(group, "DIVIDE", 1.0, math_op(group, "MULTIPLY", Di, Dip1))
     lam_i = math_op(group, "DIVIDE", wcur, sumW)
-    
-    # Calculate w_{i-1} for previous i
-    Dim1 = math_op(group, "MAXIMUM", domain_edge_distance(group, im1, N_field, domain_p_x, domain_p_y), 1.0e-8)
-    # The edges meeting at vertex i-1 are (i-2) and (i-1)? 
-    # Careful: logic in original code was: lam_{i-1} uses edges that do NOT touch vertex i-1?
-    # No, Wachspress lambda_k is associated with vertex k.
-    # Original Code used: wprev = Exp(LogTotal - Log(Dim1) - Log(Di))
-    # This corresponds to edges meeting at vertex i-1 (which are edge i-1 and edge i).
+    Dim1 = math_op(group, "MAXIMUM", domain_edge_distance_node(group, im1, N_field, domain_p_x, domain_p_y), 1.0e-8)
     wprev = math_op(group, "DIVIDE", 1.0, math_op(group, "MULTIPLY", Dim1, Di))
     lam_im1 = math_op(group, "DIVIDE", wprev, sumW)
 
@@ -271,9 +262,9 @@ def create_charrot_gregory_group():
     e_ip1, f_ip1 = edge_for_idx(group, ip1, orig_loop_start_field, prepared_geo) # C_{i+1}
 
     # Control points for C_i, C_{i-1}, C_{i+1}
-    C0, C1, C2, C3 = edge_control_points(group, e_i, f_i, orig_geo)              # C_i
-    Cm10, Cm11, Cm12, Cm13 = edge_control_points(group, e_im1, f_im1, orig_geo)  # C_{i-1}
-    Cp10, Cp11, Cp12, Cp13 = edge_control_points(group, e_ip1, f_ip1, orig_geo)  # C_{i+1}
+    C0, C1, C2, C3 = edge_control_points_node(group, e_i, f_i, orig_geo)              # C_i
+    Cm10, Cm11, Cm12, Cm13 = edge_control_points_node(group, e_im1, f_im1, orig_geo)  # C_{i-1}
+    Cp10, Cp11, Cp12, Cp13 = edge_control_points_node(group, e_ip1, f_ip1, orig_geo)  # C_{i+1}
 
     Ci_si = bezier_eval_node(group, C0, C1, C2, C3, s_i)
     Cim1_1md = bezier_eval_node(group, Cm10, Cm11, Cm12, Cm13, math_op(group, "SUBTRACT", 1.0, d_i))
@@ -283,8 +274,8 @@ def create_charrot_gregory_group():
     e_ip2, f_ip2 = edge_for_idx(group, ip2, orig_loop_start_field, prepared_geo) # C_{i+2}
     e_im2, f_im2 = edge_for_idx(group, im2, orig_loop_start_field, prepared_geo) # C_{i-2}
 
-    Cp20, Cp21, Cp22, Cp23 = edge_control_points(group, e_ip2, f_ip2, orig_geo)   # C_{i+2}
-    Cm20, Cm21, Cm22, Cm23 = edge_control_points(group, e_im2, f_im2, orig_geo)   # C_{i-2}
+    Cp20, Cp21, Cp22, Cp23 = edge_control_points_node(group, e_ip2, f_ip2, orig_geo)   # C_{i+2}
+    Cm20, Cm21, Cm22, Cm23 = edge_control_points_node(group, e_im2, f_im2, orig_geo)   # C_{i-2}
 
     d_ip2_0 = bezier_deriv(group, Cp20, Cp21, Cp22, Cp23, 0.0)  # C'_{i+2}(0)
     d_im2_1 = bezier_deriv(group, Cm20, Cm21, Cm22, Cm23, 1.0)  # C'_{i-2}(1)

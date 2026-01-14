@@ -160,77 +160,110 @@ def edge_for_idx(group, idx, orig_loop_start_field, prepared_geo):
     d = sample_from_orig_corner(group, "edge_is_forward", "BOOLEAN", cidx, prepared_geo)
     return e, d
 
-def edge_control_points(group, edge_id, fwd, orig_geo):
-    """Return cubic Bezier control points P0..P3 for edge curve C_i."""
+def get_edge_control_points_group():
+    """Creates or retrieves a singleton Node Group for Edge Control Points calculation."""
+    group_name = "Math_EdgeControlPoints"
+    if group_name in bpy.data.node_groups:
+        return bpy.data.node_groups[group_name]
+    
+    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng.interface.new_socket("edge_id", in_out="INPUT", socket_type="NodeSocketInt")
+    ng.interface.new_socket("fwd", in_out="INPUT", socket_type="NodeSocketBool")
+    ng.interface.new_socket("orig_geo", in_out="INPUT", socket_type="NodeSocketGeometry")
+    ng.interface.new_socket("P0", in_out="OUTPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("P1", in_out="OUTPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("P2", in_out="OUTPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("P3", in_out="OUTPUT", socket_type="NodeSocketVector")
+    
+    # Internal Logic
+    in_node = ng.nodes.new("NodeGroupInput")
+    out_node = ng.nodes.new("NodeGroupOutput")
+    
+    # Helper function to get vertex position (which: 0 -> Vertex Index 1, 1 -> Vertex Index 2)
     def edge_vertex_pos(which):
-        # which: 0 -> Vertex Index 1, 1 -> Vertex Index 2
-        s_edge = create_node(group,"GeometryNodeSampleIndex", {
-            "Geometry": orig_geo, "Domain": "EDGE", "Data Type": "INT", "Index": edge_id
+        s_edge = create_node(ng, "GeometryNodeSampleIndex", {
+            "Geometry": in_node.outputs["orig_geo"], "Domain": "EDGE", "Data Type": "INT", "Index": in_node.outputs["edge_id"]
         })
-        ev = group.nodes.new("GeometryNodeInputMeshEdgeVertices")
-        group.links.new(ev.outputs[which], s_edge.inputs["Value"])
-        s_pos = create_node(group,"GeometryNodeSampleIndex", {
-            "Geometry": orig_geo, "Domain": "POINT", "Data Type": "FLOAT_VECTOR", "Index": s_edge.outputs[0]
+        ev = ng.nodes.new("GeometryNodeInputMeshEdgeVertices")
+        ng.links.new(ev.outputs[which], s_edge.inputs["Value"])
+        s_pos = create_node(ng, "GeometryNodeSampleIndex", {
+            "Geometry": in_node.outputs["orig_geo"], "Domain": "POINT", "Data Type": "FLOAT_VECTOR", "Index": s_edge.outputs[0]
         })
-        group.links.new(group.nodes.new("GeometryNodeInputPosition").outputs[0], s_pos.inputs["Value"])
+        ng.links.new(ng.nodes.new("GeometryNodeInputPosition").outputs[0], s_pos.inputs["Value"])
         return s_pos.outputs[0]
-
+    
+    # Helper function to get handle vector
     def edge_handle_vec(prefix):
         def comp(c):
-            s = create_node(group,"GeometryNodeSampleIndex", {
-                "Geometry": orig_geo, "Domain": "EDGE", "Data Type": "FLOAT", "Index": edge_id
+            s = create_node(ng, "GeometryNodeSampleIndex", {
+                "Geometry": in_node.outputs["orig_geo"], "Domain": "EDGE", "Data Type": "FLOAT", "Index": in_node.outputs["edge_id"]
             })
-            attr = group.nodes.new("GeometryNodeInputNamedAttribute")
+            attr = ng.nodes.new("GeometryNodeInputNamedAttribute")
             attr.data_type = "FLOAT"
             attr.inputs["Name"].default_value = f"{prefix}_{c}"
-            group.links.new(attr.outputs[0], s.inputs["Value"])
+            ng.links.new(attr.outputs[0], s.inputs["Value"])
             return s.outputs[0]
-        comb = group.nodes.new("ShaderNodeCombineXYZ")
-        group.links.new(comp("x"), comb.inputs[0])
-        group.links.new(comp("y"), comb.inputs[1])
-        group.links.new(comp("z"), comb.inputs[2])
+        comb = ng.nodes.new("ShaderNodeCombineXYZ")
+        ng.links.new(comp("x"), comb.inputs[0])
+        ng.links.new(comp("y"), comb.inputs[1])
+        ng.links.new(comp("z"), comb.inputs[2])
         return comb.outputs[0]
-
+    
     p_v1 = edge_vertex_pos(0)
     p_v2 = edge_vertex_pos(1)
     h_start = edge_handle_vec("handle_start")  # relative to v1
     h_end = edge_handle_vec("handle_end")      # relative to v2
 
     # Endpoint mix
-    mix_p0 = group.nodes.new("ShaderNodeMix")
+    mix_p0 = ng.nodes.new("ShaderNodeMix")
     mix_p0.data_type = "VECTOR"
-    group.links.new(fwd, mix_p0.inputs["Factor"])
-    group.links.new(p_v2, mix_p0.inputs["A"])
-    group.links.new(p_v1, mix_p0.inputs["B"])
+    ng.links.new(in_node.outputs["fwd"], mix_p0.inputs["Factor"])
+    ng.links.new(p_v2, mix_p0.inputs["A"])
+    ng.links.new(p_v1, mix_p0.inputs["B"])
     P0 = mix_p0.outputs["Result"]
 
-    mix_p3 = group.nodes.new("ShaderNodeMix")
+    mix_p3 = ng.nodes.new("ShaderNodeMix")
     mix_p3.data_type = "VECTOR"
-    group.links.new(fwd, mix_p3.inputs["Factor"])
-    group.links.new(p_v1, mix_p3.inputs["A"])
-    group.links.new(p_v2, mix_p3.inputs["B"])
+    ng.links.new(in_node.outputs["fwd"], mix_p3.inputs["Factor"])
+    ng.links.new(p_v1, mix_p3.inputs["A"])
+    ng.links.new(p_v2, mix_p3.inputs["B"])
     P3 = mix_p3.outputs["Result"]
 
     # Handles depend on direction
-    p1_fwd = vec_math_op(group, "ADD", p_v1, h_start)
-    p1_bwd = vec_math_op(group, "ADD", p_v2, h_end)
-    mix_p1 = group.nodes.new("ShaderNodeMix")
+    p1_fwd = vec_math_op(ng, "ADD", p_v1, h_start)
+    p1_bwd = vec_math_op(ng, "ADD", p_v2, h_end)
+    mix_p1 = ng.nodes.new("ShaderNodeMix")
     mix_p1.data_type = "VECTOR"
-    group.links.new(fwd, mix_p1.inputs["Factor"])
-    group.links.new(p1_bwd, mix_p1.inputs["A"])
-    group.links.new(p1_fwd, mix_p1.inputs["B"])
+    ng.links.new(in_node.outputs["fwd"], mix_p1.inputs["Factor"])
+    ng.links.new(p1_bwd, mix_p1.inputs["A"])
+    ng.links.new(p1_fwd, mix_p1.inputs["B"])
     P1 = mix_p1.outputs["Result"]
 
-    p2_fwd = vec_math_op(group, "ADD", p_v2, h_end)
-    p2_bwd = vec_math_op(group, "ADD", p_v1, h_start)
-    mix_p2 = group.nodes.new("ShaderNodeMix")
+    p2_fwd = vec_math_op(ng, "ADD", p_v2, h_end)
+    p2_bwd = vec_math_op(ng, "ADD", p_v1, h_start)
+    mix_p2 = ng.nodes.new("ShaderNodeMix")
     mix_p2.data_type = "VECTOR"
-    group.links.new(fwd, mix_p2.inputs["Factor"])
-    group.links.new(p2_bwd, mix_p2.inputs["A"])
-    group.links.new(p2_fwd, mix_p2.inputs["B"])
+    ng.links.new(in_node.outputs["fwd"], mix_p2.inputs["Factor"])
+    ng.links.new(p2_bwd, mix_p2.inputs["A"])
+    ng.links.new(p2_fwd, mix_p2.inputs["B"])
     P2 = mix_p2.outputs["Result"]
+    
+    ng.links.new(P0, out_node.inputs["P0"])
+    ng.links.new(P1, out_node.inputs["P1"])
+    ng.links.new(P2, out_node.inputs["P2"])
+    ng.links.new(P3, out_node.inputs["P3"])
+    return ng
 
-    return P0, P1, P2, P3
+def edge_control_points_node(group, edge_id, fwd, orig_geo):
+    """Instantiates the Node Group instead of raw math."""
+    ecp = get_edge_control_points_group()
+    n = group.nodes.new("GeometryNodeGroup")
+    n.node_tree = ecp
+    
+    link_or_set(group, n.inputs["edge_id"], edge_id)
+    link_or_set(group, n.inputs["fwd"], fwd)
+    link_or_set(group, n.inputs["orig_geo"], orig_geo)
+    return n.outputs["P0"], n.outputs["P1"], n.outputs["P2"], n.outputs["P3"]
 
 
 
@@ -312,34 +345,66 @@ def sample_face_corner_pos(group, face_idx_node, prepared_geo, sort_index):
     group.links.new(corner_pos_attr_w.outputs[0], sample.inputs["Value"])
     return sample.outputs[0] 
 
-def domain_edge_distance(group, i_idx, N_field, domain_p_x, domain_p_y):
+def get_domain_edge_distance_group():
+    """Creates or retrieves a singleton Node Group for Domain Edge Distance calculation."""
+    group_name = "Math_DomainEdgeDistance"
+    if group_name in bpy.data.node_groups:
+        return bpy.data.node_groups[group_name]
+    
+    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng.interface.new_socket("i_idx", in_out="INPUT", socket_type="NodeSocketInt")
+    ng.interface.new_socket("N_field", in_out="INPUT", socket_type="NodeSocketInt")
+    ng.interface.new_socket("domain_p_x", in_out="INPUT", socket_type="NodeSocketFloat")
+    ng.interface.new_socket("domain_p_y", in_out="INPUT", socket_type="NodeSocketFloat")
+    ng.interface.new_socket("Result", in_out="OUTPUT", socket_type="NodeSocketFloat")
+    
+    # Internal Logic
+    in_node = ng.nodes.new("NodeGroupInput")
+    out_node = ng.nodes.new("NodeGroupOutput")
+    
     # Must use the same flip_domain logic as in mean-value coordinates
     # to ensure domain edge positions match the computed domain_p_x/y.
-    angle_step_local = math_op(group, "DIVIDE", 6.283185307, N_field)
+    angle_step_local = math_op(ng, "DIVIDE", 6.283185307, in_node.outputs["N_field"])
     
-    i_float_local = int_to_float(group, i_idx)
-    i_prev = int_op(group, "MODULO", int_op(group, "ADD", int_op(group, "SUBTRACT", i_idx, 1), N_field), N_field)
-    i_prev_float = int_to_float(group, i_prev)
+    i_float_local = int_to_float(ng, in_node.outputs["i_idx"])
+    i_prev = int_op(ng, "MODULO", int_op(ng, "ADD", int_op(ng, "SUBTRACT", in_node.outputs["i_idx"], 1), in_node.outputs["N_field"]), in_node.outputs["N_field"])
+    i_prev_float = int_to_float(ng, i_prev)
     
     # CCW angles (same formula as in mean-value coords)
-    base_angle_prev = math_op(group, "MULTIPLY", math_op(group, "ADD", i_prev_float, 0.5), angle_step_local)
-    theta0_ccw = math_op(group, "ADD", base_angle_prev, 3.14159265)
+    base_angle_prev = math_op(ng, "MULTIPLY", math_op(ng, "ADD", i_prev_float, 0.5), angle_step_local)
+    theta0_ccw = math_op(ng, "ADD", base_angle_prev, 3.14159265)
     theta0 = theta0_ccw
     
-    base_angle_i = math_op(group, "MULTIPLY", math_op(group, "ADD", i_float_local, 0.5), angle_step_local)
-    theta1_ccw = math_op(group, "ADD", base_angle_i, 3.14159265)
+    base_angle_i = math_op(ng, "MULTIPLY", math_op(ng, "ADD", i_float_local, 0.5), angle_step_local)
+    theta1_ccw = math_op(ng, "ADD", base_angle_i, 3.14159265)
     theta1 = theta1_ccw
 
-    v0x = math_op(group, "COSINE", theta0)
-    v0y = math_op(group, "SINE", theta0)
-    v1x = math_op(group, "COSINE", theta1)
-    v1y = math_op(group, "SINE", theta1)
+    v0x = math_op(ng, "COSINE", theta0)
+    v0y = math_op(ng, "SINE", theta0)
+    v1x = math_op(ng, "COSINE", theta1)
+    v1y = math_op(ng, "SINE", theta1)
 
-    ex = math_op(group, "SUBTRACT", v1x, v0x)
-    ey = math_op(group, "SUBTRACT", v1y, v0y)
-    elen = math_op(group, "SQRT", math_op(group, "ADD", math_op(group, "MULTIPLY", ex, ex), math_op(group, "MULTIPLY", ey, ey)))
+    ex = math_op(ng, "SUBTRACT", v1x, v0x)
+    ey = math_op(ng, "SUBTRACT", v1y, v0y)
+    elen = math_op(ng, "SQRT", math_op(ng, "ADD", math_op(ng, "MULTIPLY", ex, ex), math_op(ng, "MULTIPLY", ey, ey)))
 
-    px = math_op(group, "SUBTRACT", domain_p_x, v0x)
-    py = math_op(group, "SUBTRACT", domain_p_y, v0y)
-    cross2 = math_op(group, "SUBTRACT", math_op(group, "MULTIPLY", px, ey), math_op(group, "MULTIPLY", py, ex))
-    return math_op(group, "DIVIDE", math_op(group, "ABSOLUTE", cross2), elen)
+    px = math_op(ng, "SUBTRACT", in_node.outputs["domain_p_x"], v0x)
+    py = math_op(ng, "SUBTRACT", in_node.outputs["domain_p_y"], v0y)
+    cross2 = math_op(ng, "SUBTRACT", math_op(ng, "MULTIPLY", px, ey), math_op(ng, "MULTIPLY", py, ex))
+    result = math_op(ng, "DIVIDE", math_op(ng, "ABSOLUTE", cross2), elen)
+    
+    ng.links.new(result, out_node.inputs["Result"])
+    return ng
+
+def domain_edge_distance_node(group, i_idx, N_field, domain_p_x, domain_p_y):
+    """Instantiates the Node Group instead of raw math."""
+    dg = get_domain_edge_distance_group()
+    n = group.nodes.new("GeometryNodeGroup")
+    n.node_tree = dg
+    
+    link_or_set(group, n.inputs["i_idx"], i_idx)
+    link_or_set(group, n.inputs["N_field"], N_field)
+    link_or_set(group, n.inputs["domain_p_x"], domain_p_x)
+    link_or_set(group, n.inputs["domain_p_y"], domain_p_y)
+    return n.outputs["Result"]
+
