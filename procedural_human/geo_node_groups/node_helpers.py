@@ -1,0 +1,257 @@
+import bpy
+
+# --- Helpers ---
+def is_socket(obj):
+    return isinstance(obj, bpy.types.NodeSocket) 
+
+def link_or_set(group, socket_in, value):
+    if is_socket(value):
+        group.links.new(value, socket_in)
+    elif isinstance(value, (int, float, bool, str)):
+        socket_in.default_value = value 
+    elif isinstance(value, (tuple, list)):
+        socket_in.default_value = value
+
+def create_node(group, type_name, inputs=None, **properties):
+    node = group.nodes.new(type_name)
+    if inputs:
+        for k, v in inputs.items():
+            k_prop = k.lower().replace(" ", "_")
+            if hasattr(node, k_prop):
+                try:
+                    setattr(node, k_prop, v)
+                except Exception:
+                    pass
+            elif hasattr(node, k):
+                try:
+                    setattr(node, k, v)
+                except Exception:
+                    pass
+        for k, v in inputs.items():
+            if k in node.inputs:
+                link_or_set(group, node.inputs[k], v)
+    return node
+
+def math_op(group, op, a, b=None):
+    n = group.nodes.new("ShaderNodeMath")
+    n.operation = op
+    link_or_set(group, n.inputs[0], a)
+    if b is not None:
+        link_or_set(group, n.inputs[1], b)
+    return n.outputs[0]
+
+def vec_math_op(group, op, a, b=None):
+    n = group.nodes.new("ShaderNodeVectorMath")
+    n.operation = op
+    link_or_set(group, n.inputs[0], a)
+    if b is not None:
+        if op == 'SCALE':
+            link_or_set(group, n.inputs[3], b)
+        else:
+            link_or_set(group, n.inputs[1], b)
+    if op in ('DOT_PRODUCT', 'LENGTH', 'DISTANCE'):
+        return n.outputs[1]
+    return n.outputs[0]
+
+def get_attr(group, name, dtype='INT'):
+    n = group.nodes.new("GeometryNodeInputNamedAttribute")
+    n.data_type = dtype
+    n.inputs["Name"].default_value = name
+    return n.outputs[0]
+
+def int_op(group, op, a, b):
+    n = group.nodes.new("FunctionNodeIntegerMath")
+    n.operation = op
+    link_or_set(group, n.inputs[0], a)
+    link_or_set(group, n.inputs[1], b)
+    return n.outputs[0]
+
+def compare_int_less(group, a, b):
+    c = group.nodes.new("FunctionNodeCompare")
+    c.data_type = "INT"
+    c.operation = "LESS_THAN"
+    group.links.new(a, c.inputs["A"])
+    group.links.new(b, c.inputs["B"])
+    return c.outputs["Result"]
+
+def compare_float_less(group, a, b_val):
+    c = group.nodes.new("FunctionNodeCompare")
+    c.data_type = "FLOAT"
+    c.operation = "LESS_THAN"
+    group.links.new(a, c.inputs["A"])
+    c.inputs["B"].default_value = float(b_val)
+    return c.outputs["Result"]
+
+def bool_and(group, a, b):
+    n = group.nodes.new("FunctionNodeBooleanMath")
+    n.operation = "AND"
+    group.links.new(a, n.inputs[0])
+    group.links.new(b, n.inputs[1])
+    return n.outputs["Boolean"]
+
+def int_to_float(group, a):
+    """Convert integer to float."""
+    n = group.nodes.new("ShaderNodeMath")
+    n.operation = "ADD"
+    link_or_set(group, n.inputs[0], a)
+    n.inputs[1].default_value = 0.0
+    return n.outputs["Value"]
+
+def switch_node(group, dtype, sw, false_val, true_val):
+    """Generic switch for INT, FLOAT, or VECTOR types."""
+    n = group.nodes.new("GeometryNodeSwitch")
+    n.input_type = dtype
+    group.links.new(sw, n.inputs["Switch"])
+    link_or_set(group, n.inputs["False"], false_val)
+    link_or_set(group, n.inputs["True"], true_val)
+    return n.outputs["Output"]
+
+def switch_int(group, sw, false_val, true_val):
+    return switch_node(group, "INT", sw, false_val, true_val)
+
+def switch_vec(group,sw, false_val, true_val):
+    return switch_node(group, "VECTOR", sw, false_val, true_val)
+
+def switch_float(group, sw, false_val, true_val):
+    return switch_node(group, "FLOAT", sw, false_val, true_val)
+
+def clamp01(group, x):
+    return math_op(group, "MINIMUM", 1.0, math_op(group, "MAXIMUM", 0.0, x))
+
+def smoother_step(group, t):
+    """Quintic smoothstep: t^3 * (6t^2 - 15t + 10) for C2 continuity.
+    Matches coon_patch.py's blending function."""
+    # s1 = 6*t - 15
+    s1 = math_op(group, "SUBTRACT", math_op(group, "MULTIPLY", t, 6.0), 15.0)
+    # s2 = t * s1 + 10 = 6t^2 - 15t + 10
+    s2 = math_op(group, "ADD", math_op(group, "MULTIPLY", t, s1), 10.0)
+    # result = t^3 * s2
+    t3 = math_op(group, "POWER", t, 3.0)
+    return math_op(group, "MULTIPLY", t3, s2)
+
+# tan(α/2) = sqrt((1 - cos(α)) / (1 + cos(α)))
+def tan_half_angle(group, cos_a):
+    # Clamp to avoid numerical issues
+    cos_clamped = math_op(group, "MINIMUM", 0.9999, math_op(group, "MAXIMUM", -0.9999, cos_a))
+    numer = math_op(group, "SUBTRACT", 1.0, cos_clamped)
+    denom = math_op(group, "ADD", 1.0, cos_clamped)
+    return math_op(group, "SQRT", math_op(group, "DIVIDE", numer, math_op(group, "MAXIMUM", denom, 1e-8)))
+
+def sample_from_orig_corner(group, attr_name, dtype, corner_idx_val, prepared_geo):
+    s = create_node(group,"GeometryNodeSampleIndex", {
+        "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": dtype, "Index": corner_idx_val
+    })
+    attr = group.nodes.new("GeometryNodeInputNamedAttribute")
+    attr.data_type = dtype
+    attr.inputs["Name"].default_value = attr_name
+    group.links.new(attr.outputs[0], s.inputs["Value"])
+    return s.outputs[0]
+
+def mapped_index(idx):
+    """Identity mapping: domain vertex i == mesh corner i (within the face's corner order)."""
+    return idx
+
+def corner_for_idx(group,idx,orig_loop_start_field):
+    return int_op(group, "ADD", orig_loop_start_field, mapped_index(idx))
+
+def edge_for_idx(group, idx, orig_loop_start_field, prepared_geo):
+    cidx = corner_for_idx(group, idx, orig_loop_start_field)
+    e = sample_from_orig_corner(group, "corner_edge_idx", "INT", cidx, prepared_geo)
+    d = sample_from_orig_corner(group, "edge_is_forward", "BOOLEAN", cidx, prepared_geo)
+    return e, d
+
+def edge_control_points(group, edge_id, fwd, orig_geo):
+    """Return cubic Bezier control points P0..P3 for edge curve C_i."""
+    def edge_vertex_pos(which):
+        # which: 0 -> Vertex Index 1, 1 -> Vertex Index 2
+        s_edge = create_node(group,"GeometryNodeSampleIndex", {
+            "Geometry": orig_geo, "Domain": "EDGE", "Data Type": "INT", "Index": edge_id
+        })
+        ev = group.nodes.new("GeometryNodeInputMeshEdgeVertices")
+        group.links.new(ev.outputs[which], s_edge.inputs["Value"])
+        s_pos = create_node(group,"GeometryNodeSampleIndex", {
+            "Geometry": orig_geo, "Domain": "POINT", "Data Type": "FLOAT_VECTOR", "Index": s_edge.outputs[0]
+        })
+        group.links.new(group.nodes.new("GeometryNodeInputPosition").outputs[0], s_pos.inputs["Value"])
+        return s_pos.outputs[0]
+
+    def edge_handle_vec(prefix):
+        def comp(c):
+            s = create_node(group,"GeometryNodeSampleIndex", {
+                "Geometry": orig_geo, "Domain": "EDGE", "Data Type": "FLOAT", "Index": edge_id
+            })
+            attr = group.nodes.new("GeometryNodeInputNamedAttribute")
+            attr.data_type = "FLOAT"
+            attr.inputs["Name"].default_value = f"{prefix}_{c}"
+            group.links.new(attr.outputs[0], s.inputs["Value"])
+            return s.outputs[0]
+        comb = group.nodes.new("ShaderNodeCombineXYZ")
+        group.links.new(comp("x"), comb.inputs[0])
+        group.links.new(comp("y"), comb.inputs[1])
+        group.links.new(comp("z"), comb.inputs[2])
+        return comb.outputs[0]
+
+    p_v1 = edge_vertex_pos(0)
+    p_v2 = edge_vertex_pos(1)
+    h_start = edge_handle_vec("handle_start")  # relative to v1
+    h_end = edge_handle_vec("handle_end")      # relative to v2
+
+    # Endpoint mix
+    mix_p0 = group.nodes.new("ShaderNodeMix")
+    mix_p0.data_type = "VECTOR"
+    group.links.new(fwd, mix_p0.inputs["Factor"])
+    group.links.new(p_v2, mix_p0.inputs["A"])
+    group.links.new(p_v1, mix_p0.inputs["B"])
+    P0 = mix_p0.outputs["Result"]
+
+    mix_p3 = group.nodes.new("ShaderNodeMix")
+    mix_p3.data_type = "VECTOR"
+    group.links.new(fwd, mix_p3.inputs["Factor"])
+    group.links.new(p_v1, mix_p3.inputs["A"])
+    group.links.new(p_v2, mix_p3.inputs["B"])
+    P3 = mix_p3.outputs["Result"]
+
+    # Handles depend on direction
+    p1_fwd = vec_math_op(group, "ADD", p_v1, h_start)
+    p1_bwd = vec_math_op(group, "ADD", p_v2, h_end)
+    mix_p1 = group.nodes.new("ShaderNodeMix")
+    mix_p1.data_type = "VECTOR"
+    group.links.new(fwd, mix_p1.inputs["Factor"])
+    group.links.new(p1_bwd, mix_p1.inputs["A"])
+    group.links.new(p1_fwd, mix_p1.inputs["B"])
+    P1 = mix_p1.outputs["Result"]
+
+    p2_fwd = vec_math_op(group, "ADD", p_v2, h_end)
+    p2_bwd = vec_math_op(group, "ADD", p_v1, h_start)
+    mix_p2 = group.nodes.new("ShaderNodeMix")
+    mix_p2.data_type = "VECTOR"
+    group.links.new(fwd, mix_p2.inputs["Factor"])
+    group.links.new(p2_bwd, mix_p2.inputs["A"])
+    group.links.new(p2_fwd, mix_p2.inputs["B"])
+    P2 = mix_p2.outputs["Result"]
+
+    return P0, P1, P2, P3
+
+def bezier_eval(group, P0, P1, P2, P3, t):
+    omt = math_op(group, "SUBTRACT", 1.0, t)
+    c0 = math_op(group,"POWER", omt, 3.0)
+    c1 = math_op(group,"MULTIPLY", math_op(group,"MULTIPLY", 3.0, math_op(group,"POWER", omt, 2.0)), t)
+    c2 = math_op(group,"MULTIPLY", math_op(group,"MULTIPLY", 3.0, omt), math_op(group,"POWER", t, 2.0))
+    c3 = math_op(group, "POWER", t, 3.0)
+    return vec_math_op(group, "ADD",
+                        vec_math_op(group, "ADD", vec_math_op(group, "SCALE", P0, c0), vec_math_op(group, "SCALE", P1, c1)),
+                        vec_math_op(group, "ADD", vec_math_op(group, "SCALE", P2, c2), vec_math_op(group, "SCALE", P3, c3)))
+
+def bezier_deriv(group, P0, P1, P2, P3, t):
+    omt = math_op(group, "SUBTRACT", 1.0, t)
+    omt2 = math_op(group, "POWER", omt, 2.0)
+    t2 = math_op(group, "POWER", t, 2.0)
+    a0 = math_op(group, "MULTIPLY", 3.0, omt2)
+    a1 = math_op(group, "MULTIPLY", 6.0, math_op(group, "MULTIPLY", omt, t))
+    a2 = math_op(group, "MULTIPLY", 3.0, t2)
+    d10 = vec_math_op(group, "SUBTRACT", P1, P0)
+    d21 = vec_math_op(group, "SUBTRACT", P2, P1)
+    d32 = vec_math_op(group, "SUBTRACT", P3, P2)
+    return vec_math_op(group, "ADD",
+                        vec_math_op(group, "ADD", vec_math_op(group, "SCALE", d10, a0), vec_math_op(group, "SCALE", d21, a1)),
+                        vec_math_op(group, "SCALE", d32, a2))
