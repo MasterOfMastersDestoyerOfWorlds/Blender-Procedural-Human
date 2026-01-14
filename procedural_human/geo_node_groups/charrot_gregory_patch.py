@@ -248,20 +248,10 @@ def create_charrot_gregory_group():
     s_i = smoother_step(group, s_i_raw)
     d_i = smoother_step(group, d_i_raw)
 
-    # Evaluate boundary curves (paper indexing) with *incoming-edge* semantics:
-    # We stored `corner_edge_idx` as EdgesOfCorner.Previous Edge Index, i.e. the incoming edge at corner i,
-    # which is exactly the side between vertices (i-1, i). Therefore:
-    #   C_i      -> edge_for_idx(i)
-    #   C_{i-1}  -> edge_for_idx(i-1)
-    #   C_{i+1}  -> edge_for_idx(i+1)
-    # and for opp curve derivatives:
-    #   C'_{i+2}(0) -> edge_for_idx(i+2)
-    #   C'_{i-2}(1) -> edge_for_idx(i-2)
     e_i, f_i = edge_for_idx(group, C_i, orig_loop_start_field, prepared_geo)     # C_i 
     e_im1, f_im1 = edge_for_idx(group, im1, orig_loop_start_field, prepared_geo) # C_{i-1}
     e_ip1, f_ip1 = edge_for_idx(group, ip1, orig_loop_start_field, prepared_geo) # C_{i+1}
 
-    # Control points for C_i, C_{i-1}, C_{i+1}
     C0, C1, C2, C3 = edge_control_points_node(group, e_i, f_i, orig_geo)              # C_i
     Cm10, Cm11, Cm12, Cm13 = edge_control_points_node(group, e_im1, f_im1, orig_geo)  # C_{i-1}
     Cp10, Cp11, Cp12, Cp13 = edge_control_points_node(group, e_ip1, f_ip1, orig_geo)  # C_{i+1}
@@ -277,8 +267,8 @@ def create_charrot_gregory_group():
     Cp20, Cp21, Cp22, Cp23 = edge_control_points_node(group, e_ip2, f_ip2, orig_geo)   # C_{i+2}
     Cm20, Cm21, Cm22, Cm23 = edge_control_points_node(group, e_im2, f_im2, orig_geo)   # C_{i-2}
 
-    d_ip2_0 = bezier_deriv(group, Cp20, Cp21, Cp22, Cp23, 0.0)  # C'_{i+2}(0)
-    d_im2_1 = bezier_deriv(group, Cm20, Cm21, Cm22, Cm23, 1.0)  # C'_{i-2}(1)
+    d_ip2_0 = bezier_deriv_node(group, Cp20, Cp21, Cp22, Cp23, 0.0)  # C'_{i+2}(0)
+    d_im2_1 = bezier_deriv_node(group, Cm20, Cm21, Cm22, Cm23, 1.0)  # C'_{i-2}(1)
 
     P0_opp = bezier_eval_node(group, Cp10, Cp11, Cp12, Cp13, 1.0)    # C_{i+1}(1)
     P3_opp = bezier_eval_node(group, Cm10, Cm11, Cm12, Cm13, 0.0)    # C_{i-1}(0)

@@ -497,8 +497,51 @@ def bezier_eval_node(group, P0, P1, P2, P3, t):
     link_or_set(group, n.inputs["t"], t)
     return n.outputs["Result"]
 
-def bezier_deriv(group, P0, P1, P2, P3, t):
-    """Calculate the derivative of a cubic Bezier curve at parameter t.
+def get_bezier_deriv_group():
+    """Creates or retrieves a singleton Node Group that calculates the derivative of a cubic Bezier curve at parameter t.
+    
+    The node group implements the derivative formula for a cubic Bezier curve:
+    B'(t) = 3(1-t)²(P₁-P₀) + 6(1-t)t(P₂-P₁) + 3t²(P₃-P₂)
+    
+    where P₀, P₁, P₂, P₃ are the four control points and t is the parameter in [0, 1].
+    The derivative represents the tangent vector (direction and speed) along the curve.
+    
+    :returns: The node group for calculating Bezier curve derivatives.
+    """
+    group_name = "Math_BezierDeriv"
+    if group_name in bpy.data.node_groups:
+        return bpy.data.node_groups[group_name]
+    
+    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng.interface.new_socket("P0", in_out="INPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("P1", in_out="INPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("P2", in_out="INPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("P3", in_out="INPUT", socket_type="NodeSocketVector")
+    ng.interface.new_socket("t", in_out="INPUT", socket_type="NodeSocketFloat")
+    ng.interface.new_socket("Result", in_out="OUTPUT", socket_type="NodeSocketVector")
+    
+    # Internal Logic
+    in_node = ng.nodes.new("NodeGroupInput")
+    out_node = ng.nodes.new("NodeGroupOutput")
+    
+    omt = math_op(ng, "SUBTRACT", 1.0, in_node.outputs["t"])
+    omt2 = math_op(ng, "POWER", omt, 2.0)
+    t2 = math_op(ng, "POWER", in_node.outputs["t"], 2.0)
+    a0 = math_op(ng, "MULTIPLY", 3.0, omt2)
+    a1 = math_op(ng, "MULTIPLY", 6.0, math_op(ng, "MULTIPLY", omt, in_node.outputs["t"]))
+    a2 = math_op(ng, "MULTIPLY", 3.0, t2)
+    d10 = vec_math_op(ng, "SUBTRACT", in_node.outputs["P1"], in_node.outputs["P0"])
+    d21 = vec_math_op(ng, "SUBTRACT", in_node.outputs["P2"], in_node.outputs["P1"])
+    d32 = vec_math_op(ng, "SUBTRACT", in_node.outputs["P3"], in_node.outputs["P2"])
+    result = vec_math_op(ng, "ADD",
+                        vec_math_op(ng, "ADD", vec_math_op(ng, "SCALE", d10, a0), vec_math_op(ng, "SCALE", d21, a1)),
+                        vec_math_op(ng, "SCALE", d32, a2))
+    
+    ng.links.new(result, out_node.inputs["Result"])
+    return ng
+
+def bezier_deriv_node(group, P0, P1, P2, P3, t):
+    """Instantiates the Bezier derivative node group to compute the derivative vector at parameter t.
     
     :param group: The node group to add the node to.
     :param P0: First control point (socket or vector).
@@ -508,20 +551,17 @@ def bezier_deriv(group, P0, P1, P2, P3, t):
     :param t: Parameter value along the curve (socket or float).
     :returns: Output socket with the derivative vector at parameter t.
     """
-    omt = math_op(group, "SUBTRACT", 1.0, t)
-    omt2 = math_op(group, "POWER", omt, 2.0)
-    t2 = math_op(group, "POWER", t, 2.0)
-    a0 = math_op(group, "MULTIPLY", 3.0, omt2)
-    a1 = math_op(group, "MULTIPLY", 6.0, math_op(group, "MULTIPLY", omt, t))
-    a2 = math_op(group, "MULTIPLY", 3.0, t2)
-    d10 = vec_math_op(group, "SUBTRACT", P1, P0)
-    d21 = vec_math_op(group, "SUBTRACT", P2, P1)
-    d32 = vec_math_op(group, "SUBTRACT", P3, P2)
-    return vec_math_op(group, "ADD",
-                        vec_math_op(group, "ADD", vec_math_op(group, "SCALE", d10, a0), vec_math_op(group, "SCALE", d21, a1)),
-                        vec_math_op(group, "SCALE", d32, a2))
+    bd = get_bezier_deriv_group()
+    n = group.nodes.new("GeometryNodeGroup")
+    n.node_tree = bd
     
-# Sample corner_pos at corners 0, 1, 2, 3 of each face
+    link_or_set(group, n.inputs["P0"], P0)
+    link_or_set(group, n.inputs["P1"], P1)
+    link_or_set(group, n.inputs["P2"], P2)
+    link_or_set(group, n.inputs["P3"], P3)
+    link_or_set(group, n.inputs["t"], t)
+    return n.outputs["Result"]
+    
 def sample_face_corner_pos(group, face_idx_node, prepared_geo, sort_index):
     """Sample corner position at a specific sort index for a face.
     
