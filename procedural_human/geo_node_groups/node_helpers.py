@@ -255,3 +255,58 @@ def bezier_deriv(group, P0, P1, P2, P3, t):
     return vec_math_op(group, "ADD",
                         vec_math_op(group, "ADD", vec_math_op(group, "SCALE", d10, a0), vec_math_op(group, "SCALE", d21, a1)),
                         vec_math_op(group, "SCALE", d32, a2))
+    
+# Sample corner_pos at corners 0, 1, 2, 3 of each face
+def sample_face_corner_pos(group, face_idx_node, prepared_geo, sort_index):
+    # Get the corner index for this face at the given sort position
+    cof_corner = group.nodes.new("GeometryNodeCornersOfFace")
+    group.links.new(face_idx_node.outputs[0], cof_corner.inputs["Face Index"])
+    cof_corner.inputs["Weights"].default_value = 0.0
+    cof_corner.inputs["Sort Index"].default_value = sort_index
+    corner_at_sort = cof_corner.outputs["Corner Index"]
+    
+    # Sample the corner_pos at that corner index
+    sample = create_node(group,"GeometryNodeSampleIndex", {
+        "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
+        "Index": corner_at_sort
+    })
+    # Get the corner_pos attribute from prepared_geo
+    corner_pos_attr_w = group.nodes.new("GeometryNodeInputNamedAttribute")
+    corner_pos_attr_w.data_type = "FLOAT_VECTOR"
+    corner_pos_attr_w.inputs["Name"].default_value = "corner_pos"
+    group.links.new(corner_pos_attr_w.outputs[0], sample.inputs["Value"])
+    return sample.outputs[0] 
+
+def domain_edge_distance(group, i_idx, N_field, flip_domain, domain_p_x, domain_p_y):
+        # Must use the same flip_domain logic as in mean-value coordinates
+        # to ensure domain edge positions match the computed domain_p_x/y.
+        angle_step_local = math_op(group, "DIVIDE", 6.283185307, N_field)
+        
+        i_float_local = int_to_float(group, i_idx)
+        i_prev = int_op(group, "MODULO", int_op(group, "ADD", int_op(group, "SUBTRACT", i_idx, 1), N_field), N_field)
+        i_prev_float = int_to_float(group, i_prev)
+        
+        # CCW angles (same formula as in mean-value coords)
+        base_angle_prev = math_op(group, "MULTIPLY", math_op(group, "ADD", i_prev_float, 0.5), angle_step_local)
+        theta0_ccw = math_op(group, "ADD", base_angle_prev, 3.14159265)
+        theta0_cw = math_op(group, "SUBTRACT", 3.14159265, base_angle_prev)
+        theta0 = switch_float(group, flip_domain, theta0_ccw, theta0_cw)
+        
+        base_angle_i = math_op(group, "MULTIPLY", math_op(group, "ADD", i_float_local, 0.5), angle_step_local)
+        theta1_ccw = math_op(group, "ADD", base_angle_i, 3.14159265)
+        theta1_cw = math_op(group, "SUBTRACT", 3.14159265, base_angle_i)
+        theta1 = switch_float(group, flip_domain, theta1_ccw, theta1_cw)
+
+        v0x = math_op(group, "COSINE", theta0)
+        v0y = math_op(group, "SINE", theta0)
+        v1x = math_op(group, "COSINE", theta1)
+        v1y = math_op(group, "SINE", theta1)
+
+        ex = math_op(group, "SUBTRACT", v1x, v0x)
+        ey = math_op(group, "SUBTRACT", v1y, v0y)
+        elen = math_op(group, "SQRT", math_op(group, "ADD", math_op(group, "MULTIPLY", ex, ex), math_op(group, "MULTIPLY", ey, ey)))
+
+        px = math_op(group, "SUBTRACT", domain_p_x, v0x)
+        py = math_op(group, "SUBTRACT", domain_p_y, v0y)
+        cross2 = math_op(group, "SUBTRACT", math_op(group, "MULTIPLY", px, ey), math_op(group, "MULTIPLY", py, ex))
+        return math_op(group, "DIVIDE", math_op(group, "ABSOLUTE", cross2), elen)

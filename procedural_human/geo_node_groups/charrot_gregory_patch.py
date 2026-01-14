@@ -41,36 +41,13 @@ def create_charrot_gregory_group():
     group_input = nodes.new("NodeGroupInput")
     group_output = nodes.new("NodeGroupOutput")
     orig_geo = group_input.outputs["Geometry"]  
-    
-    # Get corner index (evaluated in CORNER domain)
+
     corner_idx = nodes.new("GeometryNodeInputIndex").outputs[0]
-    
-    # Get face of this corner
     face_of_corner = nodes.new("GeometryNodeFaceOfCorner")
     links.new(corner_idx, face_of_corner.inputs["Corner Index"])
     face_idx = face_of_corner.outputs["Face Index"]
     
-    # Get first corner of face (sort index 0)
-    corners_of_face = nodes.new("GeometryNodeCornersOfFace")
-    links.new(face_idx, corners_of_face.inputs["Face Index"])
-    corners_of_face.inputs["Sort Index"].default_value = 0
-    first_corner = corners_of_face.outputs["Corner Index"]
-    
-    # Compute sort index (0, 1, 2, ..., N-1) for this corner within face
-    sort_idx = math_op(group, 'SUBTRACT', corner_idx, first_corner)
-    
-    # Count corners per face (N)
-    accum_N = create_node(group, "GeometryNodeAccumulateField", {
-        "Value": 1, "Group ID": face_idx, "Domain": "CORNER"
-    })
-    N_total = accum_N.outputs["Total"]
-    
-    # --- 2. STORE CORNER POSITIONS FOR BARYCENTRIC COMPUTATION ---
-    # FIX: Don't store domain_pos or UV on corners - they don't interpolate correctly for N-gons.
-    # Instead, we'll compute domain_pos at runtime using generalized barycentric coordinates.
-    # Store corner 3D positions so we can compute barycentric coords later.
-    
-    # Get the vertex position at this corner
+    # --- 2. STORE CORNER POSITIONS ---
     vert_of_corner = nodes.new("GeometryNodeVertexOfCorner")
     links.new(corner_idx, vert_of_corner.inputs["Corner Index"])
     
@@ -81,8 +58,7 @@ def create_charrot_gregory_group():
     pos_node = nodes.new("GeometryNodeInputPosition")
     links.new(pos_node.outputs[0], sample_corner_pos.inputs["Value"])
     corner_pos = sample_corner_pos.outputs[0]
-    
-    # Store corner position on CORNER domain
+
     store_corner_pos = create_node(group,"GeometryNodeStoreNamedAttribute", {
         "Name": "corner_pos", "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
         "Value": corner_pos
@@ -93,102 +69,57 @@ def create_charrot_gregory_group():
     # --- 3. STORE FACE INDEX ON FACE DOMAIN ---
     # This propagates through split/subdivide so we can look up original corners
     face_idx_node = nodes.new("GeometryNodeInputIndex")  # In FACE context this gives face index
-    
 
     # Store original loop start ("first corner") per face.
     # This is stable for looking up per-face corners later even after subdiv/split,
     # and avoids using CornersOfFace with face indices from a different geometry.
-    corners_of_face_for_store = nodes.new("GeometryNodeCornersOfFace")
-    links.new(face_idx_node.outputs[0], corners_of_face_for_store.inputs["Face Index"])
-    corners_of_face_for_store.inputs["Sort Index"].default_value = 0
+    corners_of_face = nodes.new("GeometryNodeCornersOfFace")
+    links.new(face_idx_node.outputs[0], corners_of_face.inputs["Face Index"])
+    corners_of_face.inputs["Sort Index"].default_value = 0
 
     store_loop_start = create_node(group,"GeometryNodeStoreNamedAttribute", {
         "Name": "orig_loop_start", "Domain": "FACE", "Data Type": "INT",
-        "Value": corners_of_face_for_store.outputs["Corner Index"]
+        "Value": corners_of_face.outputs["Corner Index"]
     })
     links.new(store_corner_pos.outputs[0], store_loop_start.inputs[0])
-    
-    # Store N on face domain
+
+    accum_N = create_node(group, "GeometryNodeAccumulateField", {
+        "Value": 1, "Group ID": face_idx, "Domain": "CORNER"
+    })
+    N_total = accum_N.outputs["Total"]
     store_N = create_node(group,"GeometryNodeStoreNamedAttribute", {
         "Name": "poly_N", "Domain": "FACE", "Data Type": "INT",
         "Value": N_total
     })
     links.new(store_loop_start.outputs[0], store_N.inputs[0])
+
     # --- 4. STORE EDGE INFO ON CORNERS ---
     edges_of_corner = nodes.new("GeometryNodeEdgesOfCorner")
     links.new(corner_idx, edges_of_corner.inputs["Corner Index"])
     
     store_edge_idx = create_node(group,"GeometryNodeStoreNamedAttribute", {
         "Name": "corner_edge_idx", "Domain": "CORNER", "Data Type": "INT",
-        # Store the *incoming* edge at this corner.
-        # This matches the paper's convention where side i is between vertices (i-1, i).
         "Value": edges_of_corner.outputs["Previous Edge Index"]
     })
     links.new(store_N.outputs[0], store_edge_idx.inputs[0])
     
-    # Determine edge direction
     vertex_of_corner = nodes.new("GeometryNodeVertexOfCorner")
     links.new(corner_idx, vertex_of_corner.inputs["Corner Index"])
-    
     edge_verts = nodes.new("GeometryNodeInputMeshEdgeVertices")
-
-    # --- 4.1 DEBUG: verify corner_edge_idx is incident to corner vertex ---
-    # Store the corner's vertex index
-    store_corner_vert_idx = create_node(group,"GeometryNodeStoreNamedAttribute", {
-        "Name": "corner_vertex_idx", "Domain": "CORNER", "Data Type": "INT",
-        "Value": vertex_of_corner.outputs["Vertex Index"]
-    })
-    links.new(store_edge_idx.outputs[0], store_corner_vert_idx.inputs[0])
-
-    # Sample the two endpoint vertex indices of the stored edge
-    sample_edge_v_idx1 = create_node(group,"GeometryNodeSampleIndex", {
-        "Geometry": store_corner_vert_idx.outputs[0],
-        "Domain": "EDGE", "Data Type": "INT",
-        "Index": edges_of_corner.outputs["Previous Edge Index"]
-    })
-    links.new(edge_verts.outputs["Vertex Index 1"], sample_edge_v_idx1.inputs["Value"])
-
-    sample_edge_v_idx2 = create_node(group,"GeometryNodeSampleIndex", {
-        "Geometry": store_corner_vert_idx.outputs[0],
-        "Domain": "EDGE", "Data Type": "INT",
-        "Index": edges_of_corner.outputs["Previous Edge Index"]
-    })
-    links.new(edge_verts.outputs["Vertex Index 2"], sample_edge_v_idx2.inputs["Value"])
-
-    store_corner_edge_v1 = create_node(group,"GeometryNodeStoreNamedAttribute", {
-        "Name": "corner_edge_v1", "Domain": "CORNER", "Data Type": "INT",
-        "Value": sample_edge_v_idx1.outputs[0]
-    })
-    links.new(store_corner_vert_idx.outputs[0], store_corner_edge_v1.inputs[0])
-
-    store_corner_edge_v2 = create_node(group,"GeometryNodeStoreNamedAttribute", {
-        "Name": "corner_edge_v2", "Domain": "CORNER", "Data Type": "INT",
-        "Value": sample_edge_v_idx2.outputs[0]
-    })
-    links.new(store_corner_edge_v1.outputs[0], store_corner_edge_v2.inputs[0])
-    
-    # Determine direction for the stored incoming edge.
-    # We want C_i(0)=vertex(i-1) and C_i(1)=vertex(i), i.e. the curve should end at this corner.
     sample_edge_v1 = create_node(group,"GeometryNodeSampleIndex", {
-        "Geometry": store_corner_edge_v2.outputs[0],
+        "Geometry": orig_geo,
         "Domain": "EDGE", "Data Type": "INT",
         "Index": edges_of_corner.outputs["Previous Edge Index"]
     })
-    # For an incoming edge, the corner vertex is the *end* of the edge in our convention,
-    # so compare against "Vertex Index 2" to decide whether the stored (v1->v2) direction
-    # already ends at this corner.
     links.new(edge_verts.outputs["Vertex Index 2"], sample_edge_v1.inputs["Value"])
-    
     is_fwd_cmp = create_node(group,"FunctionNodeCompare", {"Data Type": "INT", "Operation": "EQUAL"})
     links.new(vertex_of_corner.outputs["Vertex Index"], is_fwd_cmp.inputs["A"])
     links.new(sample_edge_v1.outputs[0], is_fwd_cmp.inputs["B"])
-    
     store_is_fwd = create_node(group,"GeometryNodeStoreNamedAttribute", {
         "Name": "edge_is_forward", "Domain": "CORNER", "Data Type": "BOOLEAN",
         "Value": is_fwd_cmp.outputs["Result"]
     })
-    links.new(store_corner_edge_v2.outputs[0], store_is_fwd.inputs[0])
-
+    links.new(store_edge_idx.outputs[0], store_is_fwd.inputs[0])
     prepared_geo = store_is_fwd.outputs[0]
     
     # --- 4.2 COMPUTE AND STORE FACE WINDING (before split/subdivide) ---
@@ -200,32 +131,11 @@ def create_charrot_gregory_group():
     cof_winding = nodes.new("GeometryNodeCornersOfFace")
     face_idx_node = nodes.new("GeometryNodeInputIndex")  # In FACE context, this is face index
     links.new(face_idx_node.outputs[0], cof_winding.inputs["Face Index"])
-    
-    # Sample corner_pos at corners 0, 1, 2, 3 of each face
-    def sample_face_corner_pos(group, sort_index):
-        # Get the corner index for this face at the given sort position
-        cof_corner = nodes.new("GeometryNodeCornersOfFace")
-        links.new(face_idx_node.outputs[0], cof_corner.inputs["Face Index"])
-        cof_corner.inputs["Weights"].default_value = 0.0
-        cof_corner.inputs["Sort Index"].default_value = sort_index
-        corner_at_sort = cof_corner.outputs["Corner Index"]
-        
-        # Sample the corner_pos at that corner index
-        sample = create_node(group,"GeometryNodeSampleIndex", {
-            "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
-            "Index": corner_at_sort
-        })
-        # Get the corner_pos attribute from prepared_geo
-        corner_pos_attr_w = nodes.new("GeometryNodeInputNamedAttribute")
-        corner_pos_attr_w.data_type = "FLOAT_VECTOR"
-        corner_pos_attr_w.inputs["Name"].default_value = "corner_pos"
-        links.new(corner_pos_attr_w.outputs[0], sample.inputs["Value"])
-        return sample.outputs[0] 
 
-    wc0 = sample_face_corner_pos(group, 0)
-    wc1 = sample_face_corner_pos(group, 1)
-    wc2 = sample_face_corner_pos(group, 2)
-    wc3 = sample_face_corner_pos(group, 3) 
+    wc0 = sample_face_corner_pos(group, face_idx_node, prepared_geo, 0)
+    wc1 = sample_face_corner_pos(group, face_idx_node, prepared_geo, 1)
+    wc2 = sample_face_corner_pos(group, face_idx_node, prepared_geo, 2)
+    wc3 = sample_face_corner_pos(group, face_idx_node, prepared_geo, 3) 
     
     # Compute cross product of two edges to get face normal direction
     edge01_w = vec_math_op(group, "SUBTRACT", wc1, wc0)
@@ -260,16 +170,8 @@ def create_charrot_gregory_group():
 # --- 5. SPLIT & SUBDIVIDE ---
     split = create_node(group,"GeometryNodeSplitEdges", {"Mesh": prepared_geo_with_flip})
     
-    store_crease = create_node(group,"GeometryNodeStoreNamedAttribute", {
-        "Name": "crease",
-        "Domain": "EDGE",
-        "Data Type": "FLOAT",
-        "Value": 1.0
-    })
-    links.new(split.outputs[0], store_crease.inputs[0])
-    
     subdiv = create_node(group,"GeometryNodeSubdivideMesh", {
-        "Mesh": store_crease.outputs[0],
+        "Mesh": split.outputs[0],
         "Level": group_input.outputs["Subdivisions"]
     })
     subdivided_geo = subdiv.outputs[0]
@@ -464,39 +366,6 @@ def create_charrot_gregory_group():
 
     # --- 7. Geometry sampling helpers (from original mesh) ---
     # --- 8. Domain distances D_i(p) to regular polygon edges ---
-    def domain_edge_distance(group, i_idx):
-        # Must use the same flip_domain logic as in mean-value coordinates
-        # to ensure domain edge positions match the computed domain_p_x/y.
-        angle_step_local = math_op(group, "DIVIDE", 6.283185307, N_field)
-        
-        i_float_local = int_to_float(group, i_idx)
-        i_prev = int_op(group, "MODULO", int_op(group, "ADD", int_op(group, "SUBTRACT", i_idx, 1), N_field), N_field)
-        i_prev_float = int_to_float(group, i_prev)
-        
-        # CCW angles (same formula as in mean-value coords)
-        base_angle_prev = math_op(group, "MULTIPLY", math_op(group, "ADD", i_prev_float, 0.5), angle_step_local)
-        theta0_ccw = math_op(group, "ADD", base_angle_prev, 3.14159265)
-        theta0_cw = math_op(group, "SUBTRACT", 3.14159265, base_angle_prev)
-        theta0 = switch_float(group, flip_domain, theta0_ccw, theta0_cw)
-        
-        base_angle_i = math_op(group, "MULTIPLY", math_op(group, "ADD", i_float_local, 0.5), angle_step_local)
-        theta1_ccw = math_op(group, "ADD", base_angle_i, 3.14159265)
-        theta1_cw = math_op(group, "SUBTRACT", 3.14159265, base_angle_i)
-        theta1 = switch_float(group, flip_domain, theta1_ccw, theta1_cw)
-
-        v0x = math_op(group, "COSINE", theta0)
-        v0y = math_op(group, "SINE", theta0)
-        v1x = math_op(group, "COSINE", theta1)
-        v1y = math_op(group, "SINE", theta1)
-
-        ex = math_op(group, "SUBTRACT", v1x, v0x)
-        ey = math_op(group, "SUBTRACT", v1y, v0y)
-        elen = math_op(group, "SQRT", math_op(group, "ADD", math_op(group, "MULTIPLY", ex, ex), math_op(group, "MULTIPLY", ey, ey)))
-
-        px = math_op(group, "SUBTRACT", domain_p_x, v0x)
-        py = math_op(group, "SUBTRACT", domain_p_y, v0y)
-        cross2 = math_op(group, "SUBTRACT", math_op(group, "MULTIPLY", px, ey), math_op(group, "MULTIPLY", py, ex))
-        return math_op(group, "DIVIDE", math_op(group, "ABSOLUTE", cross2), elen)
 
     # --- 9. Repeat Zone A: logD_total = Σ log(D_i) ---
     repA_in = nodes.new("GeometryNodeRepeatInput")
@@ -516,7 +385,7 @@ def create_charrot_gregory_group():
     A_i = repA_in.outputs["IterIdx"]
     A_valid = compare_int_less(group, A_i, N_field)
 
-    D_i = domain_edge_distance(group, A_i)
+    D_i = domain_edge_distance(group, A_i, N_field, flip_domain, domain_p_x, domain_p_y)
     D_i_clamp = math_op(group, "MAXIMUM", D_i, 1.0e-8)
     # FIX: Explicitly use base e (2.718281828) for natural log - Blender defaults to base 2!
     add_log = math_op(group, "ADD", A_log, math_op(group, "LOGARITHM", D_i_clamp, 2.718281828))
@@ -548,8 +417,8 @@ def create_charrot_gregory_group():
     # In the code's convention, edge j connects vertex (j-1) to vertex j.
     # So vertex i is at the END of edge i, and at the START of edge (i+1).
     B_ip1 = int_op(group, "MODULO", int_op(group, "ADD", B_i, 1), N_field)
-    D0 = domain_edge_distance(group, B_i)   # Edge i (ends at vertex i)
-    D1 = domain_edge_distance(group, B_ip1) # Edge i+1 (starts at vertex i) 
+    D0 = domain_edge_distance(group, B_i, N_field, flip_domain, domain_p_x, domain_p_y)   # Edge i (ends at vertex i)
+    D1 = domain_edge_distance(group, B_ip1, N_field, flip_domain, domain_p_x, domain_p_y) # Edge i+1 (starts at vertex i) 
     
     D0c = math_op(group, "MAXIMUM", D0, 1.0e-8)
     D1c = math_op(group, "MAXIMUM", D1, 1.0e-8)
@@ -598,8 +467,8 @@ def create_charrot_gregory_group():
     ip2 = int_op(group, "MODULO", int_op(group, "ADD", C_i, 2), N_field)
 
     # Wachspress λ_i for vertex i: excludes edges i and (i+1) meeting at vertex i
-    Di = math_op(group, "MAXIMUM", domain_edge_distance(group, C_i), 1.0e-8)
-    Dip1 = math_op(group, "MAXIMUM", domain_edge_distance(group, ip1), 1.0e-8)
+    Di = math_op(group, "MAXIMUM", domain_edge_distance(group, C_i, N_field, flip_domain, domain_p_x, domain_p_y), 1.0e-8)
+    Dip1 = math_op(group, "MAXIMUM", domain_edge_distance(group, ip1, N_field, flip_domain, domain_p_x, domain_p_y), 1.0e-8)
     
     # FIX: Explicitly use base e for natural log
     log_w_i = math_op(group, "SUBTRACT", logD_total, math_op(group, "ADD", math_op(group, "LOGARITHM", Di, 2.718281828), math_op(group, "LOGARITHM", Dip1, 2.718281828)))
@@ -607,7 +476,7 @@ def create_charrot_gregory_group():
     lam_i = math_op(group, "DIVIDE", wcur, sumW)
  
     # Wachspress λ_{i-1} for vertex (i-1): excludes edges (i-1) and i meeting at vertex (i-1)
-    Dim1 = math_op(group, "MAXIMUM", domain_edge_distance(group, im1), 1.0e-8)
+    Dim1 = math_op(group, "MAXIMUM", domain_edge_distance(group, im1, N_field, flip_domain, domain_p_x, domain_p_y), 1.0e-8)
 
     # FIX: Explicitly use base e for natural log
     log_w_im1 = math_op(group, "SUBTRACT", logD_total, math_op(group, "ADD", math_op(group, "LOGARITHM", Dim1, 2.718281828), math_op(group, "LOGARITHM", Di, 2.718281828)))
