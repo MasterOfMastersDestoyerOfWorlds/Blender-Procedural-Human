@@ -122,53 +122,9 @@ def create_charrot_gregory_group():
     links.new(store_edge_idx.outputs[0], store_is_fwd.inputs[0])
     prepared_geo = store_is_fwd.outputs[0]
     
-    # --- 4.2 COMPUTE AND STORE FACE WINDING (before split/subdivide) ---
-    # The domain polygon vertices are arranged CCW. If the mesh face's corners wind CW,
-    # we need to flip the domain vertex order to prevent a "twisted" mapping.
-    # Compute winding per-face BEFORE split, so it propagates through subdivision.
-    
-    # Get face corner positions using corners_of_face
-    cof_winding = nodes.new("GeometryNodeCornersOfFace")
-    face_idx_node = nodes.new("GeometryNodeInputIndex")  # In FACE context, this is face index
-    links.new(face_idx_node.outputs[0], cof_winding.inputs["Face Index"])
-
-    wc0 = sample_face_corner_pos(group, face_idx_node, prepared_geo, 0)
-    wc1 = sample_face_corner_pos(group, face_idx_node, prepared_geo, 1)
-    wc2 = sample_face_corner_pos(group, face_idx_node, prepared_geo, 2)
-    wc3 = sample_face_corner_pos(group, face_idx_node, prepared_geo, 3) 
-    
-    # Compute cross product of two edges to get face normal direction
-    edge01_w = vec_math_op(group, "SUBTRACT", wc1, wc0)
-    edge02_w = vec_math_op(group, "SUBTRACT", wc2, wc0)
-    face_normal_w = vec_math_op(group, "CROSS_PRODUCT", edge01_w, edge02_w)
-    
-    # Compute face center
-    fc_01 = vec_math_op(group, "ADD", wc0, wc1)
-    fc_012 = vec_math_op(group, "ADD", fc_01, wc2)
-    fc_sum = vec_math_op(group, "ADD", fc_012, wc3)
-    face_center_w = vec_math_op(group, "SCALE", fc_sum, 0.25)
-    
-    # Dot product of face_center and face_normal
-    # For a cube centered at origin: if dot < 0, face normal points inward (CW winding)
-    center_dot_w = vec_math_op(group, "DOT_PRODUCT", face_center_w, face_normal_w)
-    
-    flip_cmp = nodes.new("FunctionNodeCompare")
-    flip_cmp.data_type = "FLOAT"
-    flip_cmp.operation = "LESS_THAN"
-    links.new(center_dot_w, flip_cmp.inputs["A"])
-    flip_cmp.inputs["B"].default_value = 0.0
-    face_flip_domain = flip_cmp.outputs["Result"]
-    
-    # Store flip_domain on FACE domain (will propagate through split/subdivide)
-    store_flip = create_node(group,"GeometryNodeStoreNamedAttribute", {
-        "Name": "face_flip_domain", "Domain": "FACE", "Data Type": "BOOLEAN",
-        "Value": face_flip_domain
-    })
-    links.new(prepared_geo, store_flip.inputs[0])
-    prepared_geo_with_flip = store_flip.outputs[0]
     
 # --- 5. SPLIT & SUBDIVIDE ---
-    split = create_node(group,"GeometryNodeSplitEdges", {"Mesh": prepared_geo_with_flip})
+    split = create_node(group,"GeometryNodeSplitEdges", {"Mesh": prepared_geo})
     
     subdiv = create_node(group,"GeometryNodeSubdivideMesh", {
         "Mesh": split.outputs[0],
@@ -293,20 +249,13 @@ def create_charrot_gregory_group():
     
     # Compute domain position for corner i
     # theta_i = (i + 0.5) * 2π / N + π
-    # If flip_domain is true, we negate the angle to reverse the vertex order (CW instead of CCW)
     N_float = int_to_float(group, N_field)
     i_float = int_to_float(group, MV_i)
     
     # Base angle (CCW order)
     angle_step = math_op(group, "DIVIDE", 6.283185307, N_float)
     base_angle = math_op(group, "MULTIPLY", math_op(group, "ADD", i_float, 0.5), angle_step)
-    theta_ccw = math_op(group, "ADD", base_angle, 3.14159265)
-    
-    # Flipped angle (CW order) - negate the base angle before adding offset
-    theta_cw = math_op(group, "SUBTRACT", 3.14159265, base_angle)
-    
-    # Select based on flip_domain
-    theta_i = theta_ccw
+    theta_i = math_op(group, "ADD", base_angle, 3.14159265)
     
     domain_corner_x = math_op(group, "COSINE", theta_i)
     domain_corner_y = math_op(group, "SINE", theta_i)
