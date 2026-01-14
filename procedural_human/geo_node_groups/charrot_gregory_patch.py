@@ -198,14 +198,6 @@ def create_charrot_gregory_group():
     })
     max_N_for_bary = stat_N_temp.outputs["Max"]
     
-    # --- 6.0b READ FACE WINDING (stored before split/subdivide) ---
-    # The flip_domain attribute was computed per-face before split and stored on FACE domain.
-    # After subdivision, it propagates to each point from its face.
-    flip_domain_attr = nodes.new("GeometryNodeInputNamedAttribute")
-    flip_domain_attr.data_type = "BOOLEAN"
-    flip_domain_attr.inputs["Name"].default_value = "face_flip_domain"
-    flip_domain = flip_domain_attr.outputs[0]
-    
     # --- 6.1 COMPUTE MEAN VALUE COORDINATES ---
     # Repeat Zone to compute sum of weights and weighted domain position
     # Mean value coordinates: w_i = (tan(α_{i-1}/2) + tan(α_i/2)) / |P - C_i|
@@ -283,9 +275,7 @@ def create_charrot_gregory_group():
     dist_ip1 = vec_math_op(group, "LENGTH", v_to_ip1)
     cos_alpha_i = math_op(group, "DIVIDE", dot_i_ip1, 
                           math_op(group, "MAXIMUM", math_op(group, "MULTIPLY", dist_i, dist_ip1), 1e-8))
-    # NOTE: Don't do "shift + clamp01" here. clamp01 clamps to [0,1] and would force cos into [-1,0],
-    # which breaks mean value coordinates and causes boundary points to map to the wrong domain location.
-    # tan_half_angle() already clamps cos to a safe range.
+
     
     # Compute angle α_{i-1} at P subtended by edge (C_{i-1}, C_i)
     dot_im1_i = vec_math_op(group, "DOT_PRODUCT", v_to_im1, v_to_i)
@@ -316,7 +306,7 @@ def create_charrot_gregory_group():
     theta_cw = math_op(group, "SUBTRACT", 3.14159265, base_angle)
     
     # Select based on flip_domain
-    theta_i = switch_float(group, flip_domain, theta_ccw, theta_cw)
+    theta_i = theta_ccw
     
     domain_corner_x = math_op(group, "COSINE", theta_i)
     domain_corner_y = math_op(group, "SINE", theta_i)
@@ -354,18 +344,6 @@ def create_charrot_gregory_group():
     })
     max_N = stat_N.outputs["Max"]
 
-    # --- 6.1 DOMAIN INDEXING ---
-    # IMPORTANT:
-    # `domain_pos` (and later D_i distances) are already defined using the *face's corner order*
-    # (corner i ↔ domain vertex i). Therefore edge index i corresponds to the mesh side between
-    # corners (i-1, i), i.e. the incoming edge at corner i.
-    #
-    # Any extra "alignment" (shifts/flips) here will scramble which mesh edge is treated as side i
-    # and can produce self-intersecting ("star") boundary loops.
-    # (No shift applied; identity mapping below.)
-
-    # --- 7. Geometry sampling helpers (from original mesh) ---
-    # --- 8. Domain distances D_i(p) to regular polygon edges ---
 
     # --- 9. Repeat Zone A: logD_total = Σ log(D_i) ---
     repA_in = nodes.new("GeometryNodeRepeatInput")
@@ -385,7 +363,7 @@ def create_charrot_gregory_group():
     A_i = repA_in.outputs["IterIdx"]
     A_valid = compare_int_less(group, A_i, N_field)
 
-    D_i = domain_edge_distance(group, A_i, N_field, flip_domain, domain_p_x, domain_p_y)
+    D_i = domain_edge_distance(group, A_i, N_field, domain_p_x, domain_p_y)
     D_i_clamp = math_op(group, "MAXIMUM", D_i, 1.0e-8)
     # FIX: Explicitly use base e (2.718281828) for natural log - Blender defaults to base 2!
     add_log = math_op(group, "ADD", A_log, math_op(group, "LOGARITHM", D_i_clamp, 2.718281828))
@@ -413,20 +391,13 @@ def create_charrot_gregory_group():
     B_sumw = repB_in.outputs["SumW"]
     B_i = repB_in.outputs["IterIdx"]
     B_valid = compare_int_less(group, B_i, N_field)
-    # FIX: For vertex i, Wachspress weight w_i excludes D_i and D_{i+1} (the two edges meeting at vertex i)
-    # In the code's convention, edge j connects vertex (j-1) to vertex j.
-    # So vertex i is at the END of edge i, and at the START of edge (i+1).
     B_ip1 = int_op(group, "MODULO", int_op(group, "ADD", B_i, 1), N_field)
-    D0 = domain_edge_distance(group, B_i, N_field, flip_domain, domain_p_x, domain_p_y)   # Edge i (ends at vertex i)
-    D1 = domain_edge_distance(group, B_ip1, N_field, flip_domain, domain_p_x, domain_p_y) # Edge i+1 (starts at vertex i) 
+    D0 = domain_edge_distance(group, B_i, N_field, domain_p_x, domain_p_y)   # Edge i (ends at vertex i)
+    D1 = domain_edge_distance(group, B_ip1, N_field, domain_p_x, domain_p_y) # Edge i+1 (starts at vertex i) 
     
     D0c = math_op(group, "MAXIMUM", D0, 1.0e-8)
     D1c = math_op(group, "MAXIMUM", D1, 1.0e-8)
-    
-    # log_w = LogTotal - (LogD_In + LogD_Out)
-    # FIX: Explicitly use base e for natural log
     log_w = math_op(group, "SUBTRACT", logD_total, math_op(group, "ADD", math_op(group, "LOGARITHM", D0c, 2.718281828), math_op(group, "LOGARITHM", D1c, 2.718281828)))
-    
     w_i = math_op(group, "EXPONENT", log_w)
     sum_new = math_op(group, "ADD", B_sumw, w_i)
     B_sum_final = switch_float(group, B_valid, B_sumw, sum_new)
@@ -438,9 +409,6 @@ def create_charrot_gregory_group():
     sumW = repB_out.outputs["SumW"]
 
     # --- 11. Repeat Zone C: Accumulate surface S = Σ R_i(s_i,d_i) * B_i(d_i) ---
-    # IMPORTANT: We also accumulate SumB = Σ B_i(d_i) and normalize S/SumB.
-    # Without this, vertices can double-count (e.g. a quad corner contributing from 2 ribbons),
-    # which matches the user-observed exact 2x scaling at cube corners.
     repC_in = nodes.new("GeometryNodeRepeatInput")
     repC_out = nodes.new("GeometryNodeRepeatOutput")
     repC_in.pair_with_output(repC_out)
@@ -467,18 +435,16 @@ def create_charrot_gregory_group():
     ip2 = int_op(group, "MODULO", int_op(group, "ADD", C_i, 2), N_field)
 
     # Wachspress λ_i for vertex i: excludes edges i and (i+1) meeting at vertex i
-    Di = math_op(group, "MAXIMUM", domain_edge_distance(group, C_i, N_field, flip_domain, domain_p_x, domain_p_y), 1.0e-8)
-    Dip1 = math_op(group, "MAXIMUM", domain_edge_distance(group, ip1, N_field, flip_domain, domain_p_x, domain_p_y), 1.0e-8)
+    Di = math_op(group, "MAXIMUM", domain_edge_distance(group, C_i, N_field, domain_p_x, domain_p_y), 1.0e-8)
+    Dip1 = math_op(group, "MAXIMUM", domain_edge_distance(group, ip1, N_field, domain_p_x, domain_p_y), 1.0e-8)
     
-    # FIX: Explicitly use base e for natural log
     log_w_i = math_op(group, "SUBTRACT", logD_total, math_op(group, "ADD", math_op(group, "LOGARITHM", Di, 2.718281828), math_op(group, "LOGARITHM", Dip1, 2.718281828)))
     wcur = math_op(group, "EXPONENT", log_w_i)
     lam_i = math_op(group, "DIVIDE", wcur, sumW)
  
     # Wachspress λ_{i-1} for vertex (i-1): excludes edges (i-1) and i meeting at vertex (i-1)
-    Dim1 = math_op(group, "MAXIMUM", domain_edge_distance(group, im1, N_field, flip_domain, domain_p_x, domain_p_y), 1.0e-8)
+    Dim1 = math_op(group, "MAXIMUM", domain_edge_distance(group, im1, N_field, domain_p_x, domain_p_y), 1.0e-8)
 
-    # FIX: Explicitly use base e for natural log
     log_w_im1 = math_op(group, "SUBTRACT", logD_total, math_op(group, "ADD", math_op(group, "LOGARITHM", Dim1, 2.718281828), math_op(group, "LOGARITHM", Di, 2.718281828)))
     wprev = math_op(group, "EXPONENT", log_w_im1)
     lam_im1 = math_op(group, "DIVIDE", wprev, sumW)
@@ -488,7 +454,6 @@ def create_charrot_gregory_group():
     s_i_raw = clamp01(group, math_op(group, "DIVIDE", lam_i, denom))
     d_i_raw = clamp01(group, math_op(group, "SUBTRACT", 1.0, math_op(group, "ADD", lam_im1, lam_i)))
     
-    # FIX: Apply quintic smoothstep for C2 continuity (matches coon_patch.py)
     s_i = smoother_step(group, s_i_raw)
     d_i = smoother_step(group, d_i_raw)
 
