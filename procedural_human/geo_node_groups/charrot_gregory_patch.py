@@ -123,231 +123,96 @@ def create_charrot_gregory_group():
     prepared_geo = store_is_fwd.outputs[0]
     
     
-# --- 5. SPLIT & SUBDIVIDE ---
-    split = create_node(group,"GeometryNodeSplitEdges", {"Mesh": prepared_geo})
+    accum_idx = create_node(group, "GeometryNodeAccumulateField", {
+        "Value": 1, 
+        "Group ID": face_idx, 
+        "Domain": "CORNER"
+    })
+    local_i = math_op(group, "SUBTRACT", accum_idx.outputs["Trailing"], 1)
     
+    # 2. Calculate Angle theta (Matches paper/original code logic)
+    # theta_i = (i + 0.5) * 2π / N + π
+    N_field = get_attr(group, "poly_N", "INT") # This must be available on Corner domain
+    # Note: Ensure poly_N is stored on CORNER or reachable. 
+    # In previous code it was FACE. Let's sample it or use the accum total from before.
+    N_val = accum_idx.outputs["Total"] 
+
+    two_pi = 6.283185307
+    angle_step = math_op(group, "DIVIDE", two_pi, int_to_float(group, N_val))
+    i_float = int_to_float(group, local_i)
+    base_angle = math_op(group, "MULTIPLY", math_op(group, "ADD", i_float, 0.5), angle_step)
+    theta_i = math_op(group, "ADD", base_angle, 3.14159265)
+    
+    uv_x = math_op(group, "COSINE", theta_i)
+    uv_y = math_op(group, "SINE", theta_i)
+    
+    uv_vec = nodes.new("ShaderNodeCombineXYZ")
+    links.new(uv_x, uv_vec.inputs["X"])
+    links.new(uv_y, uv_vec.inputs["Y"])
+    
+    # 3. Store as attribute to be interpolated
+    store_uv = create_node(group, "GeometryNodeStoreNamedAttribute", {
+        "Name": "domain_uv_interp", "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
+        "Value": uv_vec.outputs[0]
+    })
+    links.new(prepared_geo, store_uv.inputs[0])
+    geo_with_uv = store_uv.outputs[0]
+
+    # --- 5. SPLIT & SUBDIVIDE ---
+    split = create_node(group,"GeometryNodeSplitEdges", {"Mesh": geo_with_uv})
     subdiv = create_node(group,"GeometryNodeSubdivideMesh", {
         "Mesh": split.outputs[0],
         "Level": group_input.outputs["Subdivisions"]
     })
     subdivided_geo = subdiv.outputs[0]
-    
-    # --- 6. COMPUTE DOMAIN POSITION USING MEAN VALUE COORDINATES ---
-    # FIX: Instead of interpolating pre-stored domain positions (which doesn't work),
-    # we compute domain_pos at each point using generalized barycentric coordinates.
-    # 
-    # For each point P after subdivision:
-    # 1. Get the N corner positions C_0, ..., C_{N-1} from original geometry
-    # 2. Compute mean value coordinates λ_i of P w.r.t. C_i
-    # 3. Compute domain_pos = Σ λ_i × domain_corner_i
-    #    where domain_corner_i = (cos((i+0.5)*2π/N), sin((i+0.5)*2π/N))
-    
-    N_field = get_attr(group, "poly_N", "INT")
-    orig_loop_start_field = get_attr(group, "orig_loop_start", "INT")
-    
-    # Get current point position
-    current_pos = nodes.new("GeometryNodeInputPosition").outputs[0]
 
-    # --- 6.0 Determine max N across patches (repeat iterations) ---
-    stat_N_temp = create_node(group,"GeometryNodeAttributeStatistic", {
-        "Geometry": subdivided_geo, "Domain": "POINT", "Attribute": N_field
-    })
-    max_N_for_bary = stat_N_temp.outputs["Max"]
+    # --- RETRIEVE INTERPOLATED DOMAIN POS ---
+    # This replaces the entire Mean Value Coordinate Repeat Zone
+    domain_uv_node = nodes.new("GeometryNodeInputNamedAttribute")
+    domain_uv_node.data_type = "FLOAT_VECTOR"
+    domain_uv_node.inputs["Name"].default_value = "domain_uv_interp"
     
-    # --- 6.1 COMPUTE MEAN VALUE COORDINATES ---
-    # Repeat Zone to compute sum of weights and weighted domain position
-    # Mean value coordinates: w_i = (tan(α_{i-1}/2) + tan(α_i/2)) / |P - C_i|
-    # where α_i is the angle at P subtended by edge (C_i, C_{i+1})
-    
-    repMV_in = nodes.new("GeometryNodeRepeatInput")
-    repMV_out = nodes.new("GeometryNodeRepeatOutput")
-    repMV_in.pair_with_output(repMV_out)
-    
-    repMV_out.repeat_items.new("GEOMETRY", "Geometry")
-    repMV_out.repeat_items.new("FLOAT", "SumW")  # Sum of weights
-    repMV_out.repeat_items.new("VECTOR", "SumDomain")  # Weighted sum of domain positions
-    repMV_out.repeat_items.new("INT", "IterIdx")
-    
-    links.new(subdivided_geo, repMV_in.inputs["Geometry"])
-    links.new(max_N_for_bary, repMV_in.inputs["Iterations"])
-    repMV_in.inputs["SumW"].default_value = 0.0
-    repMV_in.inputs["SumDomain"].default_value = (0.0, 0.0, 0.0)
-    repMV_in.inputs["IterIdx"].default_value = 0
-    
-    MV_geo = repMV_in.outputs["Geometry"]
-    MV_sumW = repMV_in.outputs["SumW"]
-    MV_sumDomain = repMV_in.outputs["SumDomain"]
-    MV_i = repMV_in.outputs["IterIdx"]
-    
-    # Check if this iteration is valid for this face
-    MV_valid = compare_int_less(group, MV_i, N_field)
-    
-    # Get corner index for this iteration
-    MV_corner_idx = int_op(group, "ADD", orig_loop_start_field, MV_i)
-    
-    # Sample corner position from original geometry
-    sample_corner_i = create_node(group,"GeometryNodeSampleIndex", {
-        "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
-        "Index": MV_corner_idx
-    })
-    corner_pos_attr = nodes.new("GeometryNodeInputNamedAttribute")
-    corner_pos_attr.data_type = "FLOAT_VECTOR"
-    corner_pos_attr.inputs["Name"].default_value = "corner_pos"
-    links.new(corner_pos_attr.outputs[0], sample_corner_i.inputs["Value"])
-    corner_i_pos = sample_corner_i.outputs[0]
-    
-    # Get next corner position
-    MV_ip1 = int_op(group, "MODULO", int_op(group, "ADD", MV_i, 1), N_field)
-    MV_corner_ip1 = int_op(group, "ADD", orig_loop_start_field, MV_ip1)
-    sample_corner_ip1 = create_node(group,"GeometryNodeSampleIndex", {
-        "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
-        "Index": MV_corner_ip1
-    })
-    links.new(corner_pos_attr.outputs[0], sample_corner_ip1.inputs["Value"])
-    corner_ip1_pos = sample_corner_ip1.outputs[0]
-    
-    # Get previous corner position
-    MV_im1 = int_op(group, "MODULO", int_op(group, "ADD", int_op(group, "SUBTRACT", MV_i, 1), N_field), N_field)
-    MV_corner_im1 = int_op(group, "ADD", orig_loop_start_field, MV_im1)
-    sample_corner_im1 = create_node(group,"GeometryNodeSampleIndex", {
-        "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
-        "Index": MV_corner_im1
-    })
-    links.new(corner_pos_attr.outputs[0], sample_corner_im1.inputs["Value"])
-    corner_im1_pos = sample_corner_im1.outputs[0]
-    
-    # Compute vectors from current point to corners
-    v_to_i = vec_math_op(group, "SUBTRACT", corner_i_pos, current_pos)
-    v_to_ip1 = vec_math_op(group, "SUBTRACT", corner_ip1_pos, current_pos)
-    v_to_im1 = vec_math_op(group, "SUBTRACT", corner_im1_pos, current_pos)
-    
-    # Distance to corner i
-    dist_i = vec_math_op(group, "LENGTH", v_to_i)
-    dist_i_safe = math_op(group, "MAXIMUM", dist_i, 1e-8)
-    
-    # Compute angle α_i at P subtended by edge (C_i, C_{i+1})
-    # cos(α_i) = dot(v_to_i, v_to_ip1) / (|v_to_i| * |v_to_ip1|)
-    dot_i_ip1 = vec_math_op(group,  "DOT_PRODUCT", v_to_i, v_to_ip1)
-    dist_ip1 = vec_math_op(group, "LENGTH", v_to_ip1)
-    cos_alpha_i = math_op(group, "DIVIDE", dot_i_ip1, 
-                          math_op(group, "MAXIMUM", math_op(group, "MULTIPLY", dist_i, dist_ip1), 1e-8))
+    sep_uv = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(domain_uv_node.outputs[0], sep_uv.inputs[0])
+    domain_p_x = sep_uv.outputs["X"]
+    domain_p_y = sep_uv.outputs["Y"]
 
-    
-    # Compute angle α_{i-1} at P subtended by edge (C_{i-1}, C_i)
-    dot_im1_i = vec_math_op(group, "DOT_PRODUCT", v_to_im1, v_to_i)
-    dist_im1 = vec_math_op(group, "LENGTH", v_to_im1)
-    cos_alpha_im1 = math_op(group, "DIVIDE", dot_im1_i,
-                            math_op(group, "MAXIMUM", math_op(group, "MULTIPLY", dist_im1, dist_i), 1e-8))
-    
-    tan_half_i = tan_half_angle(group, cos_alpha_i)
-    tan_half_im1 = tan_half_angle(group, cos_alpha_im1)
-    
-    # Mean value weight: w_i = (tan(α_{i-1}/2) + tan(α_i/2)) / |P - C_i|
-    weight_i = math_op(group, "DIVIDE", 
-                       math_op(group, "ADD", tan_half_im1, tan_half_i),
-                       dist_i_safe)
-    
-    # Compute domain position for corner i
-    # theta_i = (i + 0.5) * 2π / N + π
-    N_float = int_to_float(group, N_field)
-    i_float = int_to_float(group, MV_i)
-    
-    # Base angle (CCW order)
-    angle_step = math_op(group, "DIVIDE", 6.283185307, N_float)
-    base_angle = math_op(group, "MULTIPLY", math_op(group, "ADD", i_float, 0.5), angle_step)
-    theta_i = math_op(group, "ADD", base_angle, 3.14159265)
-    
-    domain_corner_x = math_op(group, "COSINE", theta_i)
-    domain_corner_y = math_op(group, "SINE", theta_i)
-    
-    # Weighted domain position contribution
-    domain_contrib = nodes.new("ShaderNodeCombineXYZ")
-    links.new(math_op(group, "MULTIPLY", weight_i, domain_corner_x), domain_contrib.inputs["X"])
-    links.new(math_op(group, "MULTIPLY", weight_i, domain_corner_y), domain_contrib.inputs["Y"])
-    
-    # Accumulate (only if valid)
-    new_sumW = switch_float(group, MV_valid, MV_sumW, math_op(group, "ADD", MV_sumW, weight_i))
-    new_sumDomain = switch_vec(group, MV_valid, MV_sumDomain, 
-                               vec_math_op(group, "ADD", MV_sumDomain, domain_contrib.outputs[0]))
-    
-    # Output from repeat
-    links.new(MV_geo, repMV_out.inputs["Geometry"])
-    links.new(new_sumW, repMV_out.inputs["SumW"])
-    links.new(new_sumDomain, repMV_out.inputs["SumDomain"])
-    links.new(int_op(group, "ADD", MV_i, 1), repMV_out.inputs["IterIdx"])
-    
-    # Normalize to get final domain position
-    final_sumW = repMV_out.outputs["SumW"]
-    final_sumDomain = repMV_out.outputs["SumDomain"]
-    inv_sumW = math_op(group, "DIVIDE", 1.0, math_op(group, "MAXIMUM", final_sumW, 1e-8))
-    domain_pos_vec = vec_math_op(group, "SCALE", final_sumDomain, inv_sumW)
-    
-    sep_domain_final = nodes.new("ShaderNodeSeparateXYZ")
-    links.new(domain_pos_vec, sep_domain_final.inputs[0])
-    domain_p_x = sep_domain_final.outputs["X"]
-    domain_p_y = sep_domain_final.outputs["Y"]
-
-    # --- 6.2 Determine max N across patches (repeat iterations) ---
+    # Calculate Max N for loop iterations
     stat_N = create_node(group,"GeometryNodeAttributeStatistic", {
         "Geometry": subdivided_geo, "Domain": "POINT", "Attribute": N_field
     })
     max_N = stat_N.outputs["Max"]
-
-
-    # --- 9. Repeat Zone A: logD_total = Σ log(D_i) ---
-    repA_in = nodes.new("GeometryNodeRepeatInput")
-    repA_out = nodes.new("GeometryNodeRepeatOutput")
-    repA_in.pair_with_output(repA_out)
-    repA_out.repeat_items.new("GEOMETRY", "Geometry")
-    repA_out.repeat_items.new("FLOAT", "LogDTotal")
-    repA_out.repeat_items.new("INT", "IterIdx")
-
-    links.new(subdivided_geo, repA_in.inputs["Geometry"])
-    links.new(max_N, repA_in.inputs["Iterations"])
-    repA_in.inputs["LogDTotal"].default_value = 0.0
-    repA_in.inputs["IterIdx"].default_value = 0
-
-    A_geo = repA_in.outputs["Geometry"]
-    A_log = repA_in.outputs["LogDTotal"]
-    A_i = repA_in.outputs["IterIdx"]
-    A_valid = compare_int_less(group, A_i, N_field)
-
-    D_i = domain_edge_distance(group, A_i, N_field, domain_p_x, domain_p_y)
-    D_i_clamp = math_op(group, "MAXIMUM", D_i, 1.0e-8)
-    # FIX: Explicitly use base e (2.718281828) for natural log - Blender defaults to base 2!
-    add_log = math_op(group, "ADD", A_log, math_op(group, "LOGARITHM", D_i_clamp, 2.718281828))
-
-    A_log_final = switch_float(group, A_valid, A_log, add_log)
-
-    links.new(A_geo, repA_out.inputs["Geometry"])
-    links.new(A_log_final, repA_out.inputs["LogDTotal"])
-    links.new(int_op(group, "ADD", A_i, 1), repA_out.inputs["IterIdx"])
-
-    logD_total = repA_out.outputs["LogDTotal"]
-
-    # --- 10. Repeat Zone B: SumW = Σ w_i where w_i excludes D_i and D_{i+1} ---
+    
+   # --- Loop B: Sum Weights ---
     repB_in = nodes.new("GeometryNodeRepeatInput")
     repB_out = nodes.new("GeometryNodeRepeatOutput")
     repB_in.pair_with_output(repB_out)
     repB_out.repeat_items.new("GEOMETRY", "Geometry")
     repB_out.repeat_items.new("FLOAT", "SumW")
     repB_out.repeat_items.new("INT", "IterIdx")
-    links.new(repA_out.outputs["Geometry"], repB_in.inputs["Geometry"])
+
+    links.new(subdivided_geo, repB_in.inputs["Geometry"]) # Skipped Loop A geometry
     links.new(max_N, repB_in.inputs["Iterations"])
     repB_in.inputs["SumW"].default_value = 0.0
     repB_in.inputs["IterIdx"].default_value = 0
+
     B_geo = repB_in.outputs["Geometry"]
     B_sumw = repB_in.outputs["SumW"]
     B_i = repB_in.outputs["IterIdx"]
+    
     B_valid = compare_int_less(group, B_i, N_field)
     B_ip1 = int_op(group, "MODULO", int_op(group, "ADD", B_i, 1), N_field)
-    D0 = domain_edge_distance(group, B_i, N_field, domain_p_x, domain_p_y)   # Edge i (ends at vertex i)
-    D1 = domain_edge_distance(group, B_ip1, N_field, domain_p_x, domain_p_y) # Edge i+1 (starts at vertex i) 
     
-    D0c = math_op(group, "MAXIMUM", D0, 1.0e-8)
-    D1c = math_op(group, "MAXIMUM", D1, 1.0e-8)
-    log_w = math_op(group, "SUBTRACT", logD_total, math_op(group, "ADD", math_op(group, "LOGARITHM", D0c, 2.718281828), math_op(group, "LOGARITHM", D1c, 2.718281828)))
-    w_i = math_op(group, "EXPONENT", log_w)
+    D0 = domain_edge_distance(group, B_i, N_field, domain_p_x, domain_p_y)
+    D1 = domain_edge_distance(group, B_ip1, N_field, domain_p_x, domain_p_y)
+    
+    # w_i = 1.0 / (D0 * D1)
+    # Clamp distances to avoid division by zero
+    D0_safe = math_op(group, "MAXIMUM", D0, 1e-8)
+    D1_safe = math_op(group, "MAXIMUM", D1, 1e-8)
+    denom = math_op(group, "MULTIPLY", D0_safe, D1_safe)
+    w_i = math_op(group, "DIVIDE", 1.0, denom)
+    
     sum_new = math_op(group, "ADD", B_sumw, w_i)
     B_sum_final = switch_float(group, B_valid, B_sumw, sum_new)
 
@@ -357,17 +222,20 @@ def create_charrot_gregory_group():
     
     sumW = repB_out.outputs["SumW"]
 
+    orig_loop_start_field = get_attr(group, "orig_loop_start", "INT")
+
     # --- 11. Repeat Zone C: Accumulate surface S = Σ R_i(s_i,d_i) * B_i(d_i) ---
     repC_in = nodes.new("GeometryNodeRepeatInput")
     repC_out = nodes.new("GeometryNodeRepeatOutput")
     repC_in.pair_with_output(repC_out)
     repC_out.repeat_items.new("GEOMETRY", "Geometry")
     repC_out.repeat_items.new("VECTOR", "SumS")
-    repC_out.repeat_items.new("FLOAT", "SumB")
+    repC_out.repeat_items.new("FLOAT", "SumB") # Note: This SumB is for blending function B_i, distinct from SumW
     repC_out.repeat_items.new("INT", "IterIdx")
 
     links.new(repB_out.outputs["Geometry"], repC_in.inputs["Geometry"])
     links.new(max_N, repC_in.inputs["Iterations"])
+
     repC_in.inputs["SumS"].default_value = (0, 0, 0)
     repC_in.inputs["SumB"].default_value = 0.0
     repC_in.inputs["IterIdx"].default_value = 0
@@ -383,20 +251,22 @@ def create_charrot_gregory_group():
     im2 = int_op(group, "MODULO", int_op(group, "ADD", int_op(group, "SUBTRACT", C_i, 2), N_field), N_field)
     ip2 = int_op(group, "MODULO", int_op(group, "ADD", C_i, 2), N_field)
 
-    # Wachspress λ_i for vertex i: excludes edges i and (i+1) meeting at vertex i
+    # Calculate w_i for current i
     Di = math_op(group, "MAXIMUM", domain_edge_distance(group, C_i, N_field, domain_p_x, domain_p_y), 1.0e-8)
     Dip1 = math_op(group, "MAXIMUM", domain_edge_distance(group, ip1, N_field, domain_p_x, domain_p_y), 1.0e-8)
-    
-    log_w_i = math_op(group, "SUBTRACT", logD_total, math_op(group, "ADD", math_op(group, "LOGARITHM", Di, 2.718281828), math_op(group, "LOGARITHM", Dip1, 2.718281828)))
-    wcur = math_op(group, "EXPONENT", log_w_i)
+    wcur = math_op(group, "DIVIDE", 1.0, math_op(group, "MULTIPLY", Di, Dip1))
     lam_i = math_op(group, "DIVIDE", wcur, sumW)
- 
-    # Wachspress λ_{i-1} for vertex (i-1): excludes edges (i-1) and i meeting at vertex (i-1)
+    
+    # Calculate w_{i-1} for previous i
     Dim1 = math_op(group, "MAXIMUM", domain_edge_distance(group, im1, N_field, domain_p_x, domain_p_y), 1.0e-8)
-
-    log_w_im1 = math_op(group, "SUBTRACT", logD_total, math_op(group, "ADD", math_op(group, "LOGARITHM", Dim1, 2.718281828), math_op(group, "LOGARITHM", Di, 2.718281828)))
-    wprev = math_op(group, "EXPONENT", log_w_im1)
+    # The edges meeting at vertex i-1 are (i-2) and (i-1)? 
+    # Careful: logic in original code was: lam_{i-1} uses edges that do NOT touch vertex i-1?
+    # No, Wachspress lambda_k is associated with vertex k.
+    # Original Code used: wprev = Exp(LogTotal - Log(Dim1) - Log(Di))
+    # This corresponds to edges meeting at vertex i-1 (which are edge i-1 and edge i).
+    wprev = math_op(group, "DIVIDE", 1.0, math_op(group, "MULTIPLY", Dim1, Di))
     lam_im1 = math_op(group, "DIVIDE", wprev, sumW)
+
     denom = math_op(group, "MAXIMUM", math_op(group, "ADD", lam_im1, lam_i), 1.0e-8)
     
     # Raw s_i, d_i from Wachspress coordinates
