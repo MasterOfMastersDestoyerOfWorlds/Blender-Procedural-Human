@@ -59,6 +59,10 @@ class SAM3Manager:
     _torch = None  # Lazily imported torch module
     _np = None  # Lazily imported numpy module
     
+    # Pre-imported classes (set on main thread to avoid regex issues in background threads)
+    _Sam3Model = None
+    _Sam3Processor = None
+    
     # Loading state tracking
     _is_loading: bool = False
     _loading_progress: str = ""
@@ -222,6 +226,10 @@ class SAM3Manager:
         Start loading the model in a background thread.
         
         Returns True if loading started, False if already loaded/loading.
+        
+        Pre-imports heavy modules on the main thread to avoid regex compilation
+        issues in background threads (Blender's embedded Python has threading issues
+        with Python's regex module).
         """
         if cls._initialized:
             return False  # Already loaded
@@ -233,7 +241,35 @@ class SAM3Manager:
         
         cls._is_loading = True
         cls._loading_error = None
-        cls._loading_progress = "Starting..."
+        cls._loading_progress = "Pre-importing modules..."
+        
+        # Pre-import modules on main thread to avoid regex compilation in background thread
+        # This is critical - Python's regex module can crash in threads with Blender's Python
+        try:
+            _patch_transformers_deps()
+            
+            # Set environment variables before any transformers imports
+            os.environ["TOKENIZERS_PARALLELISM"] = "false"
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+            os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+            
+            # Import transformers modules (triggers regex compilation on main thread)
+            import torch
+            from transformers import Sam3Processor, Sam3Model
+            
+            # Store references for the background thread to use
+            cls._Sam3Model = Sam3Model
+            cls._Sam3Processor = Sam3Processor
+            cls._torch = torch
+            
+            logger.info("Pre-imported transformers modules on main thread")
+        except Exception as e:
+            cls._loading_error = f"Failed to import dependencies: {e}"
+            cls._is_loading = False
+            logger.error(f"SAM3 pre-import failed: {e}")
+            return False
+        
+        cls._loading_progress = "Starting background load..."
         
         def load_thread():
             try:
@@ -251,23 +287,24 @@ class SAM3Manager:
     @classmethod
     def _load_model_internal(cls):
         """
-        Internal model loading - can be called from thread.
+        Internal model loading - runs in background thread.
+        
+        Uses pre-imported classes from start_loading_async() to avoid
+        regex compilation issues in threads.
         Does not use Blender UI functions (not thread-safe).
         """
         if cls._initialized:
             return
         
-        logger.info("Loading SAM3 model (async)...")
-        
-        cls._loading_progress = "Importing dependencies..."
+        logger.info("Loading SAM3 model (background thread)...")
         
         try:
-            # Step 1: Import dependencies
-            _patch_transformers_deps()
-            import torch
-            from transformers import Sam3Processor, Sam3Model
+            # Use pre-imported classes (imports done on main thread in start_loading_async)
+            Sam3Model = cls._Sam3Model
+            Sam3Processor = cls._Sam3Processor
+            torch = cls._torch
             
-            # Step 2: Determine device
+            # Determine device
             cls._loading_progress = "Detecting device..."
             if torch.cuda.is_available():
                 device = "cuda"
@@ -277,14 +314,11 @@ class SAM3Manager:
             
             logger.info(f"SAM3 running on: {device}")
             
-            # Store torch for later use
-            cls._torch = torch
-            
-            # Step 3: Load model (slow part)
+            # Load model (slow part - file I/O and tensor operations are thread-safe)
             cls._loading_progress = "Loading model weights..."
             cls._model = Sam3Model.from_pretrained(cls.MODEL_PATH).to(device)
             
-            # Step 4: Load processor
+            # Load processor
             cls._loading_progress = "Loading processor..."
             cls._processor = Sam3Processor.from_pretrained(cls.MODEL_PATH)
             cls._model.eval()
@@ -294,10 +328,6 @@ class SAM3Manager:
             cls._loading_progress = "Ready"
             logger.info("SAM3 model loaded successfully (async).")
             
-        except ImportError as e:
-            cls._loading_error = f"Missing dependencies: {e}"
-            logger.error(f"Failed to import SAM3 dependencies: {e}")
-            raise
         except Exception as e:
             cls._loading_error = str(e)
             logger.error(f"Failed to load SAM3 model: {e}")

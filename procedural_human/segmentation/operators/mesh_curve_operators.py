@@ -58,6 +58,102 @@ def find_extrema_indices(contour: np.ndarray) -> tuple:
     return top_idx, bottom_idx
 
 
+def find_axis_crossing_indices(contour: np.ndarray) -> tuple:
+    """
+    Find where a contour crosses the Y-axis (X=0) and return the segment indices
+    and interpolated crossing points.
+    
+    For a closed contour centered on X, there should be exactly 2 crossings:
+    one where the contour goes from negative X to positive X, and one where
+    it goes from positive X to negative X.
+    
+    Args:
+        contour: Nx2 array of contour points (should be centered on X=0)
+        
+    Returns:
+        Tuple of ((idx1, point1), (idx2, point2)) where:
+        - idx is the segment index (crossing occurs between contour[idx] and contour[idx+1])
+        - point is the interpolated (0, y) crossing point
+        Crossings are sorted so the first has higher Y (top) and second has lower Y (bottom).
+    """
+    crossings = []
+    n = len(contour)
+    
+    for i in range(n):
+        p1 = contour[i]
+        p2 = contour[(i + 1) % n]
+        
+        x1, y1 = p1
+        x2, y2 = p2
+        
+        # Check if segment crosses X=0 (one side negative, other positive)
+        if (x1 < 0 < x2) or (x2 < 0 < x1):
+            # Interpolate to find Y at X=0
+            t = -x1 / (x2 - x1)
+            y_crossing = y1 + t * (y2 - y1)
+            crossings.append((i, (0.0, y_crossing), t))
+    
+    if len(crossings) < 2:
+        # Fallback: use Y-extrema
+        top_idx = np.argmax(contour[:, 1])
+        bottom_idx = np.argmin(contour[:, 1])
+        return (
+            (top_idx, (0.0, contour[top_idx, 1]), 0.0),
+            (bottom_idx, (0.0, contour[bottom_idx, 1]), 0.0)
+        )
+    
+    # Sort by Y value to get top (highest Y) and bottom (lowest Y)
+    crossings.sort(key=lambda c: c[1][1], reverse=True)
+    top_crossing = crossings[0]
+    bottom_crossing = crossings[-1]
+    
+    return top_crossing, bottom_crossing
+
+
+def split_contour_at_crossings(contour: np.ndarray, top_crossing: tuple, bottom_crossing: tuple) -> tuple:
+    """
+    Split a contour into two halves at the X=0 crossing points.
+    
+    Each half starts at the TOP crossing point and ends at the BOTTOM crossing point.
+    The two halves traverse the contour in opposite directions.
+    
+    Args:
+        contour: Nx2 array of contour points
+        top_crossing: (segment_idx, (x, y), t) for top crossing (higher Y)
+        bottom_crossing: (segment_idx, (x, y), t) for bottom crossing (lower Y)
+        
+    Returns:
+        Tuple of (half1, half2) arrays, each starting at top and ending at bottom.
+    """
+    n = len(contour)
+    top_idx, top_point, _ = top_crossing
+    bottom_idx, bottom_point, _ = bottom_crossing
+    
+    # The crossing at index i is BETWEEN contour[i] and contour[(i+1) % n]
+    # So after the top crossing, the next point in forward direction is contour[(top_idx+1) % n]
+    # And before the bottom crossing, the last point in forward direction is contour[bottom_idx]
+    
+    # Half 1: Go FORWARD from top crossing to bottom crossing
+    # Collect points: (top_idx+1), (top_idx+2), ... until we reach bottom_idx
+    half1_points = [top_point]
+    i = (top_idx + 1) % n
+    while i != (bottom_idx + 1) % n:
+        half1_points.append(tuple(contour[i]))
+        i = (i + 1) % n
+    half1_points.append(bottom_point)
+    
+    # Half 2: Go BACKWARD from top crossing to bottom crossing  
+    # Collect points: top_idx, (top_idx-1), ... until we reach (bottom_idx+1)
+    half2_points = [top_point]
+    i = top_idx
+    while i != bottom_idx:
+        half2_points.append(tuple(contour[i]))
+        i = (i - 1) % n
+    half2_points.append(bottom_point)
+    
+    return np.array(half1_points), np.array(half2_points)
+
+
 def split_contour_at_extrema(contour: np.ndarray, top_idx: int, bottom_idx: int) -> tuple:
     """
     Split a contour into two halves at the top and bottom extrema.
@@ -143,9 +239,12 @@ def create_dual_loop_mesh(
     Create a mesh with two edge loops sharing top and bottom vertices.
     
     The mesh has:
-    - Two shared vertices (top and bottom extrema)
+    - Two shared vertices (poles) where both contours cross X=0
     - Two edge loops (front and side view contours)
     - Two N-gon faces (one per loop)
+    
+    The poles are found by locating where each contour crosses the Y-axis (X=0),
+    which is where the front (XY plane) and side (YZ plane) views intersect.
     
     Args:
         front_contour: Front view contour (Nx2 in XY plane)
@@ -156,17 +255,44 @@ def create_dual_loop_mesh(
     Returns:
         The created Blender mesh object
     """
-    # Normalize contours
+    # Normalize contours to unit height centered at origin
     front_norm = normalize_contour(front_contour)
     side_norm = normalize_contour(side_contour)
     
-    # Find extrema
-    front_top, front_bottom = find_extrema_indices(front_norm)
-    side_top, side_bottom = find_extrema_indices(side_norm)
+    # Find where each contour crosses the Y-axis (X=0)
+    # These crossings are where the front (XY plane) and side (YZ plane) intersect
+    front_top_cross, front_bottom_cross = find_axis_crossing_indices(front_norm)
+    side_top_cross, side_bottom_cross = find_axis_crossing_indices(side_norm)
     
-    # Split contours at extrema
-    front_left, front_right = split_contour_at_extrema(front_norm, front_top, front_bottom)
-    side_left, side_right = split_contour_at_extrema(side_norm, side_top, side_bottom)
+    # Extract Y values for the shared pole vertices
+    # Average the Y values from both contours (should be close if properly normalized)
+    top_y = (front_top_cross[1][1] + side_top_cross[1][1]) / 2
+    bottom_y = (front_bottom_cross[1][1] + side_bottom_cross[1][1]) / 2
+    
+    logger.info(f"Pole positions: top_y={top_y:.3f}, bottom_y={bottom_y:.3f}")
+    
+    # Split contours at the X=0 crossings, preserving winding order
+    front_half1, front_half2 = split_contour_at_crossings(front_norm, front_top_cross, front_bottom_cross)
+    side_half1, side_half2 = split_contour_at_crossings(side_norm, side_top_cross, side_bottom_cross)
+    
+    # Determine which half is "left" (negative X) and which is "right" (positive X)
+    # by checking the sign of X values in the middle of each half
+    def get_dominant_x_sign(half):
+        """Return -1 if half is mostly on left (X<0), +1 if mostly on right (X>0)"""
+        mid_idx = len(half) // 2
+        if mid_idx < len(half):
+            return -1 if half[mid_idx, 0] < 0 else 1
+        return 0
+    
+    if get_dominant_x_sign(front_half1) < 0:
+        front_left, front_right = front_half1, front_half2
+    else:
+        front_left, front_right = front_half2, front_half1
+        
+    if get_dominant_x_sign(side_half1) < 0:
+        side_left, side_right = side_half1, side_half2
+    else:
+        side_left, side_right = side_half2, side_half1
     
     # Resample each half to same number of points
     front_left_rs = resample_contour(front_left, points_per_half + 2)
@@ -174,66 +300,84 @@ def create_dual_loop_mesh(
     side_left_rs = resample_contour(side_left, points_per_half + 2)
     side_right_rs = resample_contour(side_right, points_per_half + 2)
     
-    # Get shared top and bottom positions (average of all contour extrema)
-    top_y = (front_norm[front_top, 1] + side_norm[side_top, 1]) / 2
-    bottom_y = (front_norm[front_bottom, 1] + side_norm[side_bottom, 1]) / 2
-    
     # Create BMesh
     bm = bmesh.new()
     
-    # Create shared vertices at top and bottom
-    # Top vertex at (0, top_y, 0)
+    # Create shared vertices at top and bottom poles
+    # These are where front (XY) and side (YZ) planes intersect: the Y-axis
     top_vert = bm.verts.new((0, top_y, 0))
-    # Bottom vertex at (0, bottom_y, 0)
     bottom_vert = bm.verts.new((0, bottom_y, 0))
     
-    # Create front loop vertices (in XY plane, Z=0)
-    # Exclude first and last points (shared vertices)
-    front_verts = [top_vert]
+    # Create vertices for each half-curve (excluding poles which are shared)
+    # Front curve halves are in XY plane (Z=0)
+    # Side curve halves are in YZ plane (X=0), with contour X becoming Z
+    
+    # Front left vertices (X < 0, going from top to bottom)
+    front_left_verts = []
     for i in range(1, len(front_left_rs) - 1):
         x, y = front_left_rs[i]
         v = bm.verts.new((x, y, 0))
-        front_verts.append(v)
-    front_verts.append(bottom_vert)
+        front_left_verts.append(v)
+    
+    # Front right vertices (X > 0, going from top to bottom)
+    front_right_verts = []
     for i in range(1, len(front_right_rs) - 1):
         x, y = front_right_rs[i]
         v = bm.verts.new((x, y, 0))
-        front_verts.append(v)
-    # Close the loop back to top
-    front_verts.append(top_vert)
+        front_right_verts.append(v)
     
-    # Create side loop vertices (in YZ plane, X=0)
-    # Exclude first and last points (shared vertices)
-    side_verts = [top_vert]
+    # Side left vertices (Z < 0, going from top to bottom)
+    side_left_verts = []
     for i in range(1, len(side_left_rs) - 1):
         x, y = side_left_rs[i]  # x becomes Z, y stays Y
         v = bm.verts.new((0, y, x))
-        side_verts.append(v)
-    side_verts.append(bottom_vert)
+        side_left_verts.append(v)
+    
+    # Side right vertices (Z > 0, going from top to bottom)
+    side_right_verts = []
     for i in range(1, len(side_right_rs) - 1):
         x, y = side_right_rs[i]
         v = bm.verts.new((0, y, x))
-        side_verts.append(v)
-    # Close the loop back to top
-    side_verts.append(top_vert)
+        side_right_verts.append(v)
     
     bm.verts.ensure_lookup_table()
     
-    # Create front face (all verts except the duplicate at end)
-    front_face_verts = front_verts[:-1]  # Remove duplicate top_vert at end
-    if len(front_face_verts) >= 3:
-        try:
-            front_face = bm.faces.new(front_face_verts)
-        except ValueError as e:
-            logger.warning(f"Could not create front face: {e}")
+    # Create 4 quadrant faces
+    # Each face: top → front_half (down) → bottom → side_half (up, reversed) → top
     
-    # Create side face (all verts except the duplicate at end)
-    side_face_verts = side_verts[:-1]  # Remove duplicate top_vert at end
-    if len(side_face_verts) >= 3:
+    # Quadrant 1: X < 0, Z < 0 (front_left + side_left)
+    q1_verts = [top_vert] + front_left_verts + [bottom_vert] + list(reversed(side_left_verts))
+    if len(q1_verts) >= 3:
         try:
-            side_face = bm.faces.new(side_face_verts)
+            bm.faces.new(q1_verts)
         except ValueError as e:
-            logger.warning(f"Could not create side face: {e}")
+            logger.warning(f"Could not create quadrant 1 face: {e}")
+    
+    # Quadrant 2: X < 0, Z > 0 (front_left + side_right)
+    # Go: top → side_right (down) → bottom → front_left (up, reversed) → top
+    q2_verts = [top_vert] + side_right_verts + [bottom_vert] + list(reversed(front_left_verts))
+    if len(q2_verts) >= 3:
+        try:
+            bm.faces.new(q2_verts)
+        except ValueError as e:
+            logger.warning(f"Could not create quadrant 2 face: {e}")
+    
+    # Quadrant 3: X > 0, Z > 0 (front_right + side_right)
+    q3_verts = [top_vert] + front_right_verts + [bottom_vert] + list(reversed(side_right_verts))
+    if len(q3_verts) >= 3:
+        try:
+            bm.faces.new(q3_verts)
+        except ValueError as e:
+            logger.warning(f"Could not create quadrant 3 face: {e}")
+    
+    # Quadrant 4: X > 0, Z < 0 (front_right + side_left)
+    # Go: top → side_left (down) → bottom → front_right (up, reversed) → top
+    q4_verts = [top_vert] + side_left_verts + [bottom_vert] + list(reversed(front_right_verts))
+    if len(q4_verts) >= 3:
+        try:
+            bm.faces.new(q4_verts)
+        except ValueError as e:
+            logger.warning(f"Could not create quadrant 4 face: {e}")
     
     # Create mesh data
     mesh = bpy.data.meshes.new(name)
@@ -279,30 +423,42 @@ def apply_bezier_handles(obj: bpy.types.Object):
     bpy.ops.object.mode_set(mode='OBJECT')
 
 
-def apply_coons_patch_modifier(obj: bpy.types.Object, subdivisions: int = 4):
+def apply_coons_patch_modifier(obj: bpy.types.Object, subdivisions: int = 4, merge_by_distance: bool = True):
     """
     Apply the CoonNGonPatchGenerator geometry nodes modifier.
+    
+    The node group is created at addon startup by the @geo_node_group decorator.
+    We just look it up by name rather than calling the creation function at runtime.
     
     Args:
         obj: Blender mesh object
         subdivisions: Number of subdivisions for patch generation
+        merge_by_distance: Whether to merge vertices by distance (default True)
     """
-    from procedural_human.geo_node_groups.charrot_gregory_patch import create_charrot_gregory_group
+    # Look up the pre-created node group by name (created at addon registration)
+    group_name = "CoonNGonPatchGenerator"
+    node_group = bpy.data.node_groups.get(group_name)
     
-    # Get or create the node group
-    node_group = create_charrot_gregory_group()
+    if node_group is None:
+        # Fallback: try to create it if somehow not registered
+        logger.warning(f"Node group '{group_name}' not found, attempting to create...")
+        try:
+            from procedural_human.geo_node_groups.charrot_gregory_patch import create_charrot_gregory_group
+            node_group = create_charrot_gregory_group()
+        except Exception as e:
+            logger.error(f"Failed to create node group: {e}")
+            raise RuntimeError(f"CoonNGonPatchGenerator node group not available: {e}")
     
     # Add modifier
     modifier = obj.modifiers.new(name="CoonPatch", type='NODES')
     modifier.node_group = node_group
     
-    # Set subdivisions (Input_2 based on the interface)
-    # Find the subdivisions input
+    # Set inputs via interface identifiers
     for item in node_group.interface.items_tree:
         if item.name == "Subdivisions":
-            # Set via identifier
             modifier[item.identifier] = subdivisions
-            break
+        elif item.name == "Merge By Distance":
+            modifier[item.identifier] = merge_by_distance
 
 
 @procedural_operator
@@ -340,6 +496,12 @@ class CreateDualMeshCurvesOperator(Operator):
         default=4,
         min=1,
         max=8
+    )
+    
+    merge_by_distance: BoolProperty(
+        name="Merge By Distance",
+        description="Merge vertices at patch boundaries for smooth surface",
+        default=True
     )
     
     use_convex_hull: BoolProperty(
@@ -396,8 +558,8 @@ class CreateDualMeshCurvesOperator(Operator):
             # Apply Coons patch modifier
             if self.apply_coons_patch:
                 try:
-                    apply_coons_patch_modifier(obj, self.subdivisions)
-                    logger.info(f"Applied Coons patch modifier (subdivisions={self.subdivisions})")
+                    apply_coons_patch_modifier(obj, self.subdivisions, self.merge_by_distance)
+                    logger.info(f"Applied Coons patch modifier (subdivisions={self.subdivisions}, merge={self.merge_by_distance})")
                 except Exception as e:
                     logger.warning(f"Could not apply Coons patch: {e}")
             
@@ -428,6 +590,7 @@ class CreateDualMeshCurvesOperator(Operator):
         layout.prop(self, "apply_coons_patch")
         if self.apply_coons_patch:
             layout.prop(self, "subdivisions")
+            layout.prop(self, "merge_by_distance")
 
 
 @procedural_operator

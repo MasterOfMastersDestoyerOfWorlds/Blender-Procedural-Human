@@ -8,6 +8,7 @@ from bpy.types import Operator
 from bpy.props import (
     BoolProperty, 
     FloatProperty, 
+    IntProperty,
     EnumProperty,
     PointerProperty,
     StringProperty,
@@ -251,10 +252,32 @@ class SimpleRotateMeshCurveOperator(Operator):
     bl_description = "Create a mesh by rotating the mask 90 degrees, scaled by estimated depth"
     bl_options = {'REGISTER', 'UNDO'}
     
+    simplify: BoolProperty(
+        name="Simplify",
+        description="Simplify curve contours",
+        default=True
+    )
+    
+    simplify_amount: FloatProperty(
+        name="Simplify Amount",
+        description="Higher values = more simplified (0.001 - 0.05)",
+        default=0.005,
+        min=0.001,
+        max=0.05
+    )
+    
+    points_per_half: IntProperty(
+        name="Points per Half",
+        description="Number of vertices per half-loop (excluding shared vertices)",
+        default=16,
+        min=4,
+        max=64
+    )
+    
     use_depth_estimation: BoolProperty(
         name="Use Depth Estimation",
         description="Estimate object thickness from image to scale the side view",
-        default=True
+        default=False
     )
     
     thickness_scale: FloatProperty(
@@ -309,8 +332,13 @@ class SimpleRotateMeshCurveOperator(Operator):
         if not front_contours:
             self.report({'ERROR'}, "Could not extract contour from mask")
             return {'CANCELLED'}
-            
-        front_contour = simplify_contour(max(front_contours, key=len), epsilon=0.005)
+        
+        # Get the largest contour
+        front_contour = max(front_contours, key=len)
+        
+        # Apply simplification if enabled
+        if self.simplify:
+            front_contour = simplify_contour(front_contour, epsilon=self.simplify_amount)
         
         # 2. Estimate Depth / Scaling
         scaling_factor = self.thickness_scale
@@ -360,9 +388,23 @@ class SimpleRotateMeshCurveOperator(Operator):
         bpy.ops.segmentation.create_dual_mesh_curves(
             'EXEC_DEFAULT', 
             use_convex_hull=False,  # Don't hull the side view, use the actual rotated profile
-            points_per_half=32
+            points_per_half=self.points_per_half,
+            merge_by_distance=True
         )
         
         return {'FINISHED'}
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "simplify")
+        if self.simplify:
+            layout.prop(self, "simplify_amount")
+        layout.prop(self, "points_per_half")
+        layout.separator()
+        layout.prop(self, "use_depth_estimation")
+        layout.prop(self, "thickness_scale")
 
 
