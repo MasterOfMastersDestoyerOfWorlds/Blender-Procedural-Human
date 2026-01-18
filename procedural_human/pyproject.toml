@@ -27,7 +27,6 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    # Development tools
     "pytest>=7.0.0",
     "black>=22.0.0",
     "flake8>=4.0.0",
@@ -47,12 +46,32 @@ dependencies = [
     "regex",
     "iopath>=0.1.9",
     "huggingface_hub",
-    
-    # Segmentation workflow dependencies
-    "opencv-python>=4.8.0",
-    "scikit-image>=0.21.0",
-    "pillow>=10.0.0",
-    "requests>=2.31.0",
+    "imageio",
+    "opencv-python==4.11.0.86",
+    "open3d",
+    "fastapi",
+    "uvicorn",
+    "requests",
+    "typer",
+    "pillow",
+    "antlr4-python3-runtime==4.9.2",
+    "omegaconf<2.4",
+    "evo",
+    "e3nn",
+    "moviepy==1.0.3",
+    "plyfile",
+    "pillow_heif",
+    "safetensors",
+    "addict",
+    "pycolmap",
+    "ultralytics",
+    "lapx>=0.5.5",
+    "pandas",
+    "prettytable",
+    "numba",
+    "pypose",
+    "scikit-learn",
+    "depth-anything-3 @ git+https://github.com/ByteDance-Seed/Depth-Anything-3.git",
 ]
 
 [project.optional-dependencies]
@@ -60,13 +79,15 @@ dependencies = [
 # Example for CUDA 12.1: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 cuda = []
 
+[tool.uv.extra-build-dependencies]
+      xformers = ["torch"]
+
 [project.urls]
 Homepage = "https://github.com/procedural-human/blender-addon"
 Documentation = "https://procedural-human.readthedocs.io/"
 Repository = "https://github.com/procedural-human/blender-addon.git"
 "Bug Tracker" = "https://github.com/procedural-human/blender-addon/issues"
 
-# Build system (optional - use package.py for Blender addon distribution)
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -77,7 +98,6 @@ target-version = ['py311']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
-  # directories
   \.eggs
   | \.git
   | \.hg

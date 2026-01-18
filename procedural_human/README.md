@@ -52,9 +52,36 @@ This addon is optimized for development with the [Blender VS Code Extension](htt
 - Integrated terminal output
 - No manual installation needed
 
+### Managing Dependencies
+
+This addon uses a bundled `wheels/` directory to manage Python dependencies, ensuring compatibility with Blender's embedded Python environment.
+
+To update or install the dependencies:
+
+1. Ensure `uv` is installed (used for fast dependency resolution and downloading).
+2. Run the update script:
+   ```powershell
+   .\update_wheels.ps1
+   ```
+   This will read `procedural_human/pyproject.toml`, download the required wheels into `procedural_human/wheels/`, and update `procedural_human/blender_manifest.toml`.
+
+When installing the addon in Blender, these wheels are automatically installed.
+
+### Bundling Models (Avoiding Link Rot)
+
+To ensure the addon works out-of-the-box and isn't dependent on external links that might change or require authentication at runtime:
+
+1. Run the model download script:
+   ```bash
+   python download_models.py
+   ```
+   This will download the SAM 3 and Depth Anything V3 models into `procedural_human/image_seg` and `procedural_human/depth_estimation` respectively. Note that you may need to be logged in to Hugging Face (`huggingface-cli login`) to access the SAM 3 model.
+
+2. Once models are downloaded, they will be included in the distribution zip when you run `package.py`.
+
 ### For Distribution (Zip File)
 
-1. Run `python package.py` to create `procedural_human.zip`
+1. Run `python package.py` to create `procedural_human.zip`. This zip will include all code, dependencies (wheels), and bundled models.
 2. Open Blender
 3. Go to Edit > Preferences > Add-ons
 4. Click "Install..." and select the zip file

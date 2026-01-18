@@ -32,6 +32,27 @@ def _log_timing(phase, elapsed_ms):
 # #endregion
 
 
+def _setup_python_path():
+    """Add site-packages from the bundled venv to sys.path if not present."""
+    import sys
+    from pathlib import Path
+    
+    # Path to the bundled venv site-packages
+    # Assumes structure: procedural_human/.venv/Lib/site-packages
+    # __file__ is in procedural_human/__init__.py
+    addon_dir = Path(__file__).parent
+    venv_site_packages = addon_dir / ".venv" / "Lib" / "site-packages"
+    
+    if venv_site_packages.exists():
+        site_packages_str = str(venv_site_packages)
+        if site_packages_str not in sys.path:
+            # Insert at the beginning to prioritize our packages
+            sys.path.insert(0, site_packages_str)
+            # print(f"[Procedural Human] Added bundled venv to sys.path: {site_packages_str}")
+
+# Setup python path immediately on import
+_setup_python_path()
+
 # Add addon parent directory to sys.path for absolute imports
 # This ensures "from procedural_human.xxx import yyy" works regardless of
 # how Blender loads the addon (legacy addon vs extension system)
@@ -109,8 +130,12 @@ def _get_wheels_hash():
     if not wheels_dir.exists():
         _log_timing("_get_wheels_hash:no_dir", (_time_module.perf_counter() - _t) * 1000)
         return ""
-    wheel_names = sorted([f.name for f in wheels_dir.glob("*.whl")])
-    result = hashlib.md5("|".join(wheel_names).encode()).hexdigest()[:16]
+    # Check for .whl, .zip, and .tar.gz files
+    package_files = sorted([
+        f.name for f in wheels_dir.iterdir() 
+        if f.suffix in ('.whl', '.zip') or f.name.endswith('.tar.gz')
+    ])
+    result = hashlib.md5("|".join(package_files).encode()).hexdigest()[:16]
     _log_timing("_get_wheels_hash", (_time_module.perf_counter() - _t) * 1000)
     return result
 
@@ -121,8 +146,9 @@ def _check_packages_installed():
     # Use find_spec to check if packages exist without importing them (much faster)
     torch_spec = importlib.util.find_spec("torch")
     transformers_spec = importlib.util.find_spec("transformers")
-    result = torch_spec is not None and transformers_spec is not None
-    _log_timing(f"_check_packages_installed:torch={torch_spec is not None},transformers={transformers_spec is not None}", (_time_module.perf_counter() - _t) * 1000)
+    depth_anything_spec = importlib.util.find_spec("depth_anything_3")
+    result = torch_spec is not None and transformers_spec is not None and depth_anything_spec is not None
+    _log_timing(f"_check_packages_installed:torch={torch_spec is not None},transformers={transformers_spec is not None},depth_anything_3={depth_anything_spec is not None}", (_time_module.perf_counter() - _t) * 1000)
     return result
 
 def _ensure_wheels_installed():
@@ -186,7 +212,8 @@ def _ensure_wheels_installed():
     
     wheel_files = list(wheels_dir.glob("*.whl"))
     zip_files = list(wheels_dir.glob("*.zip"))
-    all_packages = wheel_files + zip_files
+    tar_files = list(wheels_dir.glob("*.tar.gz"))
+    all_packages = wheel_files + zip_files + tar_files
     
     if not all_packages:
         print("[Procedural Human] No wheel/zip files found")

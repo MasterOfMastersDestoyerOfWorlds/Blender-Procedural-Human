@@ -40,19 +40,47 @@ if (Test-Path $WheelsDir) {
 # Recreate wheels directory
 New-Item -ItemType Directory -Path $WheelsDir | Out-Null
 
-# Download wheels only (for Blender's Python)
+# Download wheels (allow source if needed)
 Write-Host "Downloading wheels for Python $PythonVersion (Blender)..."
-uv tool run pip download . `
+uv run --with pip --python $PythonVersion python -m pip download . `
     --dest $WheelsDir `
-    --only-binary=:all: `
-    --python-version $PythonVersion `
+    --prefer-binary `
+    --find-links https://download.pytorch.org/whl/cu118 `
+
+# Attempt to build wheels for any source distributions (zip/tar.gz) found
+# This avoids shipping source distributions that require compilation on the user's machine
+$SourceFiles = Get-ChildItem -Path $WheelsDir | Where-Object { $_.Name -match '\.(zip|tar\.gz)$' }
+
+foreach ($file in $SourceFiles) {
+    if ($file.Name -match "xformers") {
+        Write-Host "Skipping build/install for xformers source (requires compiler). Removing it."
+        Remove-Item $file.FullName
+        continue
+    }
+
+    Write-Host "Building wheel for $($file.Name)..."
+    # Build wheel using the downloaded wheels as links for build dependencies
+    uv run --with pip --python $PythonVersion python -m pip wheel "$($file.FullName)" `
+        --wheel-dir "$WheelsDir" `
+        --no-deps `
+        --no-cache-dir `
+        --find-links "$WheelsDir"
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Successfully built wheel. Removing source file."
+        Remove-Item $file.FullName
+    } else {
+        Write-Warning "Failed to build wheel for $($file.Name). User might face installation issues."
+    }
+}
 
 Remove-Item -Path "$WheelsDir\numpy*" -Recurse -Force
     
 Write-Host "Updating blender_manifest.toml with wheel list..."
 
 # Get all wheel files and format as TOML array entries
-$WheelFiles = Get-ChildItem -Path $WheelsDir -Filter "*.whl" | 
+$WheelFiles = Get-ChildItem -Path $WheelsDir | 
+    Where-Object { $_.Name -match '\.(whl|zip|tar\.gz)$' } |
     Sort-Object Name |
     ForEach-Object { "    `"./wheels/$($_.Name)`"," }
 

@@ -64,6 +64,46 @@ class SegmentationControlsPanel(Panel):
         # Point click segmentation
         col.operator("segmentation.segment_by_point", text="Click to Segment", icon='PIVOT_CURSOR')
         
+        # Depth Estimation
+        layout.separator()
+        box = layout.box()
+        box.label(text="Depth Estimation", icon='CAMERA_DATA')
+        
+        try:
+            from procedural_human.depth_estimation.depth_estimator import DepthEstimator
+            if DepthEstimator.is_loaded():
+                box.label(text="  Model: Loaded", icon='CHECKMARK')
+            elif DepthEstimator.is_loading():
+                box.label(text="  Model: Loading...", icon='TIME')
+            else:
+                box.label(text="  Model: Not loaded", icon='TIME')
+        except:
+            box.label(text="  Model: Not available", icon='ERROR')
+        
+        col = box.column(align=True)
+        col.operator("segmentation.estimate_depth", text="Estimate Depth", icon='RENDER_STILL')
+        
+        # View Mode Toggle
+        layout.separator()
+        box = layout.box()
+        box.label(text="View Mode", icon='RESTRICT_VIEW_OFF')
+        
+        view_mode = context.scene.get("segmentation_view_mode", "MASKS")
+        row = box.row(align=True)
+        row.scale_y = 1.2
+        
+        # Masks button
+        op = row.operator("segmentation.set_view_mode", text="Masks", depress=(view_mode == "MASKS"))
+        op.mode = "MASKS"
+        
+        # Depth button
+        op = row.operator("segmentation.set_view_mode", text="Depth", depress=(view_mode == "DEPTH"))
+        op.mode = "DEPTH"
+        
+        # None button
+        op = row.operator("segmentation.set_view_mode", text="None", depress=(view_mode == "NONE"))
+        op.mode = "NONE"
+        
         # Current masks info with UIList
         layout.separator()
         box = layout.box()
@@ -177,6 +217,25 @@ class SegmentationControlsPanel(Panel):
             # as both GenerateNovelView and SimpleRotateMesh call it automatically
             row.operator("segmentation.create_dual_mesh_curves", text="Recreate Mesh", icon='MESH_DATA')
             row.operator("segmentation.clear_novel_contours", text="", icon='X')
+        
+        # Depth-based mesh generation
+        layout.separator()
+        box = layout.box()
+        box.label(text="Depth Profile Mesh", icon='MESH_DATA')
+        col = box.column(align=True)
+        col.operator("segmentation.create_depth_profile_mesh", text="Create Depth Profile Mesh", icon='MESH_ICOSPHERE')
+        
+        # Show status
+        try:
+            from procedural_human.segmentation.operators.segmentation_operators import get_current_depth_map
+            depth_map = get_current_depth_map()
+            if depth_map is not None:
+                box.label(text="  Depth map: Available", icon='CHECKMARK')
+            else:
+                box.label(text="  Depth map: Not available", icon='INFO')
+                box.label(text="  (Run 'Estimate Depth' first)", icon='INFO')
+        except:
+            pass
         
         # Instructions
         layout.separator()

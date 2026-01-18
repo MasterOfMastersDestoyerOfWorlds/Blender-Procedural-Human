@@ -223,31 +223,120 @@ class RefreshMaskOverlayOperator(Operator):
         return {'FINISHED'}
 
 
-def refresh_mask_overlay(context):
-    """Refresh the mask overlay with current colors and enabled states."""
-    from procedural_human.segmentation.operators.segmentation_operators import (
-        get_current_masks, get_active_image, get_original_image_pixels, restore_original_image
-    )
+def get_current_depth_map():
+    """Get the currently stored depth map."""
+    return _current_depth_map
+
+
+def set_current_depth_map(depth_map):
+    """Store the depth map for later use."""
+    global _current_depth_map
+    _current_depth_map = depth_map
+
+
+def apply_depth_overlay(image, depth_map, colormap='viridis'):
+    """
+    Apply a depth map overlay onto a Blender image.
     
-    masks = get_current_masks()
-    image = get_active_image(context)
-    
-    if not masks or image is None:
+    Args:
+        image: Blender image to modify
+        depth_map: Numpy array of depth values (H, W) normalized 0-1
+        colormap: Colormap name ('viridis', 'plasma', 'inferno', 'magma', or 'grayscale')
+    """
+    if depth_map is None or image is None:
         return
     
-    # Restore original image first
-    if get_original_image_pixels() is not None:
-        restore_original_image(image)
+    width, height = image.size
     
-    # Apply color overlay for each enabled mask with its color
-    settings = context.scene.segmentation_mask_settings
+    # Resize depth map to match image if needed
+    if depth_map.shape[0] != height or depth_map.shape[1] != width:
+        from PIL import Image as PILImage
+        depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
+        depth_pil = depth_pil.resize((width, height), PILImage.BILINEAR)
+        depth_map = np.array(depth_pil).astype(np.float32) / 255.0
     
-    for item in settings.masks:
-        if item.enabled and 0 <= item.mask_index < len(masks):
-            mask = masks[item.mask_index]
-            color = tuple(item.color[:3])  # RGB only
-            alpha = item.color[3]
-            apply_mask_overlay(image, [mask], color=color, alpha=alpha)
+    # Flip depth map vertically to match Blender's coordinate system
+    depth_flipped = np.flipud(depth_map)
+    
+    # Convert depth to RGB colormap
+    if colormap == 'grayscale':
+        depth_rgb = np.stack([depth_flipped, depth_flipped, depth_flipped], axis=2)
+    else:
+        try:
+            import matplotlib.cm as cm
+            cmap = cm.get_cmap(colormap)
+            depth_rgb = cmap(depth_flipped)[:, :, :3]  # RGBA -> RGB
+        except ImportError:
+            # Fallback to grayscale if matplotlib not available
+            depth_rgb = np.stack([depth_flipped, depth_flipped, depth_flipped], axis=2)
+    
+    # Get current pixels as numpy array
+    pixels = np.array(image.pixels[:]).reshape((height, width, 4))
+    
+    # Blend depth map with original image
+    # Use 1.0 alpha (opaque) to show just the depth map, as requested by user
+    alpha = 1.0
+    pixels[:, :, :3] = pixels[:, :, :3] * (1 - alpha) + depth_rgb * alpha
+    
+    # Update the image
+    image.pixels[:] = pixels.flatten().tolist()
+    image.update()
+    
+    # Redraw Image Editors
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'IMAGE_EDITOR':
+                area.tag_redraw()
+
+
+def refresh_mask_overlay(context):
+    """Refresh the overlay with current view mode (masks, depth, or none)."""
+    from procedural_human.segmentation.operators.segmentation_operators import (
+        get_current_masks, get_active_image, get_original_image_pixels, 
+        restore_original_image, get_current_depth_map, store_original_image
+    )
+    
+    image = get_active_image(context)
+    if image is None:
+        return
+    
+    # Ensure we have the original saved before we do anything
+    # If the original is not stored yet, store the current state as original
+    # This prevents issues where switching views without segmentation dirties the image permanently
+    stored_pixels = get_original_image_pixels()
+    if stored_pixels is None:
+        store_original_image(image)
+    else:
+        # Check if image dimensions match stored pixels
+        # If not, the user likely switched images, so treat this as a new image
+        current_len = image.size[0] * image.size[1] * 4
+        if len(stored_pixels) != current_len:
+            store_original_image(image)
+    
+    # Always restore original image first to clear previous overlays
+    restore_original_image(image)
+    
+    # Get view mode from scene property
+    view_mode = context.scene.get("segmentation_view_mode", "MASKS")
+    
+    if view_mode == "NONE":
+        return
+    elif view_mode == "DEPTH":
+        depth_map = get_current_depth_map()
+        if depth_map is not None:
+            apply_depth_overlay(image, depth_map)
+    elif view_mode == "MASKS":
+        masks = get_current_masks()
+        if masks:
+            # Apply color overlay for each enabled mask with its color
+            settings = context.scene.segmentation_mask_settings
+            
+            for item in settings.masks:
+                if item.enabled and 0 <= item.mask_index < len(masks):
+                    mask = masks[item.mask_index]
+                    color = tuple(item.color[:3])  # RGB only
+                    alpha = item.color[3]
+                    apply_mask_overlay(image, [mask], color=color, alpha=alpha)
 
 
 # ============================================================================
@@ -257,6 +346,7 @@ def refresh_mask_overlay(context):
 _current_masks = []
 _current_image = None
 _original_image_pixels = None  # Store original pixels for reset
+_current_depth_map = None  # Store depth map
 
 
 def get_current_masks():
@@ -498,6 +588,9 @@ class SegmentByPromptOperator(Operator):
             # Update scene property
             context.scene["segmentation_mask_count"] = len(masks)
             
+            # Switch view mode to MASKS automatically
+            context.scene["segmentation_view_mode"] = "MASKS"
+            
             # Apply color-coded mask overlays
             if masks:
                 apply_colored_mask_overlays(context, image, masks)
@@ -625,6 +718,9 @@ class SegmentByPointOperator(Operator):
             # Store masks (with context to sync to collection)
             set_current_masks(masks, image, context)
             context.scene["segmentation_mask_count"] = len(masks)
+            
+            # Switch view mode to MASKS automatically
+            context.scene["segmentation_view_mode"] = "MASKS"
             
             # Apply color-coded mask overlays
             if masks:
@@ -855,6 +951,74 @@ class LoadSAM3ModelOperator(Operator):
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
         context.workspace.status_text_set(None)
+
+
+@procedural_operator
+class EstimateDepthOperator(Operator):
+    """Estimate depth map from the current image"""
+    
+    bl_idname = "segmentation.estimate_depth"
+    bl_label = "Estimate Depth"
+    bl_description = "Estimate depth map from the current image using Depth Anything V3"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        # Get active image
+        image = get_active_image(context)
+        if image is None:
+            self.report({'WARNING'}, "No image loaded in Image Editor")
+            return {'CANCELLED'}
+        
+        # Check Depth Estimator status
+        from procedural_human.depth_estimation.depth_estimator import DepthEstimator
+        
+        try:
+            depth_estimator = DepthEstimator.get_instance()
+            
+            # Convert to PIL
+            pil_image = blender_image_to_pil(image)
+            
+            # Estimate depth
+            self.report({'INFO'}, "Estimating depth map...")
+            depth_map = depth_estimator.estimate_depth(pil_image)
+            
+            # Store depth map
+            set_current_depth_map(depth_map)
+            
+            # Switch view mode to DEPTH automatically
+            context.scene["segmentation_view_mode"] = "DEPTH"
+            refresh_mask_overlay(context)
+            
+            self.report({'INFO'}, f"Depth map estimated: {depth_map.shape}")
+            return {'FINISHED'}
+            
+        except Exception as e:
+            logger.error(f"Depth estimation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            self.report({'ERROR'}, f"Depth estimation failed: {e}")
+            return {'CANCELLED'}
+
+
+@procedural_operator
+class SetSegmentationViewModeOperator(Operator):
+    """Set the segmentation view mode (Masks, Depth, or None)"""
+    
+    bl_idname = "segmentation.set_view_mode"
+    bl_label = "Set View Mode"
+    bl_description = "Set the overlay view mode"
+    bl_options = {'REGISTER'}
+    
+    mode: StringProperty(
+        name="Mode",
+        description="View mode: MASKS, DEPTH, or NONE",
+        default="MASKS"
+    )
+    
+    def execute(self, context):
+        context.scene["segmentation_view_mode"] = self.mode
+        refresh_mask_overlay(context)
+        return {'FINISHED'}
 
 
 # ============================================================================
