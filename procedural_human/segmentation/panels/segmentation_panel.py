@@ -104,6 +104,9 @@ class SegmentationControlsPanel(Panel):
         op = row.operator("segmentation.set_view_mode", text="None", depress=(view_mode == "NONE"))
         op.mode = "NONE"
         
+        # Debug toggle
+        box.prop(context.scene, "show_debug_planes", text="Show Debug Planes (3D)", toggle=True)
+        
         # Current masks info with UIList
         layout.separator()
         box = layout.box()

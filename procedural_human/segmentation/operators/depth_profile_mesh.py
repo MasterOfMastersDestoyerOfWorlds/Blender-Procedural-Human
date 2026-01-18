@@ -2,130 +2,15 @@ import bpy
 from bpy.types import Operator
 from bpy.props import IntProperty, BoolProperty, FloatProperty
 import numpy as np
-from mathutils import Vector
+from mathutils import Vector, Euler, Matrix
 from procedural_human.logger import logger
 from procedural_human.decorators.operator_decorator import procedural_operator
-from procedural_human.segmentation.operators.mesh_curve_operators import create_dual_loop_mesh, apply_bezier_handles, apply_charrot_gregory_patch_modifier
-# from procedural_human.segmentation.operators.segmentation_operators import create_spine_contour_from_depth
-from mathutils import Euler
-
-
-
-def create_spine_contour_from_depth(
-    mask: np.ndarray,
-    depth_map: np.ndarray,
-    image_width: int,
-    image_height: int,
-    num_points: int = 32
-) -> np.ndarray:
-    """
-    Create a side profile (spine) contour from a mask and depth map.
-    
-    The spine is created by:
-    1. Finding the vertical centerline of the mask
-    2. Sampling depth values along this centerline
-    3. Creating a symmetric two-sided profile (width proportional to depth)
-    
-    Args:
-        mask: Boolean mask array (H, W)
-        depth_map: Depth map array (H, W) normalized 0-1
-        image_width: Width of the source image
-        image_height: Height of the source image
-        num_points: Number of points in the output contour
-        
-    Returns:
-        Nx2 array of contour points in side view plane (X=Z, Y=Y)
-    """
-    # Resize depth map to match mask if needed
-    if depth_map.shape != mask.shape:
-        from PIL import Image as PILImage
-        depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
-        depth_pil = depth_pil.resize((mask.shape[1], mask.shape[0]), PILImage.BILINEAR)
-        depth_map = np.array(depth_pil).astype(np.float32) / 255.0
-    
-    # Find vertical centerline of mask
-    # For each row, find the center X coordinate of the mask
-    rows_with_mask = []
-    centerline_x = []
-    centerline_depths = []
-    
-    for y in range(mask.shape[0]):
-        row_mask = mask[y, :]
-        if np.any(row_mask):
-            # Find left and right edges
-            mask_indices = np.where(row_mask)[0]
-            if len(mask_indices) > 0:
-                left = mask_indices[0]
-                right = mask_indices[-1]
-                center_x = (left + right) / 2.0
-                rows_with_mask.append(y)
-                centerline_x.append(center_x)
-                
-                # Sample depth at centerline (average over a small region)
-                sample_width = max(1, int((right - left) * 0.1))
-                sample_left = max(0, int(center_x - sample_width // 2))
-                sample_right = min(mask.shape[1], int(center_x + sample_width // 2))
-                depth_sample = np.mean(depth_map[y, sample_left:sample_right])
-                centerline_depths.append(depth_sample)
-    
-    if len(rows_with_mask) < 2:
-        logger.warning("Not enough mask rows for spine contour")
-        # Return a simple default contour
-        y_coords = np.linspace(-0.5, 0.5, num_points)
-        x_coords = np.zeros_like(y_coords) * 0.1  # Default width
-        return np.column_stack([x_coords, y_coords])
-    
-    # Normalize Y coordinates to [-0.5, 0.5]
-    rows_array = np.array(rows_with_mask, dtype=np.float32)
-    y_normalized = (rows_array / image_height) - 0.5
-    y_normalized = -y_normalized  # Flip Y to match Blender coordinates
-    
-    # Interpolate to get evenly spaced Y values
-    y_target = np.linspace(y_normalized.min(), y_normalized.max(), num_points)
-    
-    # Interpolate centerline X and depths
-    centerline_x_array = np.array(centerline_x, dtype=np.float32)
-    centerline_depths_array = np.array(centerline_depths, dtype=np.float32)
-    
-    # Normalize X to image coordinates (0-1 range, then center)
-    centerline_x_normalized = (centerline_x_array / image_width) - 0.5
-    
-    # Interpolate
-    x_interp = np.interp(y_target, y_normalized, centerline_x_normalized)
-    depth_interp = np.interp(y_target, y_normalized, centerline_depths_array)
-    
-    # Create symmetric two-sided profile
-    # Width is proportional to depth (deeper = wider)
-    # Scale depth to reasonable width (0.05 to 0.3 of image width)
-    depth_min = depth_interp.min()
-    depth_max = depth_interp.max()
-    if depth_max > depth_min:
-        depth_normalized = (depth_interp - depth_min) / (depth_max - depth_min)
-    else:
-        depth_normalized = np.ones_like(depth_interp) * 0.5
-    
-    # Width ranges from 0.05 to 0.3 (as fraction of image width)
-    width_factor = 0.05 + depth_normalized * 0.25
-    
-    # Create symmetric profile: left side (negative X) and right side (positive X)
-    # In side view, X becomes Z (depth), so we create a symmetric shape
-    contour_points = []
-    
-    # Right side (positive Z/X)
-    for i in range(num_points):
-        z = width_factor[i] * 0.5  # Half width on right side
-        y = y_target[i]
-        contour_points.append([z, y])
-    
-    # Left side (negative Z/X) - reverse order
-    for i in range(num_points - 1, -1, -1):
-        z = -width_factor[i] * 0.5  # Half width on left side
-        y = y_target[i]
-        contour_points.append([z, y])
-    
-    return np.array(contour_points)
-
-
+from procedural_human.segmentation.operators.mesh_curve_operators import (
+    create_dual_loop_mesh, 
+    apply_bezier_handles, 
+    apply_charrot_gregory_patch_modifier,
+    create_spine_contour_from_depth
+)
 
 @procedural_operator
 class CreateDepthProfileMeshOperator(Operator):
@@ -220,17 +105,99 @@ class CreateDepthProfileMeshOperator(Operator):
             # Use largest contour
             front_contour = max(contours, key=len)
             
-            # Normalize front contour to image coordinates
-            front_contour_norm = front_contour.astype(np.float32).copy()
-            front_contour_norm[:, 0] = (front_contour_norm[:, 0] / image_width) - 0.5
-            front_contour_norm[:, 1] = (front_contour_norm[:, 1] / image_height) - 0.5
-            front_contour_norm[:, 1] = -front_contour_norm[:, 1]  # Flip Y
+            # Calculate Visual Center using Distance Transform for better alignment
+            # This ensures the "spine" aligns with the thickest part of the object
+            try:
+                from scipy.ndimage import distance_transform_edt
+                dist = distance_transform_edt(mask)
+                max_idx = np.argmax(dist)
+                max_y, max_x = np.unravel_index(max_idx, dist.shape)
+                center_x, center_y = float(max_x), float(max_y)
+                # logger.info(f"Using visual center at ({center_x}, {center_y})")
+            except ImportError:
+                # Fallback to centroid
+                M = cv2.moments(mask.astype(np.uint8)) if 'cv2' in locals() else None
+                if M and M["m00"] != 0:
+                    center_x = M["m10"] / M["m00"]
+                    center_y = M["m01"] / M["m00"]
+                else:
+                    # Bounding box center
+                    y_indices, x_indices = np.where(mask)
+                    center_x = (np.min(x_indices) + np.max(x_indices)) / 2
+                    center_y = (np.min(y_indices) + np.max(y_indices)) / 2
             
-            # Center the front contour
-            centroid = front_contour_norm.mean(axis=0)
-            front_contour_norm -= centroid
+            # Normalize front contour to image coordinates centered on visual center
+            front_contour_norm = front_contour.astype(np.float32).copy()
+            
+            # Normalize to 0-1 then center around visual center
+            # Image coords: X=0..W, Y=0..H (down)
+            # Blender coords: X=-0.5..0.5, Y=-0.5..0.5 (up)
+            
+            # Shift points so that (center_x, center_y) becomes (0,0)
+            front_contour_norm[:, 0] = (front_contour_norm[:, 0] - center_x) / image_width
+            
+            # Flip Y and center
+            # Image Y is down, Blender Y is up.
+            # (y - center_y) / height -> if y > center (lower in image), result > 0.
+            # We want y > center (lower image) -> y < 0 (lower blender).
+            # So -(y - center_y) / height
+            front_contour_norm[:, 1] = -(front_contour_norm[:, 1] - center_y) / image_height
+            
+            # Determine Z-depth and Positioning
+            # Calculate mean depth value in the mask to handle layering (0=far, 1=close)
+            # Mask depth values
+            # Resize depth map to match mask if needed before indexing
+            if depth_map.shape != mask.shape:
+                from PIL import Image as PILImage
+                depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
+                depth_pil = depth_pil.resize((mask.shape[1], mask.shape[0]), PILImage.BILINEAR)
+                depth_map_resized = np.array(depth_pil).astype(np.float32) / 255.0
+                mask_depths = depth_map_resized[mask]
+            else:
+                mask_depths = depth_map[mask]
+            
+            if len(mask_depths) > 0:
+                mean_depth_val = np.mean(mask_depths)
+            else:
+                mean_depth_val = 0.5
+                
+            # Define depth range for layering
+            # Close objects (val ~1) should be closer to camera
+            # Far objects (val ~0) should be further
+            base_distance = 5.0
+            depth_layering_range = 2.0  # Objects spread over 2 meters depth
+            
+            # Higher depth value = Closer = Smaller distance
+            # distance = base - (val - 0.5) * range
+            object_distance = base_distance - (mean_depth_val - 0.5) * depth_layering_range
+            
+            # Unproject visual center to 3D view plane
+            # We assume the "center" of our mesh (0,0,0) should align with the ray through (center_x, center_y)
+            
+            # Camera parameters (approximated if not available)
+            # Sensor width in mm, focal length in mm
+            sensor_width = camera.data.sensor_width
+            focal_length = camera.data.lens
+            
+            # Normalized coordinates of center (-0.5 to 0.5)
+            # Account for aspect ratio if render settings available, otherwise assume square pixels
+            render = context.scene.render
+            aspect_ratio = render.resolution_x / render.resolution_y
+            
+            norm_cx = (center_x / image_width) - 0.5
+            norm_cy = 0.5 - (center_y / image_height)  # Blender Y is up
+            
+            # Calculate view plane offsets at object_distance
+            # tan(theta/2) = (sensor/2) / focal
+            # view_width = 2 * distance * tan(theta/2) = distance * sensor / focal
+            view_plane_width = object_distance * sensor_width / focal_length
+            view_plane_height = view_plane_width / aspect_ratio
+            
+            offset_x = norm_cx * view_plane_width
+            offset_y = norm_cy * view_plane_height
             
             # Create spine contour from depth map
+            # Use the improved function that uses distance transform and local contrast
             spine_contour = create_spine_contour_from_depth(
                 mask,
                 depth_map,
@@ -240,22 +207,33 @@ class CreateDepthProfileMeshOperator(Operator):
             )
             
             # Apply depth scale
+            # Spine X is Z-thickness.
             spine_contour[:, 0] *= self.depth_scale
             
             # Create the mesh
             obj = create_dual_loop_mesh(
                 front_contour_norm,
                 spine_contour,
-                name="DepthProfileMesh",
+                name=f"DepthMesh_{mask_index}",
                 points_per_half=self.points_per_half,
             )
             
-            logger.info(f"Created depth profile mesh: {obj.name}")
+            # Scale the mesh to match view plane size
+            # front_contour_norm is normalized to image dimensions (roughly -0.5 to 0.5)
+            # We need to scale it up to physical dimensions at that distance
+            obj.scale.x = view_plane_width
+            obj.scale.y = view_plane_height  # Assuming normalized Y was also scaled by image height ratio?
+            # Wait, front_contour_norm was divided by image_width/height separately.
+            # So X units are fractions of width, Y units are fractions of height.
+            # So scaling X by view_width and Y by view_height is correct.
+            obj.scale.z = view_plane_width # Scale thickness proportionally to width? 
+            # Or assume depth_scale handled it. Let's keep Z scale same as X for consistency.
+            
+            logger.info(f"Created depth profile mesh: {obj.name} at dist {object_distance:.2f}")
             
             # Apply Bezier handles
             try:
                 apply_bezier_handles(obj)
-                logger.info("Applied Bezier handles")
             except Exception as e:
                 logger.warning(f"Could not apply Bezier handles: {e}")
             
@@ -266,7 +244,6 @@ class CreateDepthProfileMeshOperator(Operator):
                     self.subdivisions,
                     self.merge_by_distance
                 )
-                logger.info(f"Applied Charrot-Gregory patch modifier (subdivisions={self.subdivisions})")
             except Exception as e:
                 logger.warning(f"Could not apply Charrot-Gregory patch: {e}")
             
@@ -276,27 +253,29 @@ class CreateDepthProfileMeshOperator(Operator):
             camera_location = camera_matrix.translation
             camera_rotation = camera_matrix.to_euler()
             
-            # Calculate mesh bounding box to determine scale
-            bbox = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
-            bbox_center = sum(bbox, Vector()) / len(bbox)
-            bbox_size = max(
-                (max(v.x for v in bbox) - min(v.x for v in bbox)),
-                (max(v.y for v in bbox) - min(v.y for v in bbox)),
-                (max(v.z for v in bbox) - min(v.z for v in bbox))
-            )
+            # Calculate world position
+            # Start at camera
+            # Move forward (-Z local) by object_distance
+            # Move right (+X local) by offset_x
+            # Move up (+Y local) by offset_y
             
-            # Position mesh in front of camera
-            # Camera looks down -Z in Blender, so position mesh along -Z from camera
-            camera_forward = camera_matrix.to_quaternion() @ Vector((0, 0, -1))
-            mesh_distance = 5.0  # Distance from camera
-            target_location = camera_location + camera_forward * mesh_distance
+            # Get camera local axes
+            cam_rot_mat = camera_rotation.to_matrix()
+            cam_right = cam_rot_mat.col[0] # X
+            cam_up = cam_rot_mat.col[1]    # Y
+            cam_back = cam_rot_mat.col[2]  # Z
             
-            # Set mesh location and rotation to match camera view
+            target_location = camera_location - cam_back * object_distance + cam_right * offset_x + cam_up * offset_y
+            
+            # Set mesh location
             obj.location = target_location
-            # Rotate to face camera (inverse of camera rotation)
+            
+            # Rotate to face camera (billboard)
+            # Mesh "Front" is +Z? No, our contours are in XY plane.
+            # create_dual_loop_mesh creates in XY.
+            # We want Mesh XY plane to be parallel to Camera XY plane.
+            # So Mesh Rotation = Camera Rotation.
             obj.rotation_euler = camera_rotation
-            # Additional 90-degree rotation around X to align properly
-            obj.rotation_euler.rotate(Euler((np.pi / 2, 0, 0), 'XYZ'))
             
             # Select the new object
             bpy.ops.object.select_all(action='DESELECT')

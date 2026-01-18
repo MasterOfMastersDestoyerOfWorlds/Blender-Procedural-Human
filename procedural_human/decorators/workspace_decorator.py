@@ -132,6 +132,19 @@ class procedural_workspace(DiscoverableClassDecorator):
         """
         try:
             context = bpy.context
+            window = context.window
+            if window is None:
+                windows = context.window_manager.windows
+                if windows:
+                    window = windows[0]
+                else:
+                    logger.error("Workspace auto-create failed: no window available")
+                    return 0.2
+            
+            screen = context.screen or window.screen
+            if screen is None:
+                logger.error("Workspace auto-create failed: no screen available")
+                return 0.2
             
             for class_name, workspace_cls in cls.registry.items():
                 # Check if workspace already exists - skip if it does
@@ -143,7 +156,7 @@ class procedural_workspace(DiscoverableClassDecorator):
                 logger.info(f"Auto-creating workspace: {workspace_cls.name}")
                 
                 # Store the current workspace to return to it
-                original_workspace = context.window.workspace
+                original_workspace = window.workspace
                 
                 try:
                     # Use a workspace without animation timeline as base
@@ -158,14 +171,15 @@ class procedural_workspace(DiscoverableClassDecorator):
                         base_workspace = bpy.data.workspaces[0]
                     
                     if base_workspace:
-                        context.window.workspace = base_workspace
+                        window.workspace = base_workspace
                         logger.info(f"Using '{base_workspace.name}' as base workspace")
                     
                     # Duplicate the current workspace
-                    bpy.ops.workspace.duplicate()
+                    with context.temp_override(window=window, screen=window.screen):
+                        bpy.ops.workspace.duplicate()
                     
                     # Rename the new workspace
-                    new_workspace = context.window.workspace
+                    new_workspace = window.workspace
                     new_workspace.name = workspace_cls.name
                     
                     # Join all areas into one to get a clean slate
@@ -177,10 +191,12 @@ class procedural_workspace(DiscoverableClassDecorator):
                         main_area.type = 'VIEW_3D'
                     
                     # Apply the custom layout (this will split and configure areas)
-                    workspace_cls.create_layout(context)
+                    with context.temp_override(window=window, screen=window.screen):
+                        workspace_cls.create_layout(context)
                     
                     # Switch back to original workspace
-                    context.window.workspace = original_workspace
+                    if original_workspace is not None:
+                        window.workspace = original_workspace
                     
                     logger.info(f"Created workspace: {workspace_cls.name}")
                 except Exception as e:
@@ -323,15 +339,20 @@ def split_area_horizontal(context, area, factor=0.5):
     Returns:
         Tuple of (top_area, bottom_area) or None if failed
     """
+    screen = context.screen or context.window.screen
+    if screen is None:
+        logger.warning("Cannot split area horizontally: no screen available")
+        return None
+    
     # Store original area count
-    original_areas = list(context.screen.areas)
+    original_areas = list(screen.areas)
     
     # Override context for the split operation
     with context.temp_override(area=area, region=area.regions[0]):
         bpy.ops.screen.area_split(direction='HORIZONTAL', factor=factor)
     
     # Find the new area
-    new_areas = [a for a in context.screen.areas if a not in original_areas]
+    new_areas = [a for a in screen.areas if a not in original_areas]
     if new_areas:
         # The original area becomes the top, new area is bottom
         return area, new_areas[0]
@@ -351,15 +372,20 @@ def split_area_vertical(context, area, factor=0.5):
     Returns:
         Tuple of (left_area, right_area) or None if failed
     """
+    screen = context.screen or context.window.screen
+    if screen is None:
+        logger.warning("Cannot split area vertically: no screen available")
+        return None
+    
     # Store original area count
-    original_areas = list(context.screen.areas)
+    original_areas = list(screen.areas)
     
     # Override context for the split operation
     with context.temp_override(area=area, region=area.regions[0]):
         bpy.ops.screen.area_split(direction='VERTICAL', factor=factor)
     
     # Find the new area
-    new_areas = [a for a in context.screen.areas if a not in original_areas]
+    new_areas = [a for a in screen.areas if a not in original_areas]
     if new_areas:
         # The original area becomes the left, new area is right
         return area, new_areas[0]
@@ -389,7 +415,10 @@ def join_all_areas_to_one(context):
     Returns:
         The remaining single area, or None if failed
     """
-    screen = context.screen
+    screen = context.screen or context.window.screen
+    if screen is None:
+        logger.warning("Cannot join areas: no screen available")
+        return None
     max_attempts = 20  # Prevent infinite loops
     attempts = 0
     

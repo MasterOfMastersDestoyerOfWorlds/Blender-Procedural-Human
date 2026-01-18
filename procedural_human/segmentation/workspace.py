@@ -45,7 +45,19 @@ class CurveSegmentationWorkspace:
         |                                       |
         +---------------------------------------+
         """
-        screen = context.screen
+        window = context.window
+        if window is None:
+            windows = context.window_manager.windows
+            window = windows[0] if windows else None
+        
+        if window is None:
+            logger.error("No window available in context")
+            return
+        
+        screen = context.screen or window.screen
+        if screen is None:
+            logger.error("No screen available in context")
+            return
         
         # Find the main VIEW_3D area
         main_area = None
@@ -63,17 +75,26 @@ class CurveSegmentationWorkspace:
         if main_area is None:
             logger.error("No areas found in screen")
             return
+            
+        # DEBUG: Log all areas to understand layout
+        logger.info(f"Screen '{screen.name}' has {len(screen.areas)} areas:")
+        for i, area in enumerate(screen.areas):
+            logger.info(f"  Area {i}: Type={area.type}, X={area.x}, Y={area.y}, W={area.width}, H={area.height}")
         
+
+        
+
+        # Step 1: Split horizontally to create top (2/3) and bottom (1/3) areas
+        # Factor 0.33 means the split happens at 1/3 from bottom
+        result = split_area_horizontal(context, main_area, factor=0.33)
+        if result is None:
+            logger.error("Failed to split area horizontally")
+            return
+        
+        top_area, bottom_area = result
         try:
-            # Step 1: Split horizontally to create top (2/3) and bottom (1/3) areas
-            # Factor 0.33 means the split happens at 1/3 from bottom
-            result = split_area_horizontal(context, main_area, factor=0.33)
-            if result is None:
-                logger.error("Failed to split area horizontally")
-                return
             
-            top_area, bottom_area = result
-            
+                        
             # Step 2: Set bottom area to FILE_BROWSER (Asset Browser mode)
             set_area_type(bottom_area, 'FILE_BROWSER')
             
@@ -92,11 +113,44 @@ class CurveSegmentationWorkspace:
             set_area_type(left_area, 'VIEW_3D')  # 3D preview
             set_area_type(right_area, 'IMAGE_EDITOR')  # Segmentation view
             
+            for space in left_area.spaces:
+                if space.type == 'VIEW_3D':
+                    space.shading.type = 'MATERIAL'
+
             # Open sidebars for panels (search panel will be in IMAGE_EDITOR sidebar)
             for area in [left_area, right_area]:
                 for space in area.spaces:
                     if hasattr(space, 'show_region_ui'):
                         space.show_region_ui = True
+
+            timeline_area = None
+            bottom_candidates = []
+            
+            # Identify candidate areas that are likely at the bottom
+            # Standard animation/info areas
+            target_types = {'TIMELINE', 'DOPESHEET_EDITOR', 'GRAPH_EDITOR', 'NLA_EDITOR', 'CONSOLE', 'INFO'}
+            
+            for area in screen.areas:
+                if area.type in target_types:
+                    # Store tuple of (y_position, area) to find the bottom-most
+                    bottom_candidates.append((area.y, area))
+            
+            # Sort candidates by Y position (ascending = bottom first)
+            bottom_candidates.sort(key=lambda x: x[0])
+            
+            if bottom_candidates:
+                # Use the lowest area
+                timeline_area = bottom_candidates[0][1]
+                logger.info(f"Found bottom candidate area: Type={timeline_area.type}, Y={timeline_area.y}")
+                override = {
+                    "window": window,
+                    "screen": screen,
+                    "area": timeline_area,
+                    "region": timeline_area.regions[-1],
+                }
+
+                with bpy.context.temp_override(**override):
+                    bpy.ops.screen.area_close()
             
             logger.info("Curve Segmentation workspace layout created")
             

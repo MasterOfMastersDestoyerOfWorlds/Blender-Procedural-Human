@@ -140,22 +140,14 @@ def create_debug_plane(pil_image, name: str, location=None) -> bpy.types.Object:
     """
     import tempfile
     from pathlib import Path
+    import importlib.util
+    import os
     
     if location is None:
         location = (0, 0, 0)
     
     # Get or create debug collection
     debug_collection = get_or_create_collection(DEBUG_COLLECTION_NAME)
-    
-    # Calculate aspect ratio for plane sizing
-    width, height = pil_image.size
-    aspect = width / height
-    
-    # Create plane
-    bpy.ops.mesh.primitive_plane_add(size=1, location=location)
-    plane = bpy.context.active_object
-    plane.name = name
-    plane.scale = (aspect, 1, 1)
     
     # Save PIL image to temp file
     temp_dir = Path(tempfile.gettempdir()) / "segmentation_debug"
@@ -167,39 +159,35 @@ def create_debug_plane(pil_image, name: str, location=None) -> bpy.types.Object:
     blender_image = bpy.data.images.load(str(temp_path))
     blender_image.name = f"{name}_Texture"
     
-    # Create material with image texture
-    mat = bpy.data.materials.new(name=f"{name}_Mat")
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-    
-    # Clear default nodes
-    nodes.clear()
-    
-    # Add nodes
-    output_node = nodes.new('ShaderNodeOutputMaterial')
-    output_node.location = (300, 0)
-    
-    bsdf_node = nodes.new('ShaderNodeBsdfPrincipled')
-    bsdf_node.location = (0, 0)
-    
-    tex_node = nodes.new('ShaderNodeTexImage')
-    tex_node.location = (-300, 0)
-    tex_node.image = blender_image
-    
-    # Connect nodes
-    links.new(tex_node.outputs['Color'], bsdf_node.inputs['Base Color'])
-    links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
-    
-    # Assign material to plane
-    plane.data.materials.append(mat)
-    
-    # Move to debug collection
-    link_object_to_collection(plane, debug_collection)
-    
-    logger.info(f"[Debug] Created debug plane: {name} at {location}")
-    
-    return plane
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Go up 3 levels: operators -> segmentation -> procedural_human
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+        module_path = os.path.join(base_dir, "procedural_human", "novel_view_gen", "Hunyuan3D-2", "hy3dgen", "texgen", "utils", "debug_plane.py")
+        
+        spec = importlib.util.spec_from_file_location("debug_plane_utils", module_path)
+        utils = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(utils)
+        
+        # Create plane using utility
+        # align_to_camera=False because we position them in a row
+        plane = utils.create_debug_plane(
+            bpy.context, 
+            name, 
+            blender_image, 
+            location=location, 
+            align_to_camera=False
+        )
+        
+        if plane:
+            # Move to debug collection
+            link_object_to_collection(plane, debug_collection)
+            logger.info(f"[Debug] Created debug plane: {name} at {location}")
+            return plane
+            
+    except Exception as e:
+        logger.error(f"Failed to create debug plane using utility: {e}")
+        return None
 
 
 # ============================================================================
