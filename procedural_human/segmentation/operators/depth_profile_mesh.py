@@ -312,6 +312,103 @@ def bilinear_sample(image: np.ndarray, x: float, y: float) -> float:
     
     return v
 
+
+def simplify_contour(contour: np.ndarray, epsilon: float = 0.01) -> np.ndarray:
+    """
+    Simplify a contour using the Douglas-Peucker algorithm.
+    
+    Args:
+        contour: Contour array with shape (N, 2)
+        epsilon: Approximation accuracy as fraction of arc length (0 = no simplification)
+        
+    Returns:
+        Simplified contour array
+    """
+    if epsilon <= 0 or len(contour) < 3:
+        return contour
+    
+    try:
+        # Calculate epsilon based on arc length
+        diffs = np.diff(contour, axis=0)
+        arc_length = np.sum(np.sqrt(np.sum(diffs**2, axis=1)))
+        actual_epsilon = epsilon * arc_length
+        
+        # Use cv2.approxPolyDP for Douglas-Peucker simplification
+        approx = cv2.approxPolyDP(
+            contour.reshape(-1, 1, 2).astype(np.float32), 
+            actual_epsilon, 
+            closed=True
+        )
+        
+        simplified = approx.reshape(-1, 2)
+        logger.info(f"Simplified contour: {len(contour)} -> {len(simplified)} points (epsilon={epsilon:.4f})")
+        return simplified
+    except Exception as e:
+        logger.warning(f"Contour simplification failed: {e}")
+        return contour
+
+
+def simplify_polyline(points: np.ndarray, epsilon: float = 0.01) -> np.ndarray:
+    """
+    Simplify an open polyline using the Douglas-Peucker algorithm.
+    
+    Args:
+        points: Polyline array with shape (N, 2) or (N, 3)
+        epsilon: Approximation accuracy as fraction of arc length (0 = no simplification)
+        
+    Returns:
+        Simplified polyline array
+    """
+    if epsilon <= 0 or len(points) < 3:
+        return points
+    
+    try:
+        # Handle 3D points by simplifying only X,Y and keeping Z
+        if points.shape[1] == 3:
+            xy = points[:, :2]
+            z = points[:, 2]
+        else:
+            xy = points
+            z = None
+        
+        # Calculate epsilon based on arc length
+        diffs = np.diff(xy, axis=0)
+        arc_length = np.sum(np.sqrt(np.sum(diffs**2, axis=1)))
+        actual_epsilon = epsilon * arc_length
+        
+        # Use cv2.approxPolyDP for Douglas-Peucker simplification (open curve)
+        approx = cv2.approxPolyDP(
+            xy.reshape(-1, 1, 2).astype(np.float32), 
+            actual_epsilon, 
+            closed=False
+        )
+        
+        simplified_xy = approx.reshape(-1, 2)
+        
+        if z is not None:
+            # Interpolate Z values for the simplified points
+            # Find the parameter along the original curve for each simplified point
+            orig_diffs = np.diff(xy, axis=0)
+            orig_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(orig_diffs**2, axis=1)))])
+            
+            simplified_z = []
+            for pt in simplified_xy:
+                # Find closest point on original curve
+                dists = np.sqrt(np.sum((xy - pt)**2, axis=1))
+                closest_idx = np.argmin(dists)
+                simplified_z.append(z[closest_idx])
+            
+            simplified = np.column_stack([simplified_xy, simplified_z])
+        else:
+            simplified = simplified_xy
+        
+        logger.info(f"Simplified polyline: {len(points)} -> {len(simplified)} points (epsilon={epsilon:.4f})")
+        return simplified
+    except Exception as e:
+        logger.warning(f"Polyline simplification failed: {e}")
+        return points
+
+
 def resample_polyline(points: np.ndarray, n: int) -> np.ndarray:
     """
     Resample a polyline to have exactly n points, evenly spaced along the path.
@@ -366,10 +463,11 @@ def extract_spine_path_3d(
     image_height: int,
     center_x: float,
     center_y: float,
-    num_points: int = 32
 ) -> np.ndarray:
     """
     Extract the 3D spine path along the medial axis with depth-based Z inflation.
+    
+    Returns the natural number of points from geodesic path extraction (no resampling).
     
     Returns an Nx3 array of (x, y, z_extent) in Blender normalized coordinates where:
     - x, y follow the actual curved medial axis path (not projected to vertical)
@@ -382,7 +480,6 @@ def extract_spine_path_3d(
         image_height: Image height in pixels
         center_x: X coordinate of visual center in image space
         center_y: Y coordinate of visual center in image space
-        num_points: Number of points to resample the spine to
         
     Returns:
         Nx3 array of [x, y, z_extent] in Blender normalized coordinates
@@ -396,12 +493,8 @@ def extract_spine_path_3d(
     # Get min/max depth within the mask for z_extent calculation
     mask_depths = depth_map[mask]
     if len(mask_depths) == 0:
-        # Empty mask fallback
-        return np.column_stack([
-            np.zeros(num_points),
-            np.linspace(-0.5, 0.5, num_points),
-            np.zeros(num_points)
-        ])
+        # Empty mask fallback - return minimal 2-point path
+        return np.array([[0, -0.5, 0], [0, 0.5, 0]])
     
     min_depth = mask_depths.min()
     max_depth = mask_depths.max()
@@ -435,26 +528,17 @@ def extract_spine_path_3d(
                 y_indices
             ])
         else:
-            return np.column_stack([
-                np.zeros(num_points),
-                np.linspace(-0.5, 0.5, num_points),
-                np.zeros(num_points)
-            ])
+            return np.array([[0, -0.5, 0], [0, 0.5, 0]])
 
     if len(spine_path_xy) < 2:
-        return np.column_stack([
-            np.zeros(num_points),
-            np.linspace(-0.5, 0.5, num_points),
-            np.zeros(num_points)
-        ])
+        return np.array([[0, -0.5, 0], [0, 0.5, 0]])
 
-    # --- Resample the path evenly ---
-    spine_resampled = resample_polyline(spine_path_xy, num_points)
+    # Use spine path as-is (no resampling) - keep natural point count
     
     # --- Sample depth using bilinear interpolation ---
     sampled_depths = np.array([
         bilinear_sample(depth_map, x, y) 
-        for x, y in spine_resampled
+        for x, y in spine_path_xy
     ])
     
     logger.info(f"Sampled depths along spine: min={sampled_depths.min():.4f}, max={sampled_depths.max():.4f}, "
@@ -468,9 +552,9 @@ def extract_spine_path_3d(
     # Image coords: X=0..W (right), Y=0..H (down)
     # Blender coords: X centered on center_x, Y flipped and centered on center_y
     
-    x_normalized = (spine_resampled[:, 0] - center_x) / image_width
+    x_normalized = (spine_path_xy[:, 0] - center_x) / image_width
     # Flip Y: image Y down -> Blender Y up
-    y_normalized = -(spine_resampled[:, 1] - center_y) / image_height
+    y_normalized = -(spine_path_xy[:, 1] - center_y) / image_height
     
     # z_extent is in depth units (0 to depth_range, typically 0-1)
     # Scale it to be proportional to the normalized coordinates
@@ -491,21 +575,17 @@ def create_inflated_mesh_from_spine(
     front_contour: np.ndarray,
     spine_path_3d: np.ndarray,
     name: str = "InflatedMesh",
-    points_per_half: int = 16,
 ) -> 'bpy.types.Object':
     """
     Create a mesh from a front contour and a 3D curved spine path.
     
-    Unlike create_dual_loop_mesh which forces the side contour to X=0,
-    this function allows the spine to curve in 3D space with the actual
-    medial axis X,Y coordinates and depth-based Z inflation.
+    Uses the natural number of points from both contours without resampling.
     
     Args:
         front_contour: Front view contour Nx2 in XY plane (Blender normalized coords)
         spine_path_3d: Spine path Mx3 as [x, y, z_extent] where z_extent is the
                        inflation amount (symmetric ±Z from the path)
         name: Name for the mesh object
-        points_per_half: Number of points per half-loop
         
     Returns:
         The created Blender mesh object
@@ -513,11 +593,9 @@ def create_inflated_mesh_from_spine(
     from procedural_human.segmentation.operators.mesh_curve_operators import (
         find_axis_crossing_indices,
         split_contour_at_crossings,
-        resample_contour,
     )
     
     # Use front_contour as-is (already normalized in execute method)
-    # Do NOT call normalize_contour again - that would double-transform and misalign with spine
     front_norm = front_contour
     
     # Find where front contour crosses X=0 (top and bottom poles)
@@ -538,110 +616,49 @@ def create_inflated_mesh_from_spine(
     else:
         front_left, front_right = front_half2, front_half1
     
-    # Resample front halves
-    front_left_rs = resample_contour(front_left, points_per_half + 2)
-    front_right_rs = resample_contour(front_right, points_per_half + 2)
-    
-    # --- Process 3D spine path ---
-    # Resample spine to match points_per_half + 2
-    num_spine_points = points_per_half + 2
-    
-    if len(spine_path_3d) < num_spine_points:
-        # Need to interpolate spine
-        spine_2d = spine_path_3d[:, :2]  # x, y
-        spine_z = spine_path_3d[:, 2]    # z_extent
-        
-        # Resample the 2D path
-        spine_2d_rs = resample_polyline(spine_2d, num_spine_points)
-        
-        # Interpolate z_extent along the resampled path
-        if len(spine_path_3d) >= 2:
-            # Compute arc length for original and resampled
-            orig_diffs = np.diff(spine_2d, axis=0)
-            orig_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(orig_diffs**2, axis=1)))])
-            orig_len = orig_dist[-1] if orig_dist[-1] > 0 else 1.0
-            
-            rs_diffs = np.diff(spine_2d_rs, axis=0)
-            rs_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(rs_diffs**2, axis=1)))])
-            
-            spine_z_rs = np.interp(rs_dist, orig_dist, spine_z)
-        else:
-            spine_z_rs = np.full(num_spine_points, spine_z[0] if len(spine_z) > 0 else 0)
-        
-        spine_resampled = np.column_stack([spine_2d_rs, spine_z_rs])
-    else:
-        spine_resampled = resample_polyline(spine_path_3d[:, :2], num_spine_points)
-        # Interpolate z
-        orig_diffs = np.diff(spine_path_3d[:, :2], axis=0)
-        orig_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(orig_diffs**2, axis=1)))])
-        
-        rs_diffs = np.diff(spine_resampled, axis=0)
-        rs_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(rs_diffs**2, axis=1)))])
-        
-        spine_z_rs = np.interp(rs_dist, orig_dist, spine_path_3d[:, 2])
-        spine_resampled = np.column_stack([spine_resampled, spine_z_rs])
-    
-    # Keep spine in its original normalized coordinates (same as front contour)
-    # This ensures spine overlays correctly on front contour like in debug view
+    # Use spine path as-is (no resampling)
+    spine = spine_path_3d
     
     # Build the mesh
     bm = bmesh.new()
     
-    # Use spine endpoints as the poles instead of front contour X=0 crossings
-    # This ensures the mesh connects at the actual spine tip/tail positions
-    spine_tip = spine_resampled[0]   # First point (tip in image coords, after path reversal)
-    spine_tail = spine_resampled[-1]  # Last point (tail)
+    # Use spine endpoints as the poles
+    spine_tip = spine[0]   # First point
+    spine_tail = spine[-1]  # Last point
     
     # Create pole vertices at spine endpoints (Z=0 at poles)
     top_vert = bm.verts.new((spine_tip[0], spine_tip[1], 0))
     bottom_vert = bm.verts.new((spine_tail[0], spine_tail[1], 0))
     
-    # Find the front contour points closest to spine endpoints for proper connection
-    def find_closest_contour_idx(contour, point_xy):
-        """Find index of closest point on contour to given x,y."""
-        dists = np.sqrt((contour[:, 0] - point_xy[0])**2 + (contour[:, 1] - point_xy[1])**2)
-        return np.argmin(dists)
-    
-    # Get full front contour (before splitting)
-    # We need to resample based on spine endpoints, not X=0 crossings
-    tip_idx_left = find_closest_contour_idx(front_left, spine_tip[:2])
-    tip_idx_right = find_closest_contour_idx(front_right, spine_tip[:2])
-    tail_idx_left = find_closest_contour_idx(front_left, spine_tail[:2])
-    tail_idx_right = find_closest_contour_idx(front_right, spine_tail[:2])
-    
-    # Resample front halves to match spine point count
-    front_left_rs = resample_contour(front_left, points_per_half + 2)
-    front_right_rs = resample_contour(front_right, points_per_half + 2)
-    
-    # Front left vertices (X < 0, Z = 0)
+    # Front left vertices (use all points, Z = 0)
     front_left_verts = []
-    for i in range(1, len(front_left_rs) - 1):
-        x, y = front_left_rs[i]
+    for i in range(len(front_left)):
+        x, y = front_left[i]
         v = bm.verts.new((x, y, 0))
         front_left_verts.append(v)
     
-    # Front right vertices (X > 0, Z = 0)
+    # Front right vertices (use all points, Z = 0)
     front_right_verts = []
-    for i in range(1, len(front_right_rs) - 1):
-        x, y = front_right_rs[i]
+    for i in range(len(front_right)):
+        x, y = front_right[i]
         v = bm.verts.new((x, y, 0))
         front_right_verts.append(v)
     
-    # Spine back vertices (Z < 0, following curved path with actual coordinates)
+    # Spine back vertices (Z < 0, all points)
     spine_back_verts = []
-    for i in range(1, len(spine_resampled) - 1):
-        spine_x = spine_resampled[i, 0]
-        spine_y = spine_resampled[i, 1]  # Use actual Y, not rescaled
-        z_ext = spine_resampled[i, 2]
+    for i in range(len(spine)):
+        spine_x = spine[i, 0]
+        spine_y = spine[i, 1]
+        z_ext = spine[i, 2]
         v = bm.verts.new((spine_x, spine_y, -z_ext))
         spine_back_verts.append(v)
     
-    # Spine front vertices (Z > 0, following curved path with actual coordinates)
+    # Spine front vertices (Z > 0, all points)
     spine_front_verts = []
-    for i in range(1, len(spine_resampled) - 1):
-        spine_x = spine_resampled[i, 0]
-        spine_y = spine_resampled[i, 1]  # Use actual Y, not rescaled
-        z_ext = spine_resampled[i, 2]
+    for i in range(len(spine)):
+        spine_x = spine[i, 0]
+        spine_y = spine[i, 1]
+        z_ext = spine[i, 2]
         v = bm.verts.new((spine_x, spine_y, +z_ext))
         spine_front_verts.append(v)
     
@@ -806,14 +823,6 @@ class CreateDepthProfileMeshOperator(Operator):
     bl_description = "Create mesh from mask and depth map, aligned to main camera with Charrot-Gregory patch"
     bl_options = {'REGISTER', 'UNDO'}
     
-    points_per_half: IntProperty(
-        name="Points per Half",
-        description="Number of vertices per half-loop (excluding shared vertices)",
-        default=16,
-        min=4,
-        max=64
-    )
-    
     subdivisions: IntProperty(
         name="Patch Subdivisions",
         description="Subdivisions for Charrot-Gregory patch surface",
@@ -834,6 +843,14 @@ class CreateDepthProfileMeshOperator(Operator):
         default=1.0,
         min=0.1,
         max=5.0
+    )
+    
+    simplify_amount: FloatProperty(
+        name="Simplify Amount",
+        description="Contour simplification - higher values = fewer points (0 = no simplification)",
+        default=0.005,
+        min=0.0,
+        max=0.05
     )
     
     def execute(self, context):
@@ -889,6 +906,10 @@ class CreateDepthProfileMeshOperator(Operator):
             
             # Use largest contour
             front_contour = max(contours, key=len)
+            
+            # Simplify front contour if requested
+            if self.simplify_amount > 0:
+                front_contour = simplify_contour(front_contour, self.simplify_amount)
             
             # Calculate Visual Center using Distance Transform for better alignment
             # This ensures the "spine" aligns with the thickest part of the object
@@ -980,6 +1001,7 @@ class CreateDepthProfileMeshOperator(Operator):
             offset_y = norm_cy * view_plane_height
             
             # Extract 3D spine path with curved medial axis and depth-based Z inflation
+            # Uses natural point count from geodesic extraction (no resampling)
             spine_path_3d = extract_spine_path_3d(
                 mask,
                 depth_map,
@@ -987,8 +1009,11 @@ class CreateDepthProfileMeshOperator(Operator):
                 image_height,
                 center_x,
                 center_y,
-                num_points=self.points_per_half * 2 + 2
             )
+            
+            # Simplify spine path if requested
+            if self.simplify_amount > 0:
+                spine_path_3d = simplify_polyline(spine_path_3d, self.simplify_amount)
             
             # Apply depth scale to Z extent
             spine_path_3d[:, 2] *= self.depth_scale
@@ -998,7 +1023,6 @@ class CreateDepthProfileMeshOperator(Operator):
                 front_contour_norm,
                 spine_path_3d,
                 name=f"DepthMesh_{mask_index}",
-                points_per_half=self.points_per_half,
             )
             
             # Scale the mesh to match view plane size
@@ -1080,8 +1104,8 @@ class CreateDepthProfileMeshOperator(Operator):
     
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "points_per_half")
         layout.prop(self, "depth_scale")
+        layout.prop(self, "simplify_amount")
         layout.separator()
         layout.prop(self, "subdivisions")
         layout.prop(self, "merge_by_distance")
