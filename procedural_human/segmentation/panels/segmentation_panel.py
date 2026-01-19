@@ -100,6 +100,14 @@ class SegmentationControlsPanel(Panel):
         op = row.operator("segmentation.set_view_mode", text="Depth", depress=(view_mode == "DEPTH"))
         op.mode = "DEPTH"
         
+        # Spine button (debug: shows geodesic spine path)
+        op = row.operator("segmentation.set_view_mode", text="Spine", depress=(view_mode == "SPINE"))
+        op.mode = "SPINE"
+        
+        # Medial button (debug: shows medialness/speed map)
+        op = row.operator("segmentation.set_view_mode", text="Medial", depress=(view_mode == "MEDIAL"))
+        op.mode = "MEDIAL"
+        
         # None button
         op = row.operator("segmentation.set_view_mode", text="None", depress=(view_mode == "NONE"))
         op.mode = "NONE"

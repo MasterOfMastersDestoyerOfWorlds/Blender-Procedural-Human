@@ -1,4 +1,5 @@
 import bpy
+import bmesh
 from bpy.types import Operator
 from bpy.props import IntProperty, BoolProperty, FloatProperty
 import numpy as np
@@ -9,6 +10,10 @@ from procedural_human.segmentation.operators.mesh_curve_operators import (
     create_dual_loop_mesh, 
     apply_bezier_handles, 
     apply_charrot_gregory_patch_modifier
+)
+from procedural_human.segmentation.operators.segmentation_operators import (
+    set_current_spine_path,
+    set_current_medialness_map
 )
 import cv2
 from PIL import Image as PILImage
@@ -60,6 +65,7 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
     
     # Seed: Start at the point with maximum medialness (thickest/deepest point)
     seed_idx = np.unravel_index(np.argmax(speed_map), speed_map.shape)
+    logger.info(f"Geodesic seed (max medialness): {seed_idx}")
     
     # Sweep 1: Seed -> All Pixels
     # Initialize travel time map with 0 at seed
@@ -70,21 +76,53 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
     
     if t1 is None: # Safety check for empty/invalid masks
         return np.array([seed_idx[::-1]]) # Return seed as single point (x,y)
+    
+    # Convert to filled array for safe argmax (masked values become -inf so they're not selected)
+    if hasattr(t1, 'filled'):
+        t1_for_argmax = t1.filled(-np.inf)
+    else:
+        t1_for_argmax = np.where(np.isfinite(t1), t1, -np.inf)
         
     # Find Tip: The point furthest from the seed (Geodesic extremum 1)
-    # t1 is a masked array, argmax handles the mask automatically
-    tip_idx = np.unravel_index(np.argmax(t1), t1.shape)
+    tip_idx = np.unravel_index(np.argmax(t1_for_argmax), t1.shape)
     
     # Sweep 2: Tip -> All Pixels (The manifold we will backtrack on)
     phi[:] = 1
     phi[tip_idx] = 0
     t2 = skfmm.travel_time(np.ma.masked_array(phi, ~mask), speed_map)
     
+    # Convert to filled array for safe argmax
+    if hasattr(t2, 'filled'):
+        t2_for_argmax = t2.filled(-np.inf)
+    else:
+        t2_for_argmax = np.where(np.isfinite(t2), t2, -np.inf)
+    
     # Find Tail: The point furthest from the Tip (Geodesic extremum 2)
-    tail_idx = np.unravel_index(np.argmax(t2), t2.shape)
+    tail_idx = np.unravel_index(np.argmax(t2_for_argmax), t2.shape)
+    
+    # Log endpoint detection results
+    tip_tail_dist = np.sqrt((tip_idx[0] - tail_idx[0])**2 + (tip_idx[1] - tail_idx[1])**2)
+    logger.info(f"Geodesic endpoints: tip={tip_idx}, tail={tail_idx}, distance={tip_tail_dist:.1f}px")
     
     # --- Step 2: Backtracking (Gradient Descent) ---
     # Trace the path from Tail back to Tip by following the gradient of t2 "downhill"
+    
+    # Convert masked array to regular array, filling masked values with large number
+    # This ensures gradient descent stays inside the valid mask region
+    if hasattr(t2, 'filled'):
+        t2_filled = t2.filled(np.inf)
+    else:
+        t2_filled = np.where(np.isfinite(t2), t2, np.inf)
+    
+    # Get the max travel time for relative threshold (tail is furthest from tip)
+    max_travel_time = t2_filled[tail_idx]
+    if not np.isfinite(max_travel_time) or max_travel_time <= 0:
+        max_travel_time = 1.0
+    
+    # Use 1% of max travel time as threshold instead of absolute 1.0
+    time_threshold = max_travel_time * 0.01
+    
+    logger.info(f"Geodesic backtrack: tip={tip_idx}, tail={tail_idx}, max_time={max_travel_time:.4f}, threshold={time_threshold:.4f}")
     
     path = []
     current = np.array(tail_idx, dtype=np.float64)
@@ -94,14 +132,16 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
     step_size = 0.5
     max_steps = int(mask.size) # Prevent infinite loops
     
-    path.append(current[::-1]) # Store as (x, y)
+    path.append(current[::-1].copy()) # Store as (x, y) - MUST copy to avoid all points being same
     
-    for _ in range(max_steps):
+    for step_num in range(max_steps):
         # Integer coordinates for indexing
         r, c = int(current[0]), int(current[1])
         
-        # Stop if we are close to the tip (travel time is near zero)
-        if t2[r, c] < 1.0 or np.linalg.norm(current - tip) < 1.0:
+        # Stop if we are close to the tip (travel time near zero relative to max)
+        t2_val = t2_filled[r, c]
+        if not np.isfinite(t2_val) or t2_val < time_threshold or np.linalg.norm(current - tip) < 1.0:
+            logger.info(f"Geodesic backtrack stopped at step {step_num}: t2_val={t2_val:.4f}, dist_to_tip={np.linalg.norm(current - tip):.2f}")
             break
             
         # Compute local gradient (central differences)
@@ -109,8 +149,20 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
         r_min, r_max = max(0, r-1), min(mask.shape[0]-1, r+1)
         c_min, c_max = max(0, c-1), min(mask.shape[1]-1, c+1)
         
-        grad_r = (t2[r_max, c] - t2[r_min, c]) / 2.0
-        grad_c = (t2[r, c_max] - t2[r, c_min]) / 2.0
+        # Get values, treating inf as "wall" (don't go there)
+        v_r_max = t2_filled[r_max, c]
+        v_r_min = t2_filled[r_min, c]
+        v_c_max = t2_filled[r, c_max]
+        v_c_min = t2_filled[r, c_min]
+        
+        # If any neighbor is inf, use current value to avoid going that direction
+        if not np.isfinite(v_r_max): v_r_max = t2_val
+        if not np.isfinite(v_r_min): v_r_min = t2_val
+        if not np.isfinite(v_c_max): v_c_max = t2_val
+        if not np.isfinite(v_c_min): v_c_min = t2_val
+        
+        grad_r = (v_r_max - v_r_min) / 2.0
+        grad_c = (v_c_max - v_c_min) / 2.0
         
         grad = np.array([grad_r, grad_c])
         norm = np.linalg.norm(grad)
@@ -127,7 +179,7 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
         current[0] = np.clip(current[0], 0, mask.shape[0]-1)
         current[1] = np.clip(current[1], 0, mask.shape[1]-1)
         
-        path.append(current[::-1]) # Append (x, y)
+        path.append(current[::-1].copy()) # Append (x, y) - MUST copy
         
     return np.array(path)
 
@@ -216,6 +268,329 @@ def resample_polyline(points: np.ndarray, n: int) -> np.ndarray:
     
     return np.array(resampled)
 
+def extract_spine_path_3d(
+    mask: np.ndarray,
+    depth_map: np.ndarray,
+    image_width: int,
+    image_height: int,
+    center_x: float,
+    center_y: float,
+    num_points: int = 32
+) -> np.ndarray:
+    """
+    Extract the 3D spine path along the medial axis with depth-based Z inflation.
+    
+    Returns an Nx3 array of (x, y, z_extent) in Blender normalized coordinates where:
+    - x, y follow the actual curved medial axis path (not projected to vertical)
+    - z_extent = (depth - min_depth) for symmetric ±Z inflation
+    
+    Args:
+        mask: Binary segmentation mask
+        depth_map: Depth map (0-1 range)
+        image_width: Image width in pixels
+        image_height: Image height in pixels
+        center_x: X coordinate of visual center in image space
+        center_y: Y coordinate of visual center in image space
+        num_points: Number of points to resample the spine to
+        
+    Returns:
+        Nx3 array of [x, y, z_extent] in Blender normalized coordinates
+    """
+    # Resize depth map to match mask if needed
+    if depth_map.shape != mask.shape:
+        depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
+        depth_pil = depth_pil.resize((mask.shape[1], mask.shape[0]), PILImage.BILINEAR)
+        depth_map = np.array(depth_pil).astype(np.float32) / 255.0
+    
+    # Get min/max depth within the mask for z_extent calculation
+    mask_depths = depth_map[mask]
+    if len(mask_depths) == 0:
+        # Empty mask fallback
+        return np.column_stack([
+            np.zeros(num_points),
+            np.linspace(-0.5, 0.5, num_points),
+            np.zeros(num_points)
+        ])
+    
+    min_depth = mask_depths.min()
+    max_depth = mask_depths.max()
+    depth_range = max_depth - min_depth if max_depth > min_depth else 1.0
+    
+    # --- Geodesic Spine Extraction ---
+    try:
+        # 1. Compute Medialness Speed Map
+        speed_map = compute_medialness_speed(mask, depth_map)
+        
+        # Store medialness map for debug visualization
+        set_current_medialness_map(speed_map.copy() if hasattr(speed_map, 'copy') else speed_map)
+        
+        # 2. Extract the Geodesic Ridge (list of x,y coordinates in image space)
+        spine_path_xy = extract_geodesic_path(mask, speed_map)
+        
+        logger.info(f"Geodesic spine extracted: {len(spine_path_xy)} points, "
+                    f"x range [{spine_path_xy[:, 0].min():.1f}, {spine_path_xy[:, 0].max():.1f}], "
+                    f"y range [{spine_path_xy[:, 1].min():.1f}, {spine_path_xy[:, 1].max():.1f}]")
+        
+        # Store spine path for debug visualization
+        set_current_spine_path(spine_path_xy.copy())
+        
+    except (ImportError, Exception) as e:
+        logger.warning(f"Geodesic extraction failed ({e}), falling back to simple center.")
+        # Fallback: create a vertical line down the middle
+        y_indices = np.where(np.any(mask, axis=1))[0]
+        if len(y_indices) > 0:
+            spine_path_xy = np.column_stack([
+                np.full(len(y_indices), mask.shape[1] / 2), 
+                y_indices
+            ])
+        else:
+            return np.column_stack([
+                np.zeros(num_points),
+                np.linspace(-0.5, 0.5, num_points),
+                np.zeros(num_points)
+            ])
+
+    if len(spine_path_xy) < 2:
+        return np.column_stack([
+            np.zeros(num_points),
+            np.linspace(-0.5, 0.5, num_points),
+            np.zeros(num_points)
+        ])
+
+    # --- Resample the path evenly ---
+    spine_resampled = resample_polyline(spine_path_xy, num_points)
+    
+    # --- Sample depth using bilinear interpolation ---
+    sampled_depths = np.array([
+        bilinear_sample(depth_map, x, y) 
+        for x, y in spine_resampled
+    ])
+    
+    logger.info(f"Sampled depths along spine: min={sampled_depths.min():.4f}, max={sampled_depths.max():.4f}, "
+                f"mask depth range: [{min_depth:.4f}, {max_depth:.4f}]")
+    
+    # --- Compute z_extent: at min_depth -> 0, at max_depth -> depth_range ---
+    # z_extent is in 0 to depth_range (typically 0 to ~1)
+    z_extent = sampled_depths - min_depth
+    
+    # --- Convert X,Y from image space to Blender normalized coordinates ---
+    # Image coords: X=0..W (right), Y=0..H (down)
+    # Blender coords: X centered on center_x, Y flipped and centered on center_y
+    
+    x_normalized = (spine_resampled[:, 0] - center_x) / image_width
+    # Flip Y: image Y down -> Blender Y up
+    y_normalized = -(spine_resampled[:, 1] - center_y) / image_height
+    
+    # z_extent is in depth units (0 to depth_range, typically 0-1)
+    # Scale it to be proportional to the normalized coordinates
+    # We want max z_extent to produce visible thickness relative to the object size
+    # Use a similar scale as X/Y (normalized to image dimensions)
+    # The depth_range represents the full "thickness" of the object
+    z_normalized = z_extent * 0.5  # Scale factor for visible thickness
+    
+    logger.info(f"Spine path 3D: x range [{x_normalized.min():.4f}, {x_normalized.max():.4f}], "
+                f"y range [{y_normalized.min():.4f}, {y_normalized.max():.4f}], "
+                f"z range [{z_normalized.min():.4f}, {z_normalized.max():.4f}], "
+                f"depth range [{min_depth:.4f}, {max_depth:.4f}]")
+    
+    return np.column_stack([x_normalized, y_normalized, z_normalized])
+
+
+def create_inflated_mesh_from_spine(
+    front_contour: np.ndarray,
+    spine_path_3d: np.ndarray,
+    name: str = "InflatedMesh",
+    points_per_half: int = 16,
+) -> 'bpy.types.Object':
+    """
+    Create a mesh from a front contour and a 3D curved spine path.
+    
+    Unlike create_dual_loop_mesh which forces the side contour to X=0,
+    this function allows the spine to curve in 3D space with the actual
+    medial axis X,Y coordinates and depth-based Z inflation.
+    
+    Args:
+        front_contour: Front view contour Nx2 in XY plane (Blender normalized coords)
+        spine_path_3d: Spine path Mx3 as [x, y, z_extent] where z_extent is the
+                       inflation amount (symmetric ±Z from the path)
+        name: Name for the mesh object
+        points_per_half: Number of points per half-loop
+        
+    Returns:
+        The created Blender mesh object
+    """
+    from procedural_human.segmentation.operators.mesh_curve_operators import (
+        normalize_contour,
+        find_axis_crossing_indices,
+        split_contour_at_crossings,
+        resample_contour,
+    )
+    
+    # Normalize front contour to unit height
+    front_norm = normalize_contour(front_contour)
+    
+    # Find where front contour crosses X=0 (top and bottom poles)
+    front_top_cross, front_bottom_cross = find_axis_crossing_indices(front_norm)
+    
+    top_y = front_top_cross[1][1]
+    bottom_y = front_bottom_cross[1][1]
+    
+    # Split front contour at crossings
+    front_half1, front_half2 = split_contour_at_crossings(front_norm, front_top_cross, front_bottom_cross)
+    
+    # Determine which half is left (X < 0) and which is right (X > 0)
+    def get_dominant_x_sign(half):
+        mid_idx = len(half) // 2
+        if mid_idx < len(half):
+            return -1 if half[mid_idx, 0] < 0 else 1
+        return 0
+    
+    if get_dominant_x_sign(front_half1) < 0:
+        front_left, front_right = front_half1, front_half2
+    else:
+        front_left, front_right = front_half2, front_half1
+    
+    # Resample front halves
+    front_left_rs = resample_contour(front_left, points_per_half + 2)
+    front_right_rs = resample_contour(front_right, points_per_half + 2)
+    
+    # --- Process 3D spine path ---
+    # Resample spine to match points_per_half + 2
+    num_spine_points = points_per_half + 2
+    
+    if len(spine_path_3d) < num_spine_points:
+        # Need to interpolate spine
+        spine_2d = spine_path_3d[:, :2]  # x, y
+        spine_z = spine_path_3d[:, 2]    # z_extent
+        
+        # Resample the 2D path
+        spine_2d_rs = resample_polyline(spine_2d, num_spine_points)
+        
+        # Interpolate z_extent along the resampled path
+        if len(spine_path_3d) >= 2:
+            # Compute arc length for original and resampled
+            orig_diffs = np.diff(spine_2d, axis=0)
+            orig_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(orig_diffs**2, axis=1)))])
+            orig_len = orig_dist[-1] if orig_dist[-1] > 0 else 1.0
+            
+            rs_diffs = np.diff(spine_2d_rs, axis=0)
+            rs_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(rs_diffs**2, axis=1)))])
+            
+            spine_z_rs = np.interp(rs_dist, orig_dist, spine_z)
+        else:
+            spine_z_rs = np.full(num_spine_points, spine_z[0] if len(spine_z) > 0 else 0)
+        
+        spine_resampled = np.column_stack([spine_2d_rs, spine_z_rs])
+    else:
+        spine_resampled = resample_polyline(spine_path_3d[:, :2], num_spine_points)
+        # Interpolate z
+        orig_diffs = np.diff(spine_path_3d[:, :2], axis=0)
+        orig_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(orig_diffs**2, axis=1)))])
+        
+        rs_diffs = np.diff(spine_resampled, axis=0)
+        rs_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(rs_diffs**2, axis=1)))])
+        
+        spine_z_rs = np.interp(rs_dist, orig_dist, spine_path_3d[:, 2])
+        spine_resampled = np.column_stack([spine_resampled, spine_z_rs])
+    
+    # Normalize spine Y to match front contour height range
+    spine_y = spine_resampled[:, 1]
+    spine_y_min, spine_y_max = spine_y.min(), spine_y.max()
+    spine_height = spine_y_max - spine_y_min if spine_y_max > spine_y_min else 1.0
+    
+    # Scale spine to match front contour height (top_y to bottom_y)
+    front_height = top_y - bottom_y
+    spine_y_normalized = bottom_y + (spine_y - spine_y_min) / spine_height * front_height
+    
+    # Build the mesh
+    bm = bmesh.new()
+    
+    # Create shared pole vertices at top and bottom
+    top_vert = bm.verts.new((0, top_y, 0))
+    bottom_vert = bm.verts.new((0, bottom_y, 0))
+    
+    # Front left vertices (X < 0, Z = 0)
+    front_left_verts = []
+    for i in range(1, len(front_left_rs) - 1):
+        x, y = front_left_rs[i]
+        v = bm.verts.new((x, y, 0))
+        front_left_verts.append(v)
+    
+    # Front right vertices (X > 0, Z = 0)
+    front_right_verts = []
+    for i in range(1, len(front_right_rs) - 1):
+        x, y = front_right_rs[i]
+        v = bm.verts.new((x, y, 0))
+        front_right_verts.append(v)
+    
+    # Spine back vertices (Z < 0, following curved path)
+    spine_back_verts = []
+    for i in range(1, len(spine_resampled) - 1):
+        # Use the actual X from the curved spine, normalized Y, and -z_extent
+        spine_x = spine_resampled[i, 0]
+        spine_y_val = spine_y_normalized[i]
+        z_ext = spine_resampled[i, 2]
+        v = bm.verts.new((spine_x, spine_y_val, -z_ext))
+        spine_back_verts.append(v)
+    
+    # Spine front vertices (Z > 0, following curved path)
+    spine_front_verts = []
+    for i in range(1, len(spine_resampled) - 1):
+        spine_x = spine_resampled[i, 0]
+        spine_y_val = spine_y_normalized[i]
+        z_ext = spine_resampled[i, 2]
+        v = bm.verts.new((spine_x, spine_y_val, +z_ext))
+        spine_front_verts.append(v)
+    
+    bm.verts.ensure_lookup_table()
+    
+    # Create 4 quadrant faces
+    # Q1: front_left + spine_back
+    q1_verts = [top_vert] + front_left_verts + [bottom_vert] + list(reversed(spine_back_verts))
+    if len(q1_verts) >= 3:
+        try:
+            bm.faces.new(q1_verts)
+        except ValueError as e:
+            logger.warning(f"Could not create Q1 face: {e}")
+    
+    # Q2: spine_front + front_left (reversed)
+    q2_verts = [top_vert] + spine_front_verts + [bottom_vert] + list(reversed(front_left_verts))
+    if len(q2_verts) >= 3:
+        try:
+            bm.faces.new(q2_verts)
+        except ValueError as e:
+            logger.warning(f"Could not create Q2 face: {e}")
+    
+    # Q3: front_right + spine_front (reversed)
+    q3_verts = [top_vert] + front_right_verts + [bottom_vert] + list(reversed(spine_front_verts))
+    if len(q3_verts) >= 3:
+        try:
+            bm.faces.new(q3_verts)
+        except ValueError as e:
+            logger.warning(f"Could not create Q3 face: {e}")
+    
+    # Q4: spine_back + front_right (reversed)
+    q4_verts = [top_vert] + spine_back_verts + [bottom_vert] + list(reversed(front_right_verts))
+    if len(q4_verts) >= 3:
+        try:
+            bm.faces.new(q4_verts)
+        except ValueError as e:
+            logger.warning(f"Could not create Q4 face: {e}")
+    
+    # Create mesh data
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    
+    # Create object
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    
+    logger.info(f"Created inflated mesh '{name}' with {len(mesh.vertices)} vertices")
+    
+    return obj
+
+
 def create_spine_contour_from_depth(
     mask: np.ndarray,
     depth_map: np.ndarray,
@@ -226,8 +601,8 @@ def create_spine_contour_from_depth(
     """
     Create a side profile (spine) contour using Geodesic Pathfinding.
     
-    Replaces row-scanning with Global Geodesic Extraction to find the 
-    true ridge of the object, then projects it to the Y-axis for profile generation.
+    NOTE: This is the legacy function that projects the spine to a vertical line.
+    For curved 3D spines, use extract_spine_path_3d() + create_inflated_mesh_from_spine().
     """
     # Resize depth map to match mask if needed
     if depth_map.shape != mask.shape:
@@ -501,24 +876,24 @@ class CreateDepthProfileMeshOperator(Operator):
             offset_x = norm_cx * view_plane_width
             offset_y = norm_cy * view_plane_height
             
-            # Create spine contour from depth map
-            # Use the improved function that uses distance transform and local contrast
-            spine_contour = create_spine_contour_from_depth(
+            # Extract 3D spine path with curved medial axis and depth-based Z inflation
+            spine_path_3d = extract_spine_path_3d(
                 mask,
                 depth_map,
                 image_width,
                 image_height,
+                center_x,
+                center_y,
                 num_points=self.points_per_half * 2 + 2
             )
             
-            # Apply depth scale
-            # Spine X is Z-thickness.
-            spine_contour[:, 0] *= self.depth_scale
+            # Apply depth scale to Z extent
+            spine_path_3d[:, 2] *= self.depth_scale
             
-            # Create the mesh
-            obj = create_dual_loop_mesh(
+            # Create the mesh using the new inflated mesh function
+            obj = create_inflated_mesh_from_spine(
                 front_contour_norm,
-                spine_contour,
+                spine_path_3d,
                 name=f"DepthMesh_{mask_index}",
                 points_per_half=self.points_per_half,
             )

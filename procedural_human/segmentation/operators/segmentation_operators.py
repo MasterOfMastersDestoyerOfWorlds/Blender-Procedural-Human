@@ -234,6 +234,169 @@ def set_current_depth_map(depth_map):
     _current_depth_map = depth_map
 
 
+def get_current_spine_path():
+    """Get the currently stored spine path (Nx2 array of image coordinates)."""
+    return _current_spine_path
+
+
+def set_current_spine_path(spine_path):
+    """Store the spine path for debug visualization.
+    
+    Args:
+        spine_path: Nx2 numpy array of (x, y) coordinates in image space
+    """
+    global _current_spine_path
+    _current_spine_path = spine_path
+
+
+def get_current_medialness_map():
+    """Get the currently stored medialness/speed map."""
+    return _current_medialness_map
+
+
+def set_current_medialness_map(medialness_map):
+    """Store the medialness/speed map for debug visualization.
+    
+    Args:
+        medialness_map: 2D numpy array of medialness values
+    """
+    global _current_medialness_map
+    _current_medialness_map = medialness_map
+
+
+def apply_medialness_overlay(image, medialness_map, colormap='hot'):
+    """
+    Apply a medialness map overlay onto a Blender image.
+    
+    Args:
+        image: Blender image object
+        medialness_map: 2D numpy array of medialness values (can be masked array)
+        colormap: Matplotlib colormap name
+    """
+    if medialness_map is None:
+        return
+    
+    width, height = image.size
+    
+    # Handle masked arrays
+    if hasattr(medialness_map, 'filled'):
+        data = medialness_map.filled(0)
+        mask = medialness_map.mask if hasattr(medialness_map, 'mask') else np.zeros_like(data, dtype=bool)
+    else:
+        data = medialness_map
+        mask = np.zeros_like(data, dtype=bool)
+    
+    # Resize to match image if needed
+    if data.shape[0] != height or data.shape[1] != width:
+        from PIL import Image as PILImage
+        data_img = PILImage.fromarray((data * 255 / max(data.max(), 1e-6)).astype(np.uint8))
+        data_img = data_img.resize((width, height), PILImage.BILINEAR)
+        data = np.array(data_img).astype(np.float32) / 255.0
+        
+        mask_img = PILImage.fromarray((mask.astype(np.uint8) * 255))
+        mask_img = mask_img.resize((width, height), PILImage.NEAREST)
+        mask = np.array(mask_img) > 127
+    
+    # Normalize to 0-1
+    data_min = data[~mask].min() if np.any(~mask) else 0
+    data_max = data[~mask].max() if np.any(~mask) else 1
+    if data_max > data_min:
+        data_norm = (data - data_min) / (data_max - data_min)
+    else:
+        data_norm = np.zeros_like(data)
+    
+    # Apply colormap
+    try:
+        from matplotlib.cm import get_cmap
+        cmap = get_cmap(colormap)
+        colored = cmap(data_norm)[:, :, :3]  # RGB only
+    except ImportError:
+        # Fallback: simple hot colormap (black -> red -> yellow -> white)
+        colored = np.zeros((height, width, 3))
+        colored[:, :, 0] = np.clip(data_norm * 3, 0, 1)  # Red
+        colored[:, :, 1] = np.clip(data_norm * 3 - 1, 0, 1)  # Green
+        colored[:, :, 2] = np.clip(data_norm * 3 - 2, 0, 1)  # Blue
+    
+    # Flip vertically for Blender
+    colored = np.flipud(colored)
+    mask_flipped = np.flipud(mask)
+    
+    # Get current pixels and blend
+    pixels = np.array(image.pixels[:]).reshape(height, width, 4)
+    
+    # Only apply where not masked
+    for c in range(3):
+        channel = colored[:, :, c]
+        channel[mask_flipped] = pixels[:, :, c][mask_flipped]  # Keep original where masked
+        pixels[:, :, c] = channel
+    
+    image.pixels[:] = pixels.flatten()
+    image.update()
+
+
+def apply_spine_overlay(image, spine_path, color=(1.0, 0.0, 1.0), line_width=3):
+    """
+    Apply a spine path overlay onto a Blender image.
+    
+    Args:
+        image: Blender image object
+        spine_path: Nx2 numpy array of (x, y) coordinates in image space
+        color: RGB tuple for the line color
+        line_width: Width of the line in pixels
+    """
+    if spine_path is None or len(spine_path) < 2:
+        return
+    
+    width, height = image.size
+    pixels = np.array(image.pixels[:]).reshape(height, width, 4)
+    
+    # Draw the spine path as a thick line
+    for i in range(len(spine_path) - 1):
+        x0, y0 = spine_path[i]
+        x1, y1 = spine_path[i + 1]
+        
+        # Draw line segment using Bresenham-like algorithm
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        steps = max(int(max(dx, dy)), 1)
+        
+        for t in range(steps + 1):
+            frac = t / steps if steps > 0 else 0
+            x = int(x0 + frac * (x1 - x0))
+            y = int(y0 + frac * (y1 - y0))
+            
+            # Draw thick line by filling neighboring pixels
+            for ox in range(-line_width, line_width + 1):
+                for oy in range(-line_width, line_width + 1):
+                    px, py = x + ox, y + oy
+                    # Flip Y for Blender (image origin is bottom-left)
+                    py_flipped = height - 1 - py
+                    if 0 <= px < width and 0 <= py_flipped < height:
+                        pixels[py_flipped, px, 0] = color[0]
+                        pixels[py_flipped, px, 1] = color[1]
+                        pixels[py_flipped, px, 2] = color[2]
+                        pixels[py_flipped, px, 3] = 1.0
+    
+    # Mark endpoints with circles
+    for idx, point in enumerate([spine_path[0], spine_path[-1]]):
+        x, y = int(point[0]), int(point[1])
+        endpoint_color = (0.0, 1.0, 0.0) if idx == 0 else (1.0, 0.0, 0.0)  # Green=start, Red=end
+        radius = line_width + 2
+        for ox in range(-radius, radius + 1):
+            for oy in range(-radius, radius + 1):
+                if ox*ox + oy*oy <= radius*radius:
+                    px, py = x + ox, y + oy
+                    py_flipped = height - 1 - py
+                    if 0 <= px < width and 0 <= py_flipped < height:
+                        pixels[py_flipped, px, 0] = endpoint_color[0]
+                        pixels[py_flipped, px, 1] = endpoint_color[1]
+                        pixels[py_flipped, px, 2] = endpoint_color[2]
+                        pixels[py_flipped, px, 3] = 1.0
+    
+    image.pixels[:] = pixels.flatten()
+    image.update()
+
+
 def apply_depth_overlay(image, depth_map, colormap='viridis'):
     """
     Apply a depth map overlay onto a Blender image.
@@ -338,6 +501,28 @@ def refresh_mask_overlay(context):
                     color = tuple(item.color[:3])  # RGB only
                     alpha = item.color[3]
                     apply_mask_overlay(image, [mask], color=color, alpha=alpha)
+    elif view_mode == "SPINE":
+        # Show the spine path overlaid on the first enabled mask
+        spine_path = get_current_spine_path()
+        masks = get_current_masks()
+        
+        # First draw the mask faintly so we can see the context
+        if masks:
+            settings = context.scene.segmentation_mask_settings
+            for item in settings.masks:
+                if item.enabled and 0 <= item.mask_index < len(masks):
+                    mask = masks[item.mask_index]
+                    apply_mask_overlay(image, [mask], color=(0.3, 0.3, 0.3), alpha=0.3)
+                    break  # Just show first enabled mask
+        
+        # Then draw the spine path on top
+        if spine_path is not None:
+            apply_spine_overlay(image, spine_path, color=(1.0, 0.0, 1.0), line_width=3)
+    elif view_mode == "MEDIAL":
+        # Show the medialness/speed map (used for geodesic pathfinding)
+        medialness_map = get_current_medialness_map()
+        if medialness_map is not None:
+            apply_medialness_overlay(image, medialness_map, colormap='hot')
     
     # Update debug planes visibility
     update_debug_planes_visibility(context)
@@ -351,6 +536,8 @@ _current_masks = []
 _current_image = None
 _original_image_pixels = None  # Store original pixels for reset
 _current_depth_map = None  # Store depth map
+_current_spine_path = None  # Store spine path for debug visualization (Nx2 image coords)
+_current_medialness_map = None  # Store medialness/speed map for debug visualization
 
 
 def get_current_masks():
