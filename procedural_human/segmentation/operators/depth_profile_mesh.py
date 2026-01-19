@@ -11,6 +11,161 @@ from procedural_human.segmentation.operators.mesh_curve_operators import (
     apply_charrot_gregory_patch_modifier,
     create_spine_contour_from_depth
 )
+import cv2
+from PIL import Image as PILImage
+from scipy.ndimage import distance_transform_edt
+
+def create_spine_contour_from_depth(
+    mask: np.ndarray,
+    depth_map: np.ndarray,
+    image_width: int,
+    image_height: int,
+    num_points: int = 32
+) -> np.ndarray:
+    """
+    Create a side profile (spine) contour from a mask and depth map.
+    
+    The spine is created by:
+    1. Finding the visual centerline of the mask using Distance Transform
+    2. Sampling depth values along this centerline
+    3. Creating a symmetric two-sided profile (width proportional to depth)
+    4. Normalizing depth using local contrast within the mask
+    
+    Args:
+        mask: Boolean mask array (H, W)
+        depth_map: Depth map array (H, W) normalized 0-1
+        image_width: Width of the source image
+        image_height: Height of the source image
+        num_points: Number of points in the output contour
+        
+    Returns:
+        Nx2 array of contour points in side view plane (X=Z, Y=Y)
+    """
+    # Resize depth map to match mask if needed
+    if depth_map.shape != mask.shape:
+        depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
+        depth_pil = depth_pil.resize((mask.shape[1], mask.shape[0]), PILImage.BILINEAR)
+        depth_map = np.array(depth_pil).astype(np.float32) / 255.0
+    
+    # Try to use distance transform for better centerline
+    try:
+        # Compute distance from non-mask pixels
+        dist_transform = distance_transform_edt(mask)
+    except ImportError:
+        logger.warning("scipy not found, falling back to geometric center for spine generation")
+        dist_transform = None
+    
+    # Find Y range of the mask to ensure we cover the full extent
+    y_indices = np.where(np.any(mask, axis=1))[0]
+    if len(y_indices) < 2:
+        logger.warning("Not enough mask rows for spine contour")
+        # Return a simple default contour
+        y_coords = np.linspace(-0.5, 0.5, num_points)
+        x_coords = np.zeros_like(y_coords) * 0.1  # Default width
+        return np.column_stack([x_coords, y_coords])
+        
+    y_min, y_max = y_indices[0], y_indices[-1]
+    
+    rows_with_mask = []
+    centerline_depths = []
+    
+    # Collect data for all rows with mask
+    for y in range(y_min, y_max + 1):
+        row_mask = mask[y, :]
+        if not np.any(row_mask):
+            continue
+            
+        mask_indices = np.where(row_mask)[0]
+        if len(mask_indices) == 0:
+            continue
+            
+        left = mask_indices[0]
+        right = mask_indices[-1]
+        
+        # Determine center X
+        if dist_transform is not None:
+            # Find the point with max distance in this row within the mask
+            # Restrict search to the mask segment
+            row_dist = dist_transform[y, left:right+1]
+            if len(row_dist) > 0:
+                local_max_idx = np.argmax(row_dist)
+                center_x = left + local_max_idx
+            else:
+                center_x = (left + right) / 2.0
+        else:
+            center_x = (left + right) / 2.0
+            
+        rows_with_mask.append(y)
+        
+        # Sample depth at centerline
+        sample_width = max(1, int((right - left) * 0.1))
+        sample_left = max(0, int(center_x - sample_width // 2))
+        sample_right = min(mask.shape[1], int(center_x + sample_width // 2))
+        
+        if sample_right > sample_left:
+            depth_sample = np.mean(depth_map[y, sample_left:sample_right])
+        else:
+            depth_sample = depth_map[y, int(center_x)]
+            
+        centerline_depths.append(depth_sample)
+    
+    if len(rows_with_mask) < 2:
+        return np.column_stack([np.zeros(num_points), np.linspace(-0.5, 0.5, num_points)])
+    
+    # Convert lists to arrays
+    rows_array = np.array(rows_with_mask, dtype=np.float32)
+    centerline_depths_array = np.array(centerline_depths, dtype=np.float32)
+    
+    # Normalize Y to [-0.5, 0.5] range matching front contour normalization
+    # Front contour is normalized relative to its own bounding box height
+    mask_height = y_max - y_min
+    if mask_height == 0: mask_height = 1.0
+    mask_center_y = (y_max + y_min) / 2.0
+    
+    # Blender Y is up, Image Y is down. Flip Y.
+    # normalize_contour centers Y.
+    y_normalized = -(rows_array - mask_center_y) / mask_height
+    
+    # Sort by Y
+    sort_idx = np.argsort(y_normalized)
+    y_normalized = y_normalized[sort_idx]
+    centerline_depths_array = centerline_depths_array[sort_idx]
+    
+    # Interpolate to get evenly spaced Y values from min to max
+    y_target = np.linspace(y_normalized[0], y_normalized[-1], num_points)
+    
+    # Interpolate depths
+    depth_interp = np.interp(y_target, y_normalized, centerline_depths_array)
+    
+    # Normalize depth (Local Contrast)
+    depth_min = depth_interp.min()
+    depth_max = depth_interp.max()
+    
+    if depth_max > depth_min:
+        depth_normalized = (depth_interp - depth_min) / (depth_max - depth_min)
+    else:
+        depth_normalized = np.ones_like(depth_interp) * 0.5
+    
+    # Map normalized depth to width factor
+    width_factor = depth_normalized
+    
+    # Create contour
+    contour_points = []
+    
+    # Right side (positive Z)
+    for i in range(num_points):
+        z = width_factor[i] * 0.5
+        y = y_target[i]
+        contour_points.append([z, y])
+    
+    # Left side (negative Z)
+    for i in range(num_points - 1, -1, -1):
+        z = -width_factor[i] * 0.5
+        y = y_target[i]
+        contour_points.append([z, y])
+    
+    return np.array(contour_points)
+
 
 @procedural_operator
 class CreateDepthProfileMeshOperator(Operator):
@@ -108,7 +263,6 @@ class CreateDepthProfileMeshOperator(Operator):
             # Calculate Visual Center using Distance Transform for better alignment
             # This ensures the "spine" aligns with the thickest part of the object
             try:
-                from scipy.ndimage import distance_transform_edt
                 dist = distance_transform_edt(mask)
                 max_idx = np.argmax(dist)
                 max_y, max_x = np.unravel_index(max_idx, dist.shape)
@@ -148,7 +302,6 @@ class CreateDepthProfileMeshOperator(Operator):
             # Mask depth values
             # Resize depth map to match mask if needed before indexing
             if depth_map.shape != mask.shape:
-                from PIL import Image as PILImage
                 depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
                 depth_pil = depth_pil.resize((mask.shape[1], mask.shape[0]), PILImage.BILINEAR)
                 depth_map_resized = np.array(depth_pil).astype(np.float32) / 255.0
