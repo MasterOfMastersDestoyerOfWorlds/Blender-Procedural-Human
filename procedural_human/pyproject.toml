@@ -71,6 +71,7 @@ dependencies = [
     "numba",
     "pypose",
     "scikit-learn",
+    "scikit-fmm",
     "depth-anything-3 @ git+https://github.com/ByteDance-Seed/Depth-Anything-3.git",
 ]
 

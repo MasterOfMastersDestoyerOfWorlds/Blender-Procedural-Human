@@ -8,12 +8,213 @@ from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.segmentation.operators.mesh_curve_operators import (
     create_dual_loop_mesh, 
     apply_bezier_handles, 
-    apply_charrot_gregory_patch_modifier,
-    create_spine_contour_from_depth
+    apply_charrot_gregory_patch_modifier
 )
 import cv2
 from PIL import Image as PILImage
 from scipy.ndimage import distance_transform_edt
+import skfmm # NEW DEPENDENCY: pip install scikit-fmm
+from scipy.ndimage import gaussian_filter # NEW IMPORT
+
+def compute_medialness_speed(mask: np.ndarray, depth_map: np.ndarray, gamma: float = 10.0) -> np.ndarray:
+    """
+    Constructs the Medialness Field and Speed Map.
+    Fuses Boundary Distance (EDT) and Volumetric Depth.
+    Ref: Section 4.1 of the Report.
+    """
+    # 1. Smooth Depth to remove local noise spikes
+    depth_smooth = gaussian_filter(depth_map, sigma=2.0)
+    
+    # 2. Euclidean Distance Transform (EDT) from boundary
+    # This keeps the spine away from jagged edges
+    if np.any(mask):
+        edt = distance_transform_edt(mask)
+    else:
+        return np.zeros_like(depth_map)
+
+    # 3. Normalize inputs to 0.0 - 1.0 range
+    d_max = np.max(depth_smooth)
+    e_max = np.max(edt)
+    
+    d_norm = depth_smooth / d_max if d_max > 0 else depth_smooth
+    edt_norm = edt / e_max if e_max > 0 else edt
+    
+    # 4. Fusion (Medialness M)
+    # Average of geometric center (EDT) and volumetric center (Depth)
+    M = 0.5 * edt_norm + 0.5 * d_norm
+    
+    # 5. Potential & Speed Function
+    # P(x) = exp(-gamma * M). Speed F = 1/P = exp(gamma * M).
+    # We use a masked array so the Fast Marching Method ignores the background.
+    speed = np.exp(gamma * M)
+    
+    return np.ma.masked_array(speed, ~mask)
+
+def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray:
+    """
+    Performs the Double Sweep and Gradient Descent Backtracking.
+    Ref: Section 5 and 6.2 of the Report.
+    Returns: Nx2 array of (x, y) coordinates for the spine.
+    """
+    # --- Step 1: Endpoint Detection (Double Sweep) ---
+    
+    # Seed: Start at the point with maximum medialness (thickest/deepest point)
+    seed_idx = np.unravel_index(np.argmax(speed_map), speed_map.shape)
+    
+    # Sweep 1: Seed -> All Pixels
+    # Initialize travel time map with 0 at seed
+    phi = np.ones_like(speed_map.data)
+    phi[seed_idx] = 0
+    # skfmm.travel_time computes geodesic distance on the manifold
+    t1 = skfmm.travel_time(np.ma.masked_array(phi, ~mask), speed_map)
+    
+    if t1 is None: # Safety check for empty/invalid masks
+        return np.array([seed_idx[::-1]]) # Return seed as single point (x,y)
+        
+    # Find Tip: The point furthest from the seed (Geodesic extremum 1)
+    # t1 is a masked array, argmax handles the mask automatically
+    tip_idx = np.unravel_index(np.argmax(t1), t1.shape)
+    
+    # Sweep 2: Tip -> All Pixels (The manifold we will backtrack on)
+    phi[:] = 1
+    phi[tip_idx] = 0
+    t2 = skfmm.travel_time(np.ma.masked_array(phi, ~mask), speed_map)
+    
+    # Find Tail: The point furthest from the Tip (Geodesic extremum 2)
+    tail_idx = np.unravel_index(np.argmax(t2), t2.shape)
+    
+    # --- Step 2: Backtracking (Gradient Descent) ---
+    # Trace the path from Tail back to Tip by following the gradient of t2 "downhill"
+    
+    path = []
+    current = np.array(tail_idx, dtype=np.float64)
+    tip = np.array(tip_idx, dtype=np.float64)
+    
+    # Parameters for gradient descent
+    step_size = 0.5
+    max_steps = int(mask.size) # Prevent infinite loops
+    
+    path.append(current[::-1]) # Store as (x, y)
+    
+    for _ in range(max_steps):
+        # Integer coordinates for indexing
+        r, c = int(current[0]), int(current[1])
+        
+        # Stop if we are close to the tip (travel time is near zero)
+        if t2[r, c] < 1.0 or np.linalg.norm(current - tip) < 1.0:
+            break
+            
+        # Compute local gradient (central differences)
+        # Handle boundaries by clamping
+        r_min, r_max = max(0, r-1), min(mask.shape[0]-1, r+1)
+        c_min, c_max = max(0, c-1), min(mask.shape[1]-1, c+1)
+        
+        grad_r = (t2[r_max, c] - t2[r_min, c]) / 2.0
+        grad_c = (t2[r, c_max] - t2[r, c_min]) / 2.0
+        
+        grad = np.array([grad_r, grad_c])
+        norm = np.linalg.norm(grad)
+        
+        if norm > 1e-6:
+            grad /= norm
+        else:
+            break # Stuck in flat area
+            
+        # Move "downhill" (against the gradient of distance)
+        current -= grad * step_size
+        
+        # Boundary check
+        current[0] = np.clip(current[0], 0, mask.shape[0]-1)
+        current[1] = np.clip(current[1], 0, mask.shape[1]-1)
+        
+        path.append(current[::-1]) # Append (x, y)
+        
+    return np.array(path)
+
+def bilinear_sample(image: np.ndarray, x: float, y: float) -> float:
+    """
+    Bilinear interpolation for sampling image at sub-pixel coordinates.
+    
+    Args:
+        image: 2D image array (H, W)
+        x: X coordinate (column, can be fractional)
+        y: Y coordinate (row, can be fractional)
+        
+    Returns:
+        Interpolated value at (x, y)
+    """
+    h, w = image.shape
+    # Clamp coordinates to valid range
+    x = np.clip(x, 0, w - 1)
+    y = np.clip(y, 0, h - 1)
+    
+    # Get integer coordinates (floor)
+    x0, y0 = int(np.floor(x)), int(np.floor(y))
+    x1 = min(x0 + 1, w - 1)
+    y1 = min(y0 + 1, h - 1)
+    
+    # Get fractional parts
+    fx = x - x0
+    fy = y - y0
+    
+    # Bilinear interpolation
+    v00 = image[y0, x0]
+    v10 = image[y0, x1]
+    v01 = image[y1, x0]
+    v11 = image[y1, x1]
+    
+    v0 = v00 * (1 - fx) + v10 * fx
+    v1 = v01 * (1 - fx) + v11 * fx
+    v = v0 * (1 - fy) + v1 * fy
+    
+    return v
+
+def resample_polyline(points: np.ndarray, n: int) -> np.ndarray:
+    """
+    Resample a polyline to have exactly n points, evenly spaced along the path.
+    
+    Args:
+        points: Nx2 array of (x, y) coordinates
+        n: Target number of points
+        
+    Returns:
+        n x 2 array of resampled points
+    """
+    if len(points) < 2:
+        return points
+    
+    # Compute cumulative distances along the path
+    diffs = np.diff(points, axis=0)
+    distances = np.sqrt(np.sum(diffs**2, axis=1))
+    cumulative = np.concatenate([[0], np.cumsum(distances)])
+    total_length = cumulative[-1]
+    
+    if total_length < 1e-6:
+        # Path has zero length, return first point repeated
+        return np.tile(points[0], (n, 1))
+    
+    # Generate evenly spaced parameter values
+    t_target = np.linspace(0, total_length, n)
+    
+    # Interpolate points
+    resampled = []
+    for t in t_target:
+        # Find the segment containing t
+        idx = np.searchsorted(cumulative, t, side='right') - 1
+        idx = max(0, min(idx, len(points) - 2))
+        
+        # Interpolate within the segment
+        if cumulative[idx + 1] > cumulative[idx]:
+            seg_t = (t - cumulative[idx]) / (cumulative[idx + 1] - cumulative[idx])
+        else:
+            seg_t = 0.0
+        
+        p0 = points[idx]
+        p1 = points[idx + 1]
+        p = p0 + seg_t * (p1 - p0)
+        resampled.append(p)
+    
+    return np.array(resampled)
 
 def create_spine_contour_from_depth(
     mask: np.ndarray,
@@ -23,23 +224,10 @@ def create_spine_contour_from_depth(
     num_points: int = 32
 ) -> np.ndarray:
     """
-    Create a side profile (spine) contour from a mask and depth map.
+    Create a side profile (spine) contour using Geodesic Pathfinding.
     
-    The spine is created by:
-    1. Finding the visual centerline of the mask using Distance Transform
-    2. Sampling depth values along this centerline
-    3. Creating a symmetric two-sided profile (width proportional to depth)
-    4. Normalizing depth using local contrast within the mask
-    
-    Args:
-        mask: Boolean mask array (H, W)
-        depth_map: Depth map array (H, W) normalized 0-1
-        image_width: Width of the source image
-        image_height: Height of the source image
-        num_points: Number of points in the output contour
-        
-    Returns:
-        Nx2 array of contour points in side view plane (X=Z, Y=Y)
+    Replaces row-scanning with Global Geodesic Extraction to find the 
+    true ridge of the object, then projects it to the Y-axis for profile generation.
     """
     # Resize depth map to match mask if needed
     if depth_map.shape != mask.shape:
@@ -47,123 +235,87 @@ def create_spine_contour_from_depth(
         depth_pil = depth_pil.resize((mask.shape[1], mask.shape[0]), PILImage.BILINEAR)
         depth_map = np.array(depth_pil).astype(np.float32) / 255.0
     
-    # Try to use distance transform for better centerline
+    # --- Geodesic Spine Extraction ---
     try:
-        # Compute distance from non-mask pixels
-        dist_transform = distance_transform_edt(mask)
-    except ImportError:
-        logger.warning("scipy not found, falling back to geometric center for spine generation")
-        dist_transform = None
-    
-    # Find Y range of the mask to ensure we cover the full extent
-    y_indices = np.where(np.any(mask, axis=1))[0]
-    if len(y_indices) < 2:
-        logger.warning("Not enough mask rows for spine contour")
-        # Return a simple default contour
-        y_coords = np.linspace(-0.5, 0.5, num_points)
-        x_coords = np.zeros_like(y_coords) * 0.1  # Default width
-        return np.column_stack([x_coords, y_coords])
+        # 1. Compute Medialness Speed Map
+        speed_map = compute_medialness_speed(mask, depth_map)
         
-    y_min, y_max = y_indices[0], y_indices[-1]
-    
-    rows_with_mask = []
-    centerline_depths = []
-    
-    # Collect data for all rows with mask
-    for y in range(y_min, y_max + 1):
-        row_mask = mask[y, :]
-        if not np.any(row_mask):
-            continue
-            
-        mask_indices = np.where(row_mask)[0]
-        if len(mask_indices) == 0:
-            continue
-            
-        left = mask_indices[0]
-        right = mask_indices[-1]
+        # 2. Extract the Geodesic Ridge (list of x,y coordinates)
+        spine_path_xy = extract_geodesic_path(mask, speed_map)
         
-        # Determine center X
-        if dist_transform is not None:
-            # Find the point with max distance in this row within the mask
-            # Restrict search to the mask segment
-            row_dist = dist_transform[y, left:right+1]
-            if len(row_dist) > 0:
-                local_max_idx = np.argmax(row_dist)
-                center_x = left + local_max_idx
-            else:
-                center_x = (left + right) / 2.0
+    except (ImportError, Exception) as e:
+        logger.warning(f"Geodesic extraction failed ({e}), falling back to simple center.")
+        # Fallback: create a dummy vertical line down the middle
+        y_indices = np.where(np.any(mask, axis=1))[0]
+        if len(y_indices) > 0:
+            spine_path_xy = np.column_stack([
+                np.full(len(y_indices), mask.shape[1]/2), 
+                y_indices
+            ])
         else:
-            center_x = (left + right) / 2.0
-            
-        rows_with_mask.append(y)
-        
-        # Sample depth at centerline
-        sample_width = max(1, int((right - left) * 0.1))
-        sample_left = max(0, int(center_x - sample_width // 2))
-        sample_right = min(mask.shape[1], int(center_x + sample_width // 2))
-        
-        if sample_right > sample_left:
-            depth_sample = np.mean(depth_map[y, sample_left:sample_right])
-        else:
-            depth_sample = depth_map[y, int(center_x)]
-            
-        centerline_depths.append(depth_sample)
+            return np.column_stack([np.zeros(num_points), np.linspace(-0.5, 0.5, num_points)])
+
+    if len(spine_path_xy) < 2:
+         return np.column_stack([np.zeros(num_points), np.linspace(-0.5, 0.5, num_points)])
+
+    # --- Sample Data along the Spine ---
+    # We now have the TRUE ridge. We sample depth along this ridge.
     
-    if len(rows_with_mask) < 2:
-        return np.column_stack([np.zeros(num_points), np.linspace(-0.5, 0.5, num_points)])
+    # Map coordinates to integers for sampling
+    sample_x = np.clip(spine_path_xy[:, 0], 0, mask.shape[1]-1).astype(int)
+    sample_y = np.clip(spine_path_xy[:, 1], 0, mask.shape[0]-1).astype(int)
     
-    # Convert lists to arrays
-    rows_array = np.array(rows_with_mask, dtype=np.float32)
-    centerline_depths_array = np.array(centerline_depths, dtype=np.float32)
+    sampled_depths = depth_map[sample_y, sample_x]
     
-    # Normalize Y to [-0.5, 0.5] range matching front contour normalization
-    # Front contour is normalized relative to its own bounding box height
-    mask_height = y_max - y_min
-    if mask_height == 0: mask_height = 1.0
+    # --- Projection and Normalization ---
+    # The mesh generator expects [Z, Y] where Y is the vertical coordinate.
+    # We project our geodesic spine points onto the Y-axis.
+    
+    y_min, y_max = np.min(sample_y), np.max(sample_y)
+    mask_height = max(1.0, y_max - y_min)
     mask_center_y = (y_max + y_min) / 2.0
     
-    # Blender Y is up, Image Y is down. Flip Y.
-    # normalize_contour centers Y.
-    y_normalized = -(rows_array - mask_center_y) / mask_height
+    # Normalize Y to Blender coords [-0.5, 0.5] (Up is positive)
+    # Image Y is down, so we flip signs.
+    y_normalized = -(sample_y - mask_center_y) / mask_height
     
-    # Sort by Y
+    # Sort data by Y to ensure the contour is monotonic for the mesh generator
+    # (Note: This "straightens" curved spines into a vertical profile, 
+    # which is required if the target mesh is a straight extrusion)
     sort_idx = np.argsort(y_normalized)
-    y_normalized = y_normalized[sort_idx]
-    centerline_depths_array = centerline_depths_array[sort_idx]
+    y_sorted = y_normalized[sort_idx]
+    depth_sorted = sampled_depths[sort_idx]
     
-    # Interpolate to get evenly spaced Y values from min to max
-    y_target = np.linspace(y_normalized[0], y_normalized[-1], num_points)
+    # Remove duplicates in Y for interpolation
+    unique_y, unique_indices = np.unique(y_sorted, return_index=True)
+    unique_depths = depth_sorted[unique_indices]
     
-    # Interpolate depths
-    depth_interp = np.interp(y_target, y_normalized, centerline_depths_array)
+    if len(unique_y) < 2:
+         return np.column_stack([np.zeros(num_points), np.linspace(-0.5, 0.5, num_points)])
+
+    # Interpolate to requested num_points
+    y_target = np.linspace(unique_y[0], unique_y[-1], num_points)
+    depth_interp = np.interp(y_target, unique_y, unique_depths)
     
     # Normalize depth (Local Contrast)
-    depth_min = depth_interp.min()
-    depth_max = depth_interp.max()
-    
-    if depth_max > depth_min:
-        depth_normalized = (depth_interp - depth_min) / (depth_max - depth_min)
+    d_min = depth_interp.min()
+    d_max = depth_interp.max()
+    if d_max > d_min:
+        width_factor = (depth_interp - d_min) / (d_max - d_min)
     else:
-        depth_normalized = np.ones_like(depth_interp) * 0.5
-    
-    # Map normalized depth to width factor
-    width_factor = depth_normalized
-    
-    # Create contour
+        width_factor = np.full_like(depth_interp, 0.5)
+        
+    # --- Construct Output Contour ---
     contour_points = []
     
-    # Right side (positive Z)
+    # Right side (+Z)
     for i in range(num_points):
-        z = width_factor[i] * 0.5
-        y = y_target[i]
-        contour_points.append([z, y])
-    
-    # Left side (negative Z)
+        contour_points.append([width_factor[i] * 0.5, y_target[i]])
+        
+    # Left side (-Z)
     for i in range(num_points - 1, -1, -1):
-        z = -width_factor[i] * 0.5
-        y = y_target[i]
-        contour_points.append([z, y])
-    
+        contour_points.append([-width_factor[i] * 0.5, y_target[i]])
+        
     return np.array(contour_points)
 
 

@@ -1435,6 +1435,7 @@ dependencies = [
     { name = "regex" },
     { name = "requests" },
     { name = "safetensors" },
+    { name = "scikit-fmm" },
     { name = "scikit-learn" },
     { name = "timm" },
     { name = "torch", version = "2.5.1+cu118", source = { url = "https://download.pytorch.org/whl/cu118/torch-2.5.1%2Bcu118-cp311-cp311-win_amd64.whl" }, marker = "sys_platform == 'win32'" },
@@ -1482,6 +1483,7 @@ requires-dist = [
     { name = "regex" },
     { name = "requests" },
     { name = "safetensors" },
+    { name = "scikit-fmm" },
     { name = "scikit-learn" },
     { name = "timm", specifier = ">=1.0.17" },
     { name = "torch", marker = "sys_platform == 'win32'", url = "https://download.pytorch.org/whl/cu118/torch-2.5.1%2Bcu118-cp311-cp311-win_amd64.whl" },
@@ -1879,6 +1881,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/d8/0c8a7dc9b41dcac53c4cbf9df2b9c83e0e0097203de8b37a712b345c0be5/safetensors-0.7.0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:b0f6d66c1c538d5a94a73aa9ddca8ccc4227e6c9ff555322ea40bdd142391dd4", size = 677368, upload-time = "2025-11-19T15:18:41.627Z" },
     { url = "https://files.pythonhosted.org/packages/05/e5/cb4b713c8a93469e3c5be7c3f8d77d307e65fe89673e731f5c2bfd0a9237/safetensors-0.7.0-cp38-abi3-win32.whl", hash = "sha256:c74af94bf3ac15ac4d0f2a7c7b4663a15f8c2ab15ed0fc7531ca61d0835eccba", size = 326423, upload-time = "2025-11-19T15:18:45.74Z" },
     { url = "https://files.pythonhosted.org/packages/5d/e6/ec8471c8072382cb91233ba7267fd931219753bb43814cbc71757bfd4dab/safetensors-0.7.0-cp38-abi3-win_amd64.whl", hash = "sha256:d1239932053f56f3456f32eb9625590cc7582e905021f94636202a864d470755", size = 341380, upload-time = "2025-11-19T15:18:44.427Z" },
+]
+
+[[package]]
+name = "scikit-fmm"
+version = "2025.6.23"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/94/3b2969fc1f64a5faafad03c421ed200e717fc99c556985da0a17822f868d/scikit_fmm-2025.6.23.tar.gz", hash = "sha256:a3208f5f3881e40b7878d1121ba39b8d57f1bc38fb4e5f0d9d1c66a9b007e44f", size = 467753, upload-time = "2025-06-23T19:04:13.366Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/0f/61132e1b4cc9e8ac81723f3fcbe096408f957ceeaffa2b8b949b212aff12/scikit_fmm-2025.6.23-cp311-cp311-win_amd64.whl", hash = "sha256:e5fedb1b79d6def36616cce9d32f26954355c2b3e4e0c7e6b1ca28ad9ca5a0d4", size = 69025, upload-time = "2025-06-23T19:04:10.083Z" },
 ]
 
 [[package]]
