@@ -100,10 +100,6 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
     # Find Tail: The point furthest from the Tip (Geodesic extremum 2)
     tail_idx = np.unravel_index(np.argmax(t2_for_argmax), t2.shape)
     
-    # Log endpoint detection results
-    tip_tail_dist = np.sqrt((tip_idx[0] - tail_idx[0])**2 + (tip_idx[1] - tail_idx[1])**2)
-    logger.info(f"Geodesic endpoints: tip={tip_idx}, tail={tail_idx}, distance={tip_tail_dist:.1f}px")
-    
     # --- Step 2: Backtracking (Gradient Descent) ---
     # Trace the path from Tail back to Tip by following the gradient of t2 "downhill"
     
@@ -113,6 +109,63 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
         t2_filled = t2.filled(np.inf)
     else:
         t2_filled = np.where(np.isfinite(t2), t2, np.inf)
+    
+    # Verify tip and tail are deep inside the mask (not near boundary)
+    # Compute EDT to measure distance from boundary
+    edt = distance_transform_edt(mask)
+    min_boundary_dist = 3  # Minimum pixels from boundary
+    
+    def find_interior_point(idx, t_filled, mask, edt, search_radius=20):
+        """Find a valid interior point near idx that's away from mask boundary."""
+        r, c = idx
+        # Check if current point is valid and interior
+        if mask[r, c] and np.isfinite(t_filled[r, c]) and edt[r, c] >= min_boundary_dist:
+            return idx
+        
+        # Search for a point that's both valid and interior
+        best_idx = None
+        best_score = -np.inf
+        for radius in range(1, search_radius + 1):
+            for dr in range(-radius, radius + 1):
+                for dc in range(-radius, radius + 1):
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < mask.shape[0] and 0 <= nc < mask.shape[1]:
+                        if mask[nr, nc] and np.isfinite(t_filled[nr, nc]):
+                            # Score based on travel time (want high) and boundary distance (want high)
+                            boundary_dist = edt[nr, nc]
+                            if boundary_dist >= min_boundary_dist:
+                                score = t_filled[nr, nc] + boundary_dist * 0.1
+                                if score > best_score:
+                                    best_score = score
+                                    best_idx = (nr, nc)
+            if best_idx is not None:
+                return best_idx
+        
+        # If no interior point found, just find any valid point
+        for radius in range(1, search_radius + 1):
+            for dr in range(-radius, radius + 1):
+                for dc in range(-radius, radius + 1):
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < mask.shape[0] and 0 <= nc < mask.shape[1]:
+                        if mask[nr, nc] and np.isfinite(t_filled[nr, nc]):
+                            return (nr, nc)
+        return idx  # Fallback to original
+    
+    # Ensure tip is interior
+    if not mask[tip_idx] or not np.isfinite(t2_filled[tip_idx]) or edt[tip_idx] < min_boundary_dist:
+        logger.warning(f"Tip {tip_idx} is near boundary (edt={edt[tip_idx]:.1f}), finding interior point...")
+        tip_idx = find_interior_point(tip_idx, t2_filled, mask, edt)
+        logger.info(f"Found interior tip at {tip_idx} (edt={edt[tip_idx]:.1f})")
+    
+    # Ensure tail is interior
+    if not mask[tail_idx] or not np.isfinite(t2_filled[tail_idx]) or edt[tail_idx] < min_boundary_dist:
+        logger.warning(f"Tail {tail_idx} is near boundary (edt={edt[tail_idx]:.1f}), finding interior point...")
+        tail_idx = find_interior_point(tail_idx, t2_filled, mask, edt)
+        logger.info(f"Found interior tail at {tail_idx} (edt={edt[tail_idx]:.1f})")
+    
+    # Log endpoint detection results
+    tip_tail_dist = np.sqrt((tip_idx[0] - tail_idx[0])**2 + (tip_idx[1] - tail_idx[1])**2)
+    logger.info(f"Geodesic endpoints: tip={tip_idx}, tail={tail_idx}, distance={tip_tail_dist:.1f}px")
     
     # Get the max travel time for relative threshold (tail is furthest from tip)
     max_travel_time = t2_filled[tail_idx]
@@ -173,12 +226,50 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
             break # Stuck in flat area
             
         # Move "downhill" (against the gradient of distance)
-        current -= grad * step_size
+        # Try the step, but validate we stay inside the mask
+        new_pos = current - grad * step_size
         
         # Boundary check
-        current[0] = np.clip(current[0], 0, mask.shape[0]-1)
-        current[1] = np.clip(current[1], 0, mask.shape[1]-1)
+        new_pos[0] = np.clip(new_pos[0], 0, mask.shape[0]-1)
+        new_pos[1] = np.clip(new_pos[1], 0, mask.shape[1]-1)
         
+        new_r, new_c = int(new_pos[0]), int(new_pos[1])
+        
+        # Check if new position is inside mask with finite travel time
+        if not mask[new_r, new_c] or not np.isfinite(t2_filled[new_r, new_c]):
+            # Try smaller steps
+            found_valid = False
+            for substep in [0.25, 0.1, 0.05]:
+                test_pos = current - grad * substep
+                test_pos[0] = np.clip(test_pos[0], 0, mask.shape[0]-1)
+                test_pos[1] = np.clip(test_pos[1], 0, mask.shape[1]-1)
+                test_r, test_c = int(test_pos[0]), int(test_pos[1])
+                if mask[test_r, test_c] and np.isfinite(t2_filled[test_r, test_c]):
+                    new_pos = test_pos
+                    found_valid = True
+                    break
+            
+            if not found_valid:
+                # Try stepping directly toward tip if gradient fails
+                to_tip = tip - current
+                to_tip_norm = np.linalg.norm(to_tip)
+                if to_tip_norm > 1e-6:
+                    to_tip /= to_tip_norm
+                    for substep in [0.5, 0.25, 0.1]:
+                        test_pos = current + to_tip * substep
+                        test_pos[0] = np.clip(test_pos[0], 0, mask.shape[0]-1)
+                        test_pos[1] = np.clip(test_pos[1], 0, mask.shape[1]-1)
+                        test_r, test_c = int(test_pos[0]), int(test_pos[1])
+                        if mask[test_r, test_c] and np.isfinite(t2_filled[test_r, test_c]):
+                            new_pos = test_pos
+                            found_valid = True
+                            break
+            
+            if not found_valid:
+                # Can't move further, stop here
+                break
+        
+        current = new_pos
         path.append(current[::-1].copy()) # Append (x, y) - MUST copy
         
     return np.array(path)
@@ -420,20 +511,17 @@ def create_inflated_mesh_from_spine(
         The created Blender mesh object
     """
     from procedural_human.segmentation.operators.mesh_curve_operators import (
-        normalize_contour,
         find_axis_crossing_indices,
         split_contour_at_crossings,
         resample_contour,
     )
     
-    # Normalize front contour to unit height
-    front_norm = normalize_contour(front_contour)
+    # Use front_contour as-is (already normalized in execute method)
+    # Do NOT call normalize_contour again - that would double-transform and misalign with spine
+    front_norm = front_contour
     
     # Find where front contour crosses X=0 (top and bottom poles)
     front_top_cross, front_bottom_cross = find_axis_crossing_indices(front_norm)
-    
-    top_y = front_top_cross[1][1]
-    bottom_y = front_bottom_cross[1][1]
     
     # Split front contour at crossings
     front_half1, front_half2 = split_contour_at_crossings(front_norm, front_top_cross, front_bottom_cross)
@@ -493,21 +581,37 @@ def create_inflated_mesh_from_spine(
         spine_z_rs = np.interp(rs_dist, orig_dist, spine_path_3d[:, 2])
         spine_resampled = np.column_stack([spine_resampled, spine_z_rs])
     
-    # Normalize spine Y to match front contour height range
-    spine_y = spine_resampled[:, 1]
-    spine_y_min, spine_y_max = spine_y.min(), spine_y.max()
-    spine_height = spine_y_max - spine_y_min if spine_y_max > spine_y_min else 1.0
-    
-    # Scale spine to match front contour height (top_y to bottom_y)
-    front_height = top_y - bottom_y
-    spine_y_normalized = bottom_y + (spine_y - spine_y_min) / spine_height * front_height
+    # Keep spine in its original normalized coordinates (same as front contour)
+    # This ensures spine overlays correctly on front contour like in debug view
     
     # Build the mesh
     bm = bmesh.new()
     
-    # Create shared pole vertices at top and bottom
-    top_vert = bm.verts.new((0, top_y, 0))
-    bottom_vert = bm.verts.new((0, bottom_y, 0))
+    # Use spine endpoints as the poles instead of front contour X=0 crossings
+    # This ensures the mesh connects at the actual spine tip/tail positions
+    spine_tip = spine_resampled[0]   # First point (tip in image coords, after path reversal)
+    spine_tail = spine_resampled[-1]  # Last point (tail)
+    
+    # Create pole vertices at spine endpoints (Z=0 at poles)
+    top_vert = bm.verts.new((spine_tip[0], spine_tip[1], 0))
+    bottom_vert = bm.verts.new((spine_tail[0], spine_tail[1], 0))
+    
+    # Find the front contour points closest to spine endpoints for proper connection
+    def find_closest_contour_idx(contour, point_xy):
+        """Find index of closest point on contour to given x,y."""
+        dists = np.sqrt((contour[:, 0] - point_xy[0])**2 + (contour[:, 1] - point_xy[1])**2)
+        return np.argmin(dists)
+    
+    # Get full front contour (before splitting)
+    # We need to resample based on spine endpoints, not X=0 crossings
+    tip_idx_left = find_closest_contour_idx(front_left, spine_tip[:2])
+    tip_idx_right = find_closest_contour_idx(front_right, spine_tip[:2])
+    tail_idx_left = find_closest_contour_idx(front_left, spine_tail[:2])
+    tail_idx_right = find_closest_contour_idx(front_right, spine_tail[:2])
+    
+    # Resample front halves to match spine point count
+    front_left_rs = resample_contour(front_left, points_per_half + 2)
+    front_right_rs = resample_contour(front_right, points_per_half + 2)
     
     # Front left vertices (X < 0, Z = 0)
     front_left_verts = []
@@ -523,23 +627,22 @@ def create_inflated_mesh_from_spine(
         v = bm.verts.new((x, y, 0))
         front_right_verts.append(v)
     
-    # Spine back vertices (Z < 0, following curved path)
+    # Spine back vertices (Z < 0, following curved path with actual coordinates)
     spine_back_verts = []
     for i in range(1, len(spine_resampled) - 1):
-        # Use the actual X from the curved spine, normalized Y, and -z_extent
         spine_x = spine_resampled[i, 0]
-        spine_y_val = spine_y_normalized[i]
+        spine_y = spine_resampled[i, 1]  # Use actual Y, not rescaled
         z_ext = spine_resampled[i, 2]
-        v = bm.verts.new((spine_x, spine_y_val, -z_ext))
+        v = bm.verts.new((spine_x, spine_y, -z_ext))
         spine_back_verts.append(v)
     
-    # Spine front vertices (Z > 0, following curved path)
+    # Spine front vertices (Z > 0, following curved path with actual coordinates)
     spine_front_verts = []
     for i in range(1, len(spine_resampled) - 1):
         spine_x = spine_resampled[i, 0]
-        spine_y_val = spine_y_normalized[i]
+        spine_y = spine_resampled[i, 1]  # Use actual Y, not rescaled
         z_ext = spine_resampled[i, 2]
-        v = bm.verts.new((spine_x, spine_y_val, +z_ext))
+        v = bm.verts.new((spine_x, spine_y, +z_ext))
         spine_front_verts.append(v)
     
     bm.verts.ensure_lookup_table()
