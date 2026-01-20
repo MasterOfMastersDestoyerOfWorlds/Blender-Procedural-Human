@@ -14,6 +14,7 @@ from bpy_extras import view3d_utils
 from bpy.types import Gizmo
 from mathutils import Vector, Matrix
 from procedural_human.gizmo.mesh_curves_gizmo import get_edge_layers
+from procedural_human.logger import logger
 
 HANDLE_COLOR = (1.0, 0.4, 0.1)
 HANDLE_COLOR_SELECTED = (1.0, 0.8, 0.2)
@@ -36,7 +37,7 @@ class LoftHandleGizmo(Gizmo):
         self.is_dragging = False
         self.has_moved = False
         
-        self.scale_basis = 0.3
+        self.scale_basis = 0.1
         self.color = HANDLE_COLOR
         self.alpha = 1.0
         self.color_highlight = HANDLE_COLOR_SELECTED
@@ -155,8 +156,7 @@ class LoftHandleGizmo(Gizmo):
             result = self._handle_mousemove(context, event)
             if result:
                 return result
-        elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-            return self._handle_release(context, event)
+
         elif event.type in {'ESC', 'RIGHTMOUSE'}:
             return self._handle_cancel(context, event)
         
@@ -231,26 +231,7 @@ class LoftHandleGizmo(Gizmo):
         self.matrix_basis.translation = matrix @ (vert.co + new_handle)
         
         return None
-    
-    def _handle_release(self, context, event):
-        """Handle mouse release - push to undo buffer only if handle was moved."""
-        if not self.is_dragging:
-            return {'FINISHED'}
-        
-        was_dragging = self.is_dragging
-        did_move = self.has_moved
-        self.is_dragging = False
-        self.has_moved = False
-        
-        if was_dragging and did_move:
-            print("DEBUG: Saving Undo Step: Move Loft Handle")
-            bpy.ops.ed.undo_push(
-                {'window': context.window, 'screen': context.screen, 'area': context.area, 'region': context.region},
-                message="Move Loft Handle"
-            )
-        
-        return {'FINISHED'}
-    
+
     def _handle_cancel(self, context, event):
         """Handle cancel - restore all handles to original positions."""
         obj = context.object
@@ -274,7 +255,16 @@ class LoftHandleGizmo(Gizmo):
     
     def exit(self, context, cancel):
         """Called when gizmo interaction ends."""
-        if cancel and self.is_dragging:
-            self._handle_cancel(context, None)
+        if cancel:
+            if self.is_dragging:
+                self._handle_cancel(context, None)
+        else:
+            if self.is_dragging and self.has_moved:
+                logger.info("DEBUG: Saving Undo Step: Move Loft Handle")
+                try:
+                    bpy.ops.ed.undo_push()
+                except Exception as e:
+                    logger.error(f"Failed to push undo step: {e}")
+        
         self.is_dragging = False
         self.has_moved = False
