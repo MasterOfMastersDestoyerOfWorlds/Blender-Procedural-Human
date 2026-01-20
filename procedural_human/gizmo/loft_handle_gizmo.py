@@ -48,18 +48,30 @@ class LoftHandleGizmo(Gizmo):
         if self.target_edge_index < 0 or self.hide:
             return
         
+        gpu.state.depth_test_set('NONE')
         shape = self._get_custom_shape()
         if shape:
-            self.draw_custom_shape(shape)
+            rv3d = context.space_data.region_3d
+            view_inv = rv3d.view_matrix.inverted()
+            matrix = view_inv.to_3x3().to_4x4()
+            matrix.translation = self.matrix_basis.translation
+            self.draw_custom_shape(shape, matrix=matrix)
+        gpu.state.depth_test_set('LESS_EQUAL')
     
     def draw_select(self, context, select_id):
         """Draw selection shape for picking."""
         if self.target_edge_index < 0 or self.hide:
             return
         
+        gpu.state.depth_test_set('NONE')
         shape = self._get_custom_shape()
         if shape:
-            self.draw_custom_shape(shape, select_id=select_id)
+            rv3d = context.space_data.region_3d
+            view_inv = rv3d.view_matrix.inverted()
+            matrix = view_inv.to_3x3().to_4x4()
+            matrix.translation = self.matrix_basis.translation
+            self.draw_custom_shape(shape, matrix=matrix, select_id=select_id)
+        gpu.state.depth_test_set('LESS_EQUAL')
     
     def _get_custom_shape(self):
         """Get or create the custom shape for this gizmo as a circle (triangle fan)."""
@@ -231,7 +243,11 @@ class LoftHandleGizmo(Gizmo):
         self.has_moved = False
         
         if was_dragging and did_move:
-            bpy.ops.ed.undo_push(message="Move Loft Handle")
+            print("DEBUG: Saving Undo Step: Move Loft Handle")
+            bpy.ops.ed.undo_push(
+                {'window': context.window, 'screen': context.screen, 'area': context.area, 'region': context.region},
+                message="Move Loft Handle"
+            )
         
         return {'FINISHED'}
     

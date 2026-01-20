@@ -288,23 +288,13 @@ shader = gpu.shader.from_builtin('UNIFORM_COLOR')
 
 def _is_loft_tool_active(context):
     """Check if the loft handles tool is currently active."""
-    try:
-        if not context.workspace:
-            return True
-        if not hasattr(context.workspace, 'tools'):
-            return True
-        tools = context.workspace.tools
-        if not hasattr(tools, 'active'):
-            return True
-        active_tool = tools.active
-        if not active_tool:
-            return True
-        tool_idname = getattr(active_tool, 'idname', None)
-        if tool_idname == 'mesh_tool.loft_handles':
-            return True
-        return False
-    except Exception:
+
+    tool = bpy.context.workspace.tools.from_space_view3d_mode(
+        bpy.context.mode, create=False
+    )
+    if tool.idname == 'mesh_tool.loft_handles':
         return True
+    return False
 
 
 def _get_active_vertex(bm):
@@ -463,6 +453,12 @@ class LoftHandleGizmoGroup(GizmoGroup):
 
     def draw_prepare(self, context):
         """Update gizmo positions and visibility each frame."""
+        # Only show gizmos if the loft tool is active
+        if not _is_loft_tool_active(context):
+            for gz in self._gizmos:
+                gz.hide = True
+            return
+
         ob = context.object
         if not ob or ob.type != 'MESH':
             for gz in self._gizmos:
