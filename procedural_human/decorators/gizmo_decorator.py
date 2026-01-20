@@ -13,12 +13,12 @@ from procedural_human.decorators.discoverable_decorator import (
 from procedural_human.logger import logger
 
 
-class procedural_gizmo(DiscoverableClassDecorator):
+class procedural_gizmo_group(DiscoverableClassDecorator):
     """
     Decorator for GizmoGroup classes that automatically sets Blender gizmo attributes.
     
     Usage:
-        @procedural_gizmo
+        @procedural_gizmo_group
         class MyGizmoGroup(GizmoGroup):
             # bl_idname, bl_label, bl_space_type, bl_region_type auto-set
             
@@ -62,7 +62,7 @@ class procedural_gizmo(DiscoverableClassDecorator):
         if not hasattr(cls, "bl_options"):
             cls.bl_options = {'3D', 'PERSISTENT'}
         
-        procedural_gizmo.registry[cls.__name__] = cls
+        procedural_gizmo_group.registry[cls.__name__] = cls
 
     @classmethod
     def discover_and_register_all_decorators(cls):
@@ -70,10 +70,10 @@ class procedural_gizmo(DiscoverableClassDecorator):
         Register all decorated GizmoGroup classes.
         """
         logger.info(
-            f"[Gizmo Registry] Registering {len(procedural_gizmo.registry.keys())} gizmo groups"
+            f"[Gizmo Registry] Registering {len(procedural_gizmo_group.registry.keys())} gizmo groups"
         )
         
-        for gizmo_cls in procedural_gizmo.registry.values():
+        for gizmo_cls in procedural_gizmo_group.registry.values():
             try:
                 # Unregister first if already registered (hot-reload support)
                 try:
@@ -88,7 +88,7 @@ class procedural_gizmo(DiscoverableClassDecorator):
                 )
         
         logger.info(
-            f"[Gizmo Registry] Registered: {[gizmo_cls.bl_idname for gizmo_cls in procedural_gizmo.registry.values()]}"
+            f"[Gizmo Registry] Registered: {[gizmo_cls.bl_idname for gizmo_cls in procedural_gizmo_group.registry.values()]}"
         )
 
     @classmethod
@@ -105,14 +105,14 @@ class procedural_gizmo(DiscoverableClassDecorator):
         cls._draw_handlers.clear()
         
         # Unregister gizmo groups
-        for gizmo_cls in reversed(list(procedural_gizmo.registry.values())):
+        for gizmo_cls in reversed(list(procedural_gizmo_group.registry.values())):
             try:
                 bpy.utils.unregister_class(gizmo_cls)
             except Exception as e:
                 logger.warning(
                     f"Failed to unregister gizmo group {gizmo_cls.__name__}: {e}"
                 )
-        procedural_gizmo.registry.clear()
+        procedural_gizmo_group.registry.clear()
 
     @classmethod
     def register_draw_handler(cls, name: str, callback, args=(), draw_type='POST_VIEW'):

@@ -264,7 +264,7 @@ from procedural_human.decorators.curve_preset_decorator import register_preset_c
 from procedural_human.decorators.panel_decorator import procedural_panel
 from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.decorators.workspace_decorator import procedural_workspace
-from procedural_human.decorators.gizmo_decorator import procedural_gizmo
+from procedural_human.decorators.gizmo_decorator import procedural_gizmo_group
 from procedural_human.decorators.module_discovery import (
     clear_discovered,
     import_all_modules,
@@ -345,7 +345,7 @@ def register():
     _log_timing("register:workspace", (_time_module.perf_counter() - _t0) * 1000)
     
     _t0 = _time_module.perf_counter()
-    procedural_gizmo.discover_and_register_all_decorators()
+    procedural_gizmo_group.discover_and_register_all_decorators()
     _log_timing("register:gizmo", (_time_module.perf_counter() - _t0) * 1000)
     # #endregion
     
@@ -517,7 +517,7 @@ def unregister():
     _log_timing("unregister:workspace", (_time_module.perf_counter() - _t0) * 1000)
     
     _t0 = _time_module.perf_counter()
-    procedural_gizmo.unregister_all_decorators()
+    procedural_gizmo_group.unregister_all_decorators()
     _log_timing("unregister:gizmo", (_time_module.perf_counter() - _t0) * 1000)
     
     _t0 = _time_module.perf_counter()
