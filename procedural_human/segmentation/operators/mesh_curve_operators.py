@@ -399,7 +399,7 @@ def apply_bezier_handles(obj: bpy.types.Object):
     Args:
         obj: Blender mesh object
     """
-    from procedural_human.gizmo.mesh_curves_gizmo import (
+    from procedural_human.gizmo.mesh_curves_operators import (
         calculate_auto_handles_bmesh,
         ensure_edge_layers,
     )

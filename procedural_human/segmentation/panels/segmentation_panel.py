@@ -89,28 +89,35 @@ class SegmentationControlsPanel(Panel):
         box.label(text="View Mode", icon='RESTRICT_VIEW_OFF')
         
         view_mode = context.scene.get("segmentation_view_mode", "MASKS")
+        
+        # Row 1: Basic View Modes
         row = box.row(align=True)
         row.scale_y = 1.2
         
-        # Masks button
         op = row.operator("segmentation.set_view_mode", text="Masks", depress=(view_mode == "MASKS"))
         op.mode = "MASKS"
         
-        # Depth button
         op = row.operator("segmentation.set_view_mode", text="Depth", depress=(view_mode == "DEPTH"))
         op.mode = "DEPTH"
         
-        # Spine button (debug: shows geodesic spine path)
+        op = row.operator("segmentation.set_view_mode", text="None", depress=(view_mode == "NONE"))
+        op.mode = "NONE"
+        
+        # Row 2: Debug/Analysis Modes
+        row = box.row(align=True)
+        row.scale_y = 1.2
+        
         op = row.operator("segmentation.set_view_mode", text="Spine", depress=(view_mode == "SPINE"))
         op.mode = "SPINE"
         
-        # Medial button (debug: shows medialness/speed map)
         op = row.operator("segmentation.set_view_mode", text="Medial", depress=(view_mode == "MEDIAL"))
         op.mode = "MEDIAL"
         
-        # None button
-        op = row.operator("segmentation.set_view_mode", text="None", depress=(view_mode == "NONE"))
-        op.mode = "NONE"
+        op = row.operator("segmentation.set_view_mode", text="Hessian", depress=(view_mode == "HESSIAN"))
+        op.mode = "HESSIAN"
+        
+        op = row.operator("segmentation.set_view_mode", text="Ridges", depress=(view_mode == "RIDGES"))
+        op.mode = "RIDGES"
         
         # Debug toggle
         box.prop(context.scene, "show_debug_planes", text="Show Debug Planes (3D)", toggle=True)
@@ -235,6 +242,7 @@ class SegmentationControlsPanel(Panel):
         box.label(text="Depth Profile Mesh", icon='MESH_DATA')
         col = box.column(align=True)
         col.operator("segmentation.create_depth_profile_mesh", text="Create Depth Profile Mesh", icon='MESH_ICOSPHERE')
+        col.operator("segmentation.create_hessian_ridge_mesh", text="Create Ridge Mesh", icon='IPO_EASE_IN_OUT')
         
         # Show status
         try:

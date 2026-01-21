@@ -264,6 +264,36 @@ def set_current_medialness_map(medialness_map):
     _current_medialness_map = medialness_map
 
 
+def get_current_hessian_map():
+    """Get the currently stored Hessian ridge map."""
+    return _current_hessian_map
+
+
+def set_current_hessian_map(hessian_map):
+    """Store the Hessian ridge map for debug visualization.
+    
+    Args:
+        hessian_map: 2D numpy array of ridge strength
+    """
+    global _current_hessian_map
+    _current_hessian_map = hessian_map
+
+
+def get_current_ridge_curves():
+    """Get the currently stored ridge curves."""
+    return _current_ridge_curves
+
+
+def set_current_ridge_curves(curves):
+    """Store the ridge curves for debug visualization.
+    
+    Args:
+        curves: List of Nx2 numpy arrays of (x, y) coordinates
+    """
+    global _current_ridge_curves
+    _current_ridge_curves = curves
+
+
 def apply_medialness_overlay(image, medialness_map, colormap='hot'):
     """
     Apply a medialness map overlay onto a Blender image.
@@ -330,6 +360,62 @@ def apply_medialness_overlay(image, medialness_map, colormap='hot'):
         channel[mask_flipped] = pixels[:, :, c][mask_flipped]  # Keep original where masked
         pixels[:, :, c] = channel
     
+    image.pixels[:] = pixels.flatten()
+    image.update()
+
+
+def apply_hessian_overlay(image, hessian_map, colormap='viridis'):
+    """
+    Apply a Hessian ridge map overlay onto a Blender image.
+    """
+    if hessian_map is None:
+        return
+        
+    # Re-use apply_medialness_overlay logic (scalar map -> colormap -> overlay)
+    apply_medialness_overlay(image, hessian_map, colormap=colormap)
+
+
+def apply_ridge_curves_overlay(image, curves, color=(0.0, 1.0, 0.0), line_width=2):
+    """
+    Apply ridge curves overlay onto a Blender image.
+    """
+    if not curves:
+        return
+        
+    width, height = image.size
+    pixels = np.array(image.pixels[:]).reshape(height, width, 4)
+    
+    # Draw curves
+    for curve in curves:
+        if len(curve) < 2:
+            continue
+            
+        for i in range(len(curve) - 1):
+            x0, y0 = curve[i]
+            x1, y1 = curve[i+1]
+            
+            # Draw line segment
+            dx = abs(x1 - x0)
+            dy = abs(y1 - y0)
+            steps = max(int(max(dx, dy)), 1)
+            
+            for t in range(steps + 1):
+                frac = t / steps if steps > 0 else 0
+                x = int(x0 + frac * (x1 - x0))
+                y = int(y0 + frac * (y1 - y0))
+                
+                # Draw thick line
+                for ox in range(-line_width//2, line_width//2 + 1):
+                    for oy in range(-line_width//2, line_width//2 + 1):
+                        px, py = x + ox, y + oy
+                        # Flip Y for Blender
+                        py_flipped = height - 1 - py
+                        if 0 <= px < width and 0 <= py_flipped < height:
+                            pixels[py_flipped, px, 0] = color[0]
+                            pixels[py_flipped, px, 1] = color[1]
+                            pixels[py_flipped, px, 2] = color[2]
+                            pixels[py_flipped, px, 3] = 1.0
+                            
     image.pixels[:] = pixels.flatten()
     image.update()
 
@@ -523,6 +609,23 @@ def refresh_mask_overlay(context):
         medialness_map = get_current_medialness_map()
         if medialness_map is not None:
             apply_medialness_overlay(image, medialness_map, colormap='hot')
+    elif view_mode == "HESSIAN":
+        hessian_map = get_current_hessian_map()
+        if hessian_map is not None:
+            apply_hessian_overlay(image, hessian_map, colormap='viridis')
+    elif view_mode == "RIDGES":
+        curves = get_current_ridge_curves()
+        if curves is not None:
+            # Show faint mask for context
+            masks = get_current_masks()
+            if masks:
+                settings = context.scene.segmentation_mask_settings
+                for item in settings.masks:
+                    if item.enabled and 0 <= item.mask_index < len(masks):
+                        mask = masks[item.mask_index]
+                        apply_mask_overlay(image, [mask], color=(0.3, 0.3, 0.3), alpha=0.3)
+                        break
+            apply_ridge_curves_overlay(image, curves, color=(0.0, 1.0, 0.0))
     
     # Update debug planes visibility
     update_debug_planes_visibility(context)
@@ -538,6 +641,8 @@ _original_image_pixels = None  # Store original pixels for reset
 _current_depth_map = None  # Store depth map
 _current_spine_path = None  # Store spine path for debug visualization (Nx2 image coords)
 _current_medialness_map = None  # Store medialness/speed map for debug visualization
+_current_hessian_map = None  # Store Hessian ridge map
+_current_ridge_curves = None  # Store vectorized ridge curves
 
 
 def get_current_masks():
