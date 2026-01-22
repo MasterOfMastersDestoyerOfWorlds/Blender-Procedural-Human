@@ -30,13 +30,9 @@ class DualRadialLoft:
 
     def generate(self, context: GenerationContext, index: int) -> Dict:
         node_group = context.node_group
-
-        # Create Frame
         name = f"Loft_{index}"
         frame = node_group.nodes.new("NodeFrame")
         frame.label = name
-
-        # Create the Lofting Node Group
         loft_group = create_dual_radial_loft_group(
             name=f"{context.instance_name}_{name}_Group"
         )
@@ -44,8 +40,6 @@ class DualRadialLoft:
         loft_instance.node_tree = loft_group
         loft_instance.label = "Dual Radial Loft"
         loft_instance.parent = frame
-
-        # Fetch Curve Objects
         obj_info_x = node_group.nodes.new("GeometryNodeObjectInfo")
         obj_info_x.transform_space = "RELATIVE"
         if self.curve_x in bpy.data.objects:
@@ -58,15 +52,11 @@ class DualRadialLoft:
 
         obj_info_x.parent = frame
         obj_info_y.parent = frame
-
-        # Layout
         x_pos = context.get_next_y_offset()
         y_pos = 0
         loft_instance.location = (x_pos, y_pos)
         obj_info_x.location = (x_pos - 200, y_pos + 100)
         obj_info_y.location = (x_pos - 200, y_pos - 100)
-
-        # Links
         node_group.links.new(
             obj_info_x.outputs["Geometry"], loft_instance.inputs["Curve X (Front)"]
         )

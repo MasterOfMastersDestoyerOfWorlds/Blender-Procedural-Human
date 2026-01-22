@@ -8,12 +8,9 @@ Provides Blender operators that automate the testing workflow:
 4. Run topology verification
 
 Usage in Blender:
-    # From Python console or script
     bpy.ops.procedural.setup_coon_test()
     bpy.ops.procedural.apply_and_export()
     bpy.ops.procedural.verify_topology()
-    
-    # Or run all at once
     bpy.ops.procedural.run_full_coon_test()
 """
 
@@ -25,14 +22,8 @@ from pathlib import Path
 from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.config import get_codebase_path
 
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
 def get_tmp_dir() -> Path:
     """Get the tmp directory for test exports."""
-    # Use the same function as export_curve_to_csv for consistency
     from procedural_human.utils.export_curve_to_csv import get_tmp_base_dir
     return get_tmp_base_dir()
 
@@ -62,25 +53,15 @@ def find_geometry_node_modifier(obj, node_group_name: str):
 
 def add_geometry_node_modifier(obj, node_group_name: str):
     """Add a geometry node modifier with the specified node group."""
-    # Find or create the node group
     node_group = bpy.data.node_groups.get(node_group_name)
     
     if node_group is None:
-        # Try to create it via the geo_node decorator system
-        # The node group should be auto-created when the addon loads
         raise ValueError(f"Node group '{node_group_name}' not found. "
                         f"Make sure the addon is loaded and the geometry node is registered.")
-    
-    # Add modifier
     mod = obj.modifiers.new(name=node_group_name, type='NODES')
     mod.node_group = node_group
     
     return mod
-
-
-# ============================================================================
-# TEST OPERATORS
-# ============================================================================
 
 @procedural_operator
 class PROC_OT_setup_coon_test(Operator):
@@ -105,36 +86,23 @@ class PROC_OT_setup_coon_test(Operator):
     )
     
     def execute(self, context):
-        # Step 1: Get or create a cube
         obj = context.active_object
         
         if not self.use_existing_cube or obj is None or obj.type != 'MESH':
-            # Create a new cube
             bpy.ops.mesh.primitive_cube_add(size=2, location=(0, 0, 0))
             obj = context.active_object
             obj.name = "CoonTestCube"
             self.report({'INFO'}, "Created new test cube")
         else:
             self.report({'INFO'}, f"Using existing object: {obj.name}")
-        
-        # Step 2: Go to edit mode
         ensure_edit_mode(obj)
-        
-        # Step 3: Initialize bezier handles using the Mesh Curves Gizmo tool
         try:
-            # The initialize operator sets up edge handle layers
             bpy.ops.mesh.initialize_bezier_handles()
             self.report({'INFO'}, "Initialized bezier handles")
         except Exception as e:
             self.report({'WARNING'}, f"Could not initialize handles: {e}")
-        
-        # Step 4: Go back to object mode
         ensure_object_mode(obj)
-        
-        # Step 5: Add the CoonNGonPatchGenerator geometry node
         node_group_name = "CoonNGonPatchGenerator"
-        
-        # Check if modifier already exists
         mod = find_geometry_node_modifier(obj, node_group_name)
         
         if mod is None:
@@ -146,20 +114,14 @@ class PROC_OT_setup_coon_test(Operator):
                 return {'CANCELLED'}
         else:
             self.report({'INFO'}, f"Using existing {node_group_name} modifier")
-        
-        # Step 6: Set subdivisions
-        # Find the subdivisions input socket
         if mod.node_group:
             for item in mod.node_group.interface.items_tree:
                 if item.item_type == 'SOCKET' and item.in_out == 'INPUT':
                     if 'subdiv' in item.name.lower():
-                        # Set via modifier's socket values
                         socket_id = item.identifier
                         mod[socket_id] = self.subdivisions
                         self.report({'INFO'}, f"Set subdivisions to {self.subdivisions}")
                         break
-        
-        # Force update
         context.view_layer.update()
         
         self.report({'INFO'}, "Coon patch test setup complete")
@@ -198,13 +160,8 @@ class PROC_OT_apply_and_export(Operator):
         if obj is None or obj.type != 'MESH':
             self.report({'ERROR'}, "No mesh object selected")
             return {'CANCELLED'}
-        
-        # Ensure object mode
         ensure_object_mode(obj)
-        
-        # Step 1: Apply the geometry node modifier
         if self.apply_modifier:
-            # Find and apply the CoonNGonPatchGenerator modifier
             mod = find_geometry_node_modifier(obj, "CoonNGonPatchGenerator")
             
             if mod:
@@ -215,9 +172,6 @@ class PROC_OT_apply_and_export(Operator):
                     self.report({'WARNING'}, f"Could not apply modifier: {e}")
             else:
                 self.report({'WARNING'}, "No CoonNGonPatchGenerator modifier found")
-        
-        # Step 2: Export CSV data
-        # Use direct export function instead of relying on spreadsheet area
         from procedural_human.utils.export_curve_to_csv import (
             export_spreadsheet_data, 
             get_tmp_base_dir
@@ -287,8 +241,6 @@ class PROC_OT_verify_topology(Operator):
         )
         
         tmp_dir = get_tmp_dir()
-        
-        # Get CSV paths
         point_csv = self.point_csv
         edge_csv = self.edge_csv
         
@@ -302,30 +254,23 @@ class PROC_OT_verify_topology(Operator):
         if not point_csv or not edge_csv:
             self.report({'ERROR'}, f"Could not find CSV files in {tmp_dir}")
             return {'CANCELLED'}
-        
-        # Run topology check
         try:
             results = check_all_corners(point_csv, edge_csv)
         except Exception as e:
             self.report({'ERROR'}, f"Topology check failed: {e}")
             return {'CANCELLED'}
-        
-        # Report results
         passed = sum(1 for r in results if r.passed)
         failed = len(results) - passed
         
         if failed == 0:
             self.report({'INFO'}, f"PASS: All {passed} corners have correct topology")
         else:
-            # Report first few failures
             failed_corners = [r for r in results if not r.passed][:5]
             fail_msgs = [f"Point {r.corner_id}" for r in failed_corners]
             
             self.report({'WARNING'}, 
                 f"FAIL: {failed}/{len(results)} corners have star patterns. "
                 f"Failed: {', '.join(fail_msgs)}{'...' if failed > 5 else ''}")
-        
-        # Store results in scene for access
         context.scene["coon_test_passed"] = passed
         context.scene["coon_test_failed"] = failed
         context.scene["coon_test_total"] = len(results)
@@ -362,7 +307,6 @@ class PROC_OT_run_full_coon_test(Operator):
     )
     
     def execute(self, context):
-        # Step 1: Setup
         self.report({'INFO'}, "Setting up test...")
         result = bpy.ops.procedural.setup_coon_test(
             subdivisions=self.subdivisions,
@@ -370,30 +314,20 @@ class PROC_OT_run_full_coon_test(Operator):
         )
         if result != {'FINISHED'}:
             return result
-        
-        # Step 1.5: Subdivide an edge if requested (creates pentagons)
         if self.subdivide_edge:
             obj = context.active_object
             if obj and obj.type == 'MESH':
                 ensure_edit_mode(obj)
                 bpy.ops.mesh.select_all(action='DESELECT')
                 bpy.ops.mesh.select_mode(type='EDGE')
-                
-                # Select first edge
                 bpy.ops.object.mode_set(mode='OBJECT')
                 if len(obj.data.edges) > 0:
                     obj.data.edges[0].select = True
                 bpy.ops.object.mode_set(mode='EDIT')
-                
-                # Subdivide the selected edge
                 bpy.ops.mesh.subdivide(number_cuts=1)
                 ensure_object_mode(obj)
-                
-                # Re-initialize bezier handles after topology change
                 bpy.ops.mesh.initialize_loft_handles()
                 self.report({'INFO'}, "Subdivided edge to create pentagon faces")
-        
-        # Step 2: Apply and Export
         self.report({'INFO'}, "Applying modifier and exporting...")
         result = bpy.ops.procedural.apply_and_export(
             apply_modifier=True,
@@ -402,12 +336,8 @@ class PROC_OT_run_full_coon_test(Operator):
         )
         if result != {'FINISHED'}:
             return result
-        
-        # Step 3: Verify
         self.report({'INFO'}, "Verifying topology...")
         result = bpy.ops.procedural.verify_topology()
-        
-        # Report final result
         passed = context.scene.get("coon_test_passed", 0)
         failed = context.scene.get("coon_test_failed", 0)
         total = context.scene.get("coon_test_total", 0)
@@ -418,11 +348,3 @@ class PROC_OT_run_full_coon_test(Operator):
             self.report({'ERROR'}, f"TEST FAILED: {failed}/{total} corners have star patterns")
         
         return {'FINISHED'}
-
-
-# ============================================================================
-# REGISTRATION (handled by procedural_operator decorator)
-# ============================================================================
-
-# Classes are auto-registered via the @procedural_operator decorator
-# No manual registration needed

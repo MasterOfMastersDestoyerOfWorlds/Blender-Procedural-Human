@@ -28,13 +28,9 @@ class HexRadial:
 
     def generate(self, context: GenerationContext, index: int) -> Dict:
         node_group = context.node_group
-
-        # Create Frame
         name = f"HexSpheroid_{index}"
         frame = node_group.nodes.new("NodeFrame")
         frame.label = name
-
-        # Create 6 Closures
         closures = {}
         y_cursor = context.get_next_y_offset()
 
@@ -47,26 +43,20 @@ class HexRadial:
                 label=f"{name} {label}",
                 location=(-500, y_cursor),
             )
-            # Default curve to 1.0 (Unit sphere shape)
             for p in closure.curve_node.mapping.curves[0].points:
                 p.location.y = 1.0
 
             closures[label] = closure
-            # Group nodes into frame
             for n in closure.nodes():
                 n.parent = frame
 
             y_cursor -= 150
-
-        # Create Geometry (UV Sphere)
         sphere = node_group.nodes.new("GeometryNodeMeshUVSphere")
         sphere.inputs["Radius"].default_value = 1.0  # Base unit sphere
         sphere.inputs["Segments"].default_value = 32 * self.subdivisions
         sphere.inputs["Rings"].default_value = 16 * self.subdivisions
         sphere.parent = frame
         sphere.location = (-800, y_cursor)
-
-        # Create Hex Group
         hex_group = create_hex_profile_spheroid_group(
             suffix=f"{context.instance_name}_{index}"
         )
@@ -75,8 +65,6 @@ class HexRadial:
         hex_instance.label = "Hex Radial Deform"
         hex_instance.parent = frame
         hex_instance.location = (-200, y_cursor)
-
-        # Links
         node_group.links.new(sphere.outputs["Mesh"], hex_instance.inputs["Geometry"])
         hex_instance.inputs["Radius"].default_value = self.radius
 
@@ -85,8 +73,6 @@ class HexRadial:
                 closures[label].output_socket,
                 hex_instance.inputs[f"{label} Float Curve"],
             )
-
-        # Apply Preset if available (using logic from dual_radial)
         self._apply_presets(context, index, closures)
 
         context.current_y_offset = y_cursor - 300
@@ -94,6 +80,4 @@ class HexRadial:
         return {"instance": hex_instance, "frame": frame, "closures": closures}
 
     def _apply_presets(self, context, index, closures):
-        # reuse existing preset application logic found in dual_radial.py
-        # adapted for the 6 keys
         pass

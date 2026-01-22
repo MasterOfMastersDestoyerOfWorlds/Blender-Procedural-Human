@@ -23,8 +23,6 @@ import asyncio
 from typing import Any, Dict, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
-
-# Try to import httpx for async HTTP, fall back to urllib
 try:
     import httpx
     HAS_HTTPX = True
@@ -32,15 +30,7 @@ except ImportError:
     HAS_HTTPX = False
     import urllib.request
     import urllib.error
-
-
-# Default Blender server URL
 DEFAULT_BLENDER_URL = "http://localhost:9876"
-
-
-# ============================================================================
-# BLENDER CLIENT
-# ============================================================================
 
 class BlenderClient:
     """Client for communicating with the Blender HTTP server."""
@@ -86,7 +76,6 @@ class BlenderClient:
                 except Exception as e:
                     return {"success": False, "error": str(e)}
         else:
-            # Fall back to sync request in thread
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(
                 None, self._send_command_sync, action, params
@@ -108,9 +97,6 @@ class BlenderClient:
                     return response.status == 200
             except:
                 return False
-
-
-# Global client instance
 _client: Optional[BlenderClient] = None
 
 
@@ -120,11 +106,6 @@ def get_client() -> BlenderClient:
     if _client is None:
         _client = BlenderClient()
     return _client
-
-
-# ============================================================================
-# MCP TOOL DEFINITIONS
-# ============================================================================
 
 @dataclass
 class MCPTool:
@@ -333,9 +314,6 @@ async def tool_ping() -> Dict[str, Any]:
                     "Make sure Blender is running and execute: "
                     "bpy.ops.procedural.start_test_server()"
         }
-
-
-# Tool registry
 MCP_TOOLS = [
     MCPTool(
         name="run_coon_patch_test",
@@ -476,11 +454,6 @@ MCP_TOOLS = [
     ),
 ]
 
-
-# ============================================================================
-# MCP SERVER IMPLEMENTATION
-# ============================================================================
-
 class MCPServer:
     """Simple MCP server implementation using stdio transport."""
     
@@ -566,7 +539,6 @@ class MCPServer:
                 }
         
         elif method == "notifications/initialized":
-            # No response needed for notifications
             return None
         
         else:
@@ -586,21 +558,14 @@ class MCPServer:
         
         while True:
             try:
-                # Read line from stdin
                 line = sys.stdin.readline()
                 if not line:
                     break
-                
-                # Parse JSON-RPC request
                 try:
                     request = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                
-                # Handle request
                 response = await self.handle_request(request)
-                
-                # Send response (if any)
                 if response is not None:
                     print(json.dumps(response), flush=True)
                     
@@ -613,16 +578,9 @@ async def main():
     server = MCPServer()
     await server.run_stdio()
 
-
-# ============================================================================
-# STANDALONE TESTING
-# ============================================================================
-
 async def test_tools():
     """Test the tools outside of MCP context."""
     print("Testing Blender connection...")
-    
-    # Test ping
     result = await tool_ping()
     print(f"Ping: {result}")
     
@@ -630,8 +588,6 @@ async def test_tools():
         print("\nBlender server not running. Start it with:")
         print("  bpy.ops.procedural.start_test_server()")
         return
-    
-    # Run a test
     print("\nRunning Coon patch test...")
     result = await tool_run_coon_patch_test(subdivisions=2, create_new_cube=True)
     print(f"Test result: {json.dumps(result, indent=2)}")
@@ -646,8 +602,6 @@ if __name__ == "__main__":
                        help="Blender server URL")
     
     args = parser.parse_args()
-    
-    # Set Blender URL
     _client = BlenderClient(args.blender_url)
     
     if args.test:

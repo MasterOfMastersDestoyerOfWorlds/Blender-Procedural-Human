@@ -7,16 +7,12 @@ distant points on the opposite side of the face instead of adjacent grid points.
 
 Usage:
     from procedural_human.testing import check_corner_topology, check_all_corners
-    
-    # Check a specific corner
     result = check_corner_topology(
         point_csv="path/to/points.csv",
         edge_csv="path/to/edges.csv",
         corner_point_id=13
     )
     print(result.passed, result.message)
-    
-    # Check all corners
     results = check_all_corners(point_csv, edge_csv)
     for r in results:
         print(f"Point {r.corner_id}: {'PASS' if r.passed else 'FAIL'} - {r.message}")
@@ -88,17 +84,12 @@ def load_point_csv(csv_path: str) -> Dict[int, PointData]:
         reader = csv.DictReader(f)
         
         for row_idx, row in enumerate(reader):
-            # Point ID is the row index (0-based, matching line number - 2)
             point_id = row_idx
-            
-            # Try to get point_id from debug attribute if available
             if 'debug_point_index' in row:
                 try:
                     point_id = int(row['debug_point_index'])
                 except (ValueError, TypeError):
                     pass
-            
-            # Extract position
             try:
                 position = (
                     float(row.get('Position_X', 0)),
@@ -107,19 +98,13 @@ def load_point_csv(csv_path: str) -> Dict[int, PointData]:
                 )
             except (ValueError, TypeError):
                 position = (0.0, 0.0, 0.0)
-            
-            # Extract debug attributes
             debug_orig_face_idx = int(row.get('debug_orig_face_idx', -1)) if row.get('debug_orig_face_idx') else -1
             debug_orig_loop_start = int(row.get('debug_orig_loop_start', -1)) if row.get('debug_orig_loop_start') else -1
-            
-            # Handle boolean fields
             debug_flip = row.get('debug_flip_domain', 'False')
             debug_flip_domain = debug_flip.lower() == 'true' if isinstance(debug_flip, str) else bool(debug_flip)
             
             debug_edge = row.get('debug_on_edge', 'False')
             debug_on_edge = debug_edge.lower() == 'true' if isinstance(debug_edge, str) else bool(debug_edge)
-            
-            # Domain position
             debug_domain_x = float(row.get('debug_domain_x', 0)) if row.get('debug_domain_x') else 0.0
             debug_domain_y = float(row.get('debug_domain_y', 0)) if row.get('debug_domain_y') else 0.0
             
@@ -159,28 +144,20 @@ def load_edge_csv(csv_path: str) -> Dict[int, EdgeData]:
         
         for row_idx, row in enumerate(reader):
             edge_id = row_idx
-            
-            # Extract vertex indices - handle different column names
             vert_x = None
             vert_y = None
-            
-            # Try .edge_verts_X/.edge_verts_Y (Blender's internal format)
             if '.edge_verts_X' in row:
                 vert_x = int(row['.edge_verts_X'])
                 vert_y = int(row['.edge_verts_Y'])
-            # Try edge_verts_X/edge_verts_Y
             elif 'edge_verts_X' in row:
                 vert_x = int(row['edge_verts_X'])
                 vert_y = int(row['edge_verts_Y'])
-            # Try vert0_index/vert1_index (BMesh format)
             elif 'vert0_index' in row:
                 vert_x = int(row['vert0_index'])
                 vert_y = int(row['vert1_index'])
             
             if vert_x is None or vert_y is None:
                 continue
-            
-            # Extract other attributes
             crease = float(row.get('crease', 0)) if row.get('crease') else 0.0
             
             selected = row.get('.select_edge', 'False')
@@ -249,8 +226,6 @@ def find_corner_points(points: Dict[int, PointData], edges: Dict[int, EdgeData])
     
     for point_id, point in points.items():
         pos = point.position
-        
-        # Check if position is at cube corner (values close to +/-1)
         is_corner = True
         for coord in pos:
             if abs(abs(coord) - 1.0) > 0.01:  # Allow small tolerance
@@ -287,12 +262,8 @@ def analyze_star_pattern(
     """
     if not connected_points:
         return False, "No connected points", 0.0
-    
-    # Expected max distance to adjacent grid points
     grid_step = expected_edge_length / (2 ** subdivisions)
     expected_max = grid_step * 1.5  # Allow some tolerance
-    
-    # Threshold for detecting diagonal connections
     diagonal_threshold = expected_edge_length * 0.8  # ~80% of edge length
     
     max_distance = 0.0
@@ -337,7 +308,6 @@ def check_corner_topology(
     Returns:
         TopologyCheckResult with pass/fail and details
     """
-    # Load data
     points = load_point_csv(point_csv)
     edges = load_edge_csv(edge_csv)
     
@@ -350,8 +320,6 @@ def check_corner_topology(
         )
     
     corner_point = points[corner_point_id]
-    
-    # Find connected points
     connected_info = find_connected_points(corner_point_id, edges)
     connected_point_ids = [pid for pid, _ in connected_info]
     connected_edge_ids = [eid for _, eid in connected_info]
@@ -363,28 +331,20 @@ def check_corner_topology(
             message=f"Corner point {corner_point_id} has no connected edges",
             star_pattern_detected=False
         )
-    
-    # Get connected point data
     connected_points = []
     for pid in connected_point_ids:
         if pid in points:
             connected_points.append(points[pid])
-    
-    # Calculate distances
     distances = []
     for cp in connected_points:
         dist = distance_3d(corner_point.position, cp.position)
         distances.append(dist)
-    
-    # Analyze for star pattern
     is_star, explanation, max_dist = analyze_star_pattern(
         corner_point, connected_points, expected_edge_length, subdivisions
     )
     
     grid_step = expected_edge_length / (2 ** subdivisions)
     expected_max = grid_step * 1.5
-    
-    # Build details
     details = {
         "corner_position": corner_point.position,
         "corner_face_idx": corner_point.debug_orig_face_idx,
@@ -456,15 +416,11 @@ def get_latest_csvs(tmp_dir: str) -> Tuple[Optional[str], Optional[str]]:
     
     if not tmp_path.exists():
         return None, None
-    
-    # Find all point and edge CSVs
     point_csvs = list(tmp_path.glob("spreadsheet_*_MESH_POINT_*.csv"))
     edge_csvs = list(tmp_path.glob("spreadsheet_*_MESH_EDGE_*.csv"))
     
     if not point_csvs or not edge_csvs:
         return None, None
-    
-    # Sort by modification time (newest first)
     point_csvs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     edge_csvs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     
@@ -482,7 +438,6 @@ def run_quick_check(tmp_dir: str = None) -> Dict[str, Any]:
         Dictionary with check results
     """
     if tmp_dir is None:
-        # Try to find the default tmp directory
         from pathlib import Path
         current = Path(__file__).parent.parent
         tmp_dir = str(current / "tmp")
@@ -532,7 +487,6 @@ def run_quick_check(tmp_dir: str = None) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    # Quick test with existing CSVs
     import json
     result = run_quick_check()
     print(json.dumps(result, indent=2, default=str))

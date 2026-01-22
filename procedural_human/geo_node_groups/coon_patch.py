@@ -9,16 +9,12 @@ def create_coons_patch_group():
         return bpy.data.node_groups[group_name]
 
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
-    
-    # --- Interface ---
     group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     group.interface.new_socket(name="Subdivisions", in_out="INPUT", socket_type="NodeSocketInt").default_value = 4
     group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
 
     nodes = group.nodes
     links = group.links
-    
-    # --- Helpers ---
     def create_math(op, inp1, inp2=None):
         node = nodes.new("ShaderNodeMath")
         node.operation = op
@@ -44,33 +40,17 @@ def create_coons_patch_group():
                 if isinstance(inp2, tuple): node.inputs[1].default_value = inp2
                 else: links.new(inp2, node.inputs[1])
         return node.outputs[0]
-
-    # --- 1. Inputs ---
     group_input = nodes.new("NodeGroupInput")
     group_output = nodes.new("NodeGroupOutput")
-    
-    # --- 2. Topology Analysis (Face Corners) ---
-    
-    # Get Current Corner Index
     corner_idx_node = nodes.new("GeometryNodeInputIndex") # Domain: Corner
-    
-    # Get Face Index of this Corner
     face_of_corner = nodes.new("GeometryNodeFaceOfCorner")
     links.new(corner_idx_node.outputs[0], face_of_corner.inputs["Corner Index"])
     face_idx = face_of_corner.outputs["Face Index"]
-    
-    # Get First Corner Index of this Face (Sort Index 0)
     corners_lookup_0 = nodes.new("GeometryNodeCornersOfFace")
     links.new(face_idx, corners_lookup_0.inputs["Face Index"])
     corners_lookup_0.inputs["Sort Index"].default_value = 0
     first_corner_idx = corners_lookup_0.outputs["Corner Index"]
-    
-    # Calculate Sort Index: Current - Start
     sort_idx = create_math('SUBTRACT', corner_idx_node.outputs[0], first_corner_idx)
-    
-    # --- Store UV on Corners ---
-    # U = (SortIdx == 1) or (SortIdx == 2)
-    # V = (SortIdx == 2) or (SortIdx == 3)
     
     op_eq1 = create_math('COMPARE', sort_idx, 1.0)
     op_eq2 = create_math('COMPARE', sort_idx, 2.0)
@@ -89,8 +69,6 @@ def create_coons_patch_group():
     store_uv.inputs["Name"].default_value = "patch_uv"
     links.new(group_input.outputs[0], store_uv.inputs[0])
     links.new(uv_combine.outputs[0], store_uv.inputs["Value"])
-
-    # --- 3. Identify Edge Indices per Corner ---
     edges_of_corner = nodes.new("GeometryNodeEdgesOfCorner")
     edge_idx_at_corner = edges_of_corner.outputs["Next Edge Index"]
     
@@ -100,12 +78,7 @@ def create_coons_patch_group():
     store_edge_indices.inputs["Name"].default_value = "corner_edge_idx"
     links.new(store_uv.outputs[0], store_edge_indices.inputs[0])
     links.new(edge_idx_at_corner, store_edge_indices.inputs["Value"])
-    
-    # --- Determine Edge Direction ---
-    # Compare Corner Vertex with Edge Vertex 1
     vertex_of_corner = nodes.new("GeometryNodeVertexOfCorner")
-    
-    # Evaluate Edge Vertex 1 at the specific Edge Index we just found
     sample_edge_vert1 = nodes.new("GeometryNodeSampleIndex")
     sample_edge_vert1.domain = 'EDGE'
     sample_edge_vert1.data_type = 'INT'
@@ -114,8 +87,6 @@ def create_coons_patch_group():
     
     edge_verts_node = nodes.new("GeometryNodeInputMeshEdgeVertices")
     links.new(edge_verts_node.outputs["Vertex Index 1"], sample_edge_vert1.inputs["Value"])
-    
-    # FIX: Use Integer Comparison for robustness
     is_fwd_cmp = nodes.new("FunctionNodeCompare")
     is_fwd_cmp.data_type = 'INT'
     is_fwd_cmp.operation = 'EQUAL'
@@ -129,8 +100,6 @@ def create_coons_patch_group():
     store_direction.inputs["Name"].default_value = "edge_is_forward"
     links.new(store_edge_indices.outputs[0], store_direction.inputs[0])
     links.new(is_forward, store_direction.inputs["Value"])
-
-    # --- 4. Capture Data to FACE Domain ---
     
     def get_data_from_corner_sort_id(geo_link, sort_id_val, attr_name, type='INT'):
         face_idx_node = nodes.new("GeometryNodeInputIndex") 
@@ -163,8 +132,6 @@ def create_coons_patch_group():
         return s.outputs[0]
 
     geo = store_direction.outputs[0]
-    
-    # Store Edges and Directions on Face Domain
     geo = store_face_attr(geo, "e0", get_data_from_corner_sort_id(geo, 0, "corner_edge_idx"))
     geo = store_face_attr(geo, "e1", get_data_from_corner_sort_id(geo, 1, "corner_edge_idx"))
     geo = store_face_attr(geo, "e2", get_data_from_corner_sort_id(geo, 2, "corner_edge_idx"))
@@ -174,9 +141,6 @@ def create_coons_patch_group():
     geo = store_face_attr(geo, "d1", get_data_from_corner_sort_id(geo, 1, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
     geo = store_face_attr(geo, "d2", get_data_from_corner_sort_id(geo, 2, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
     geo = store_face_attr(geo, "d3", get_data_from_corner_sort_id(geo, 3, "edge_is_forward", 'BOOLEAN'), 'BOOLEAN')
-
-    # --- 5. Split and Subdivide ---
-    # FIX: Split edges so every face is an island. This ensures UVs don't average at shared vertices.
     split_edges = nodes.new("GeometryNodeSplitEdges")
     links.new(geo, split_edges.inputs["Mesh"])
     
@@ -184,8 +148,6 @@ def create_coons_patch_group():
     links.new(split_edges.outputs[0], subdiv.inputs[0])
     links.new(group_input.outputs["Subdivisions"], subdiv.inputs["Level"])
     subdivided_geo = subdiv.outputs[0]
-
-    # --- 6. Evaluation Logic (Per Point) ---
     
     get_uv = nodes.new("GeometryNodeInputNamedAttribute")
     get_uv.data_type = 'FLOAT_VECTOR'
@@ -205,7 +167,6 @@ def create_coons_patch_group():
     v_smooth = smoother_step(v_raw)
 
     def eval_bezier_curve(geo_ref, edge_idx_field, is_fwd_field, t_field, original_geometry):
-        # We pass 'original_geometry' (group_input) to sample handles from original edges
         
         def sample_edge(attr_name, type='FLOAT_VECTOR'):
             s = nodes.new("GeometryNodeSampleIndex")
@@ -355,8 +316,6 @@ def create_coons_patch_group():
     set_pos = nodes.new("GeometryNodeSetPosition")
     links.new(subdivided_geo, set_pos.inputs["Geometry"])
     links.new(final_pos, set_pos.inputs["Position"])
-    
-    # FIX: Merge vertices back together
     merge = nodes.new("GeometryNodeMergeByDistance")
     links.new(set_pos.outputs[0], merge.inputs["Geometry"])
     merge.inputs["Distance"].default_value = 0.001

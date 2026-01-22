@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Standalone MCP Server for Blender Testing
 
@@ -17,15 +16,7 @@ import urllib.request
 import urllib.error
 from typing import Any, Dict, Optional
 from dataclasses import dataclass
-
-
-# Blender server URL
 BLENDER_URL = "http://localhost:9876"
-
-
-# ============================================================================
-# BLENDER CLIENT
-# ============================================================================
 
 class BlenderClient:
     """Client for communicating with the Blender HTTP server."""
@@ -74,15 +65,7 @@ class BlenderClient:
         """Check health asynchronously."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.check_health_sync)
-
-
-# Global client
 _client = BlenderClient()
-
-
-# ============================================================================
-# MCP TOOL HANDLERS
-# ============================================================================
 
 async def tool_run_coon_patch_test(subdivisions: int = 2, create_new_cube: bool = True, subdivide_edge: bool = False) -> Dict[str, Any]:
     """Run the full Coon/Charrot-Gregory patch test cycle."""
@@ -155,9 +138,6 @@ async def tool_ping() -> Dict[str, Any]:
         "success": False,
         "error": "Cannot connect to Blender server. Make sure Blender is running with the addon loaded."
     }
-
-
-# Tool definitions for MCP
 TOOLS = [
     {
         "name": "run_coon_patch_test",
@@ -262,11 +242,6 @@ TOOLS = [
 
 TOOL_MAP = {t["name"]: t["handler"] for t in TOOLS}
 
-
-# ============================================================================
-# MCP SERVER
-# ============================================================================
-
 class MCPServer:
     """MCP server using stdio transport."""
     
@@ -359,11 +334,6 @@ class MCPServer:
                     "jsonrpc": "2.0",
                     "error": {"code": -32000, "message": str(e)}
                 }), flush=True)
-
-
-# ============================================================================
-# MAIN
-# ============================================================================
 
 async def test_connection():
     """Test the Blender connection."""

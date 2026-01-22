@@ -8,19 +8,14 @@ The server accepts JSON commands and executes Blender operators or Python code,
 returning results as JSON responses.
 
 Usage:
-    # Start server (in Blender Python console or script)
     from procedural_human.testing.blender_server import start_server, stop_server
     start_server(port=9876)
-    
-    # Send commands from external process
     import requests
     response = requests.post("http://localhost:9876/command", json={
         "action": "run_test",
         "params": {"subdivisions": 2}
     })
     print(response.json())
-    
-    # Stop server
     stop_server()
 """
 
@@ -31,18 +26,11 @@ import traceback
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any, Dict, Optional, Callable
 from functools import partial
-
-# Server state
 _server: Optional[HTTPServer] = None
 _server_thread: Optional[threading.Thread] = None
 _command_queue: list = []
 _result_queue: dict = {}
 _result_counter: int = 0
-
-
-# ============================================================================
-# COMMAND HANDLERS
-# ============================================================================
 
 def handle_run_test(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run the full Coon patch test."""
@@ -56,8 +44,6 @@ def handle_run_test(params: Dict[str, Any]) -> Dict[str, Any]:
             create_new_cube=create_new,
             subdivide_edge=subdivide_edge
         )
-        
-        # Get test results from scene
         passed = bpy.context.scene.get("coon_test_passed", 0)
         failed = bpy.context.scene.get("coon_test_failed", 0)
         total = bpy.context.scene.get("coon_test_total", 0)
@@ -178,8 +164,6 @@ def handle_get_csv_data(params: Dict[str, Any]) -> Dict[str, Any]:
         "point_csv": point_csv,
         "edge_csv": edge_csv,
     }
-    
-    # Optionally load point data
     if params.get("include_points", False):
         points = load_point_csv(point_csv)
         result["points"] = {
@@ -190,8 +174,6 @@ def handle_get_csv_data(params: Dict[str, Any]) -> Dict[str, Any]:
             }
             for pid, p in points.items()
         }
-    
-    # Optionally load edge data
     if params.get("include_edges", False):
         edges = load_edge_csv(edge_csv)
         result["edges"] = {
@@ -287,7 +269,6 @@ def handle_exec_python(params: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": "No code provided"}
     
     try:
-        # Execute in a namespace with bpy available
         local_ns = {"bpy": bpy, "result": None}
         exec(code, {"bpy": bpy}, local_ns)
         
@@ -301,9 +282,6 @@ def handle_exec_python(params: Dict[str, Any]) -> Dict[str, Any]:
             "error": str(e),
             "traceback": traceback.format_exc()
         }
-
-
-# Command registry
 COMMAND_HANDLERS: Dict[str, Callable] = {
     "run_test": handle_run_test,
     "setup_test": handle_setup_test,
@@ -316,11 +294,6 @@ COMMAND_HANDLERS: Dict[str, Callable] = {
     "ping": lambda p: {"success": True, "message": "pong"},
     "list_commands": lambda p: {"success": True, "commands": list(COMMAND_HANDLERS.keys())},
 }
-
-
-# ============================================================================
-# HTTP SERVER
-# ============================================================================
 
 class BlenderCommandHandler(BaseHTTPRequestHandler):
     """HTTP request handler for Blender commands."""
@@ -364,8 +337,6 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
         if self.path != "/command":
             self._send_json_response({"error": "Unknown endpoint"}, 404)
             return
-        
-        # Read request body
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length).decode()
         
@@ -388,8 +359,6 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
                 "available": list(COMMAND_HANDLERS.keys())
             }, 400)
             return
-        
-        # Queue the command for execution in the main thread
         _result_counter += 1
         command_id = _result_counter
         
@@ -398,8 +367,6 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
             "action": action,
             "params": params,
         })
-        
-        # Wait for result (with timeout)
         import time
         timeout = 30  # seconds
         start = time.time()
@@ -412,8 +379,6 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
                 }, 504)
                 return
             time.sleep(0.05)
-        
-        # Get and return result
         result = _result_queue.pop(command_id)
         self._send_json_response(result)
 
@@ -438,14 +403,7 @@ def _process_command_queue():
             }
         
         _result_queue[cmd["id"]] = result
-    
-    # Return time until next call (0.1 seconds)
     return 0.1
-
-
-# ============================================================================
-# SERVER CONTROL
-# ============================================================================
 
 def start_server(port: int = 9876, host: str = "localhost") -> bool:
     """
@@ -468,8 +426,6 @@ def start_server(port: int = 9876, host: str = "localhost") -> bool:
         _server = HTTPServer((host, port), BlenderCommandHandler)
         _server_thread = threading.Thread(target=_server.serve_forever, daemon=True)
         _server_thread.start()
-        
-        # Register timer to process commands in main thread
         if not bpy.app.timers.is_registered(_process_command_queue):
             bpy.app.timers.register(_process_command_queue, first_interval=0.1)
         
@@ -491,12 +447,8 @@ def stop_server():
     if _server is None:
         print("[BlenderServer] Server not running")
         return
-
-    # Unregister timer
     if bpy.app.timers.is_registered(_process_command_queue):
         bpy.app.timers.unregister(_process_command_queue)
-
-    # Shutdown server in a separate thread to avoid blocking
     server_to_stop = _server
     _server = None
     _server_thread = None
@@ -524,11 +476,6 @@ def get_server_url() -> Optional[str]:
         return None
     host, port = _server.server_address
     return f"http://{host}:{port}"
-
-
-# ============================================================================
-# BLENDER OPERATORS
-# ============================================================================
 
 from procedural_human.decorators.operator_decorator import procedural_operator
 from bpy.types import Operator

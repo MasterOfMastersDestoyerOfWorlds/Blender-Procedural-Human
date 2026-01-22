@@ -12,4 +12,3 @@ class FilenameFilter(logging.Filter):
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-# logger.addFilter(FilenameFilter("generator.py"))

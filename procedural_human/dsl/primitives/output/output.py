@@ -26,33 +26,23 @@ def get_all_object_refs(obj: Any, visited: Set[int] = None) -> List[Any]:
     visited.add(obj_id)
 
     refs = []
-
-    # Skip primitive types
     if isinstance(obj, (str, int, float, bool, bytes, type(None))):
         return refs
-
-    # Handle lists and tuples
     if isinstance(obj, (list, tuple)):
         for item in obj:
             refs.append(item)
             refs.extend(get_all_object_refs(item, visited))
         return refs
-
-    # Handle dicts
     if isinstance(obj, dict):
         for value in obj.values():
             refs.append(value)
             refs.extend(get_all_object_refs(value, visited))
         return refs
-
-    # Get attributes from __dict__ or dataclass fields
     attrs_to_check = []
 
     if hasattr(obj, "__dataclass_fields__"):
-        # Dataclass - check all fields
         attrs_to_check = list(obj.__dataclass_fields__.keys())
     elif hasattr(obj, "__dict__"):
-        # Regular object with __dict__
         attrs_to_check = list(obj.__dict__.keys())
 
     for attr_name in attrs_to_check:
@@ -82,22 +72,14 @@ def toposort(items: List[Any], deps: Dict[int, Set[int]]) -> List[Any]:
     Returns:
         Items sorted so dependencies come before dependents
     """
-    # Build id -> item mapping
     id_to_item = {id(item): item for item in items}
-
-    # Kahn's algorithm
-    # Count incoming edges for each node
     in_degree = {id(item): 0 for item in items}
     for item_id, dep_ids in deps.items():
         in_degree[item_id] = len(dep_ids)
-
-    # Start with nodes that have no dependencies
     queue = [
         id_to_item[item_id] for item_id, degree in in_degree.items() if degree == 0
     ]
     result = []
-
-    # Build reverse graph (item -> items that depend on it)
     reverse_deps = {id(item): set() for item in items}
     for item_id, dep_ids in deps.items():
         for dep_id in dep_ids:
@@ -107,16 +89,11 @@ def toposort(items: List[Any], deps: Dict[int, Set[int]]) -> List[Any]:
     while queue:
         item = queue.pop(0)
         result.append(item)
-
-        # For each item that depends on this one, decrement its in-degree
         for dependent_id in reverse_deps.get(id(item), set()):
             in_degree[dependent_id] -= 1
             if in_degree[dependent_id] == 0:
                 queue.append(id_to_item[dependent_id])
-
-    # Check for cycles
     if len(result) != len(items):
-        # Cycle detected - fall back to original order
         print("[Output] Warning: Cycle detected in dependencies, using original order")
         return items
 
@@ -161,40 +138,27 @@ class Output:
 
         if len(self.items) == 1:
             return self.items
-
-        # Build set of item ids for quick lookup
         item_ids = {id(item) for item in self.items}
-
-        # Build containment map: id(contained_obj) -> id(container_item)
-        # This allows detecting when an item references something inside another item
         containment_map: Dict[int, int] = {}
         for item in self.items:
             contained = get_all_object_refs(item)
             for obj in contained:
                 obj_id = id(obj)
-                # Don't map items to themselves
                 if obj_id not in item_ids:
                     containment_map[obj_id] = id(item)
-
-        # For each item, find which other Output items it references
         deps: Dict[int, Set[int]] = {id(item): set() for item in self.items}
 
         for item in self.items:
-            # Get all object references from this item
             refs = get_all_object_refs(item)
 
             for ref in refs:
                 ref_id = id(ref)
-                # Direct dependency: this reference is another item in Output
                 if ref_id in item_ids and ref_id != id(item):
                     deps[id(item)].add(ref_id)
-                # Indirect dependency: this reference is contained within another Output item
                 elif ref_id in containment_map:
                     container_id = containment_map[ref_id]
                     if container_id != id(item):
                         deps[id(item)].add(container_id)
-
-        # Topological sort
         ordered = toposort(self.items, deps)
 
         return ordered

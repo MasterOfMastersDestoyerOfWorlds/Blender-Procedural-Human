@@ -68,15 +68,11 @@ def create_fingernail_node_group(
     height_pos_socket.default_value = height_position
     height_pos_socket.min_value = 0.0
     height_pos_socket.max_value = 1.0
-
-    # Max Thickness input (in world units)
     max_thickness_socket = nail_group.interface.new_socket(
         name="Max Thickness", in_out="INPUT", socket_type="NodeSocketFloat"
     )
     max_thickness_socket.default_value = max_thickness
     max_thickness_socket.min_value = 0.0
-
-    # Closure inputs for shaping
     nail_group.interface.new_socket(
         name="Angle Float Curve", in_out="INPUT", socket_type="NodeSocketClosure"
     )
@@ -89,8 +85,6 @@ def create_fingernail_node_group(
 
     output_node = nail_group.nodes.new("NodeGroupOutput")
     output_node.label = "Output"
-
-    # === Axis Configuration ===
     if curl_direction == "X":
         length_axis_vec = (0, 0, 1)
         curl_axis_vec = (1, 0, 0)
@@ -106,8 +100,6 @@ def create_fingernail_node_group(
         curl_axis_vec = (0, 0, 1)
         side_axis_vec = (1, 0, 0)
         length_idx, curl_idx, side_idx = 1, 2, 0
-
-    # === Bounding Box for Segment ===
     bounding_box = nail_group.nodes.new("GeometryNodeBoundBox")
     bounding_box.label = "Segment Bounds"
     nail_group.links.new(
@@ -121,8 +113,6 @@ def create_fingernail_node_group(
     sep_bbox_min = nail_group.nodes.new("ShaderNodeSeparateXYZ")
     sep_bbox_min.label = "Min XYZ"
     nail_group.links.new(bounding_box.outputs["Min"], sep_bbox_min.inputs["Vector"])
-
-    # === Calculate sample Z position based on Attachment Position ===
     seg_length = nail_group.nodes.new("ShaderNodeMath")
     seg_length.label = "Segment Length"
     seg_length.operation = "SUBTRACT"
@@ -135,8 +125,6 @@ def create_fingernail_node_group(
     nail_group.links.new(seg_length.outputs["Value"], sample_z.inputs[0])
     nail_group.links.new(input_node.outputs["Attachment Position"], sample_z.inputs[1])
     nail_group.links.new(sep_bbox_min.outputs["Z"], sample_z.inputs[2])
-
-    # === Raycast to measure segment radius ===
     radius_ray_origin = nail_group.nodes.new("ShaderNodeCombineXYZ")
     radius_ray_origin.label = "Radius Ray Origin"
     radius_ray_origin.inputs["X"].default_value = 100.0
@@ -164,23 +152,16 @@ def create_fingernail_node_group(
     segment_radius.label = "Segment Radius"
     segment_radius.operation = "ABSOLUTE"
     nail_group.links.new(radius_hit_sep.outputs["X"], segment_radius.inputs[0])
-
-    # === Calculate dimensions ===
-    # Width = segment_radius * width_ratio
     width_calc = nail_group.nodes.new("ShaderNodeMath")
     width_calc.label = "Nail Width"
     width_calc.operation = "MULTIPLY"
     nail_group.links.new(segment_radius.outputs["Value"], width_calc.inputs[0])
     nail_group.links.new(input_node.outputs["Nail Width Ratio"], width_calc.inputs[1])
-
-    # Height = segment_radius * width_ratio (same as width for now)
     height_calc = nail_group.nodes.new("ShaderNodeMath")
     height_calc.label = "Nail Height"
     height_calc.operation = "MULTIPLY"
     nail_group.links.new(segment_radius.outputs["Value"], height_calc.inputs[0])
     nail_group.links.new(input_node.outputs["Nail Width Ratio"], height_calc.inputs[1])
-
-    # === Target position for nail placement ===
     target_length_pos = nail_group.nodes.new("ShaderNodeMath")
     target_length_pos.label = "Target Length Pos"
     target_length_pos.operation = "SUBTRACT"
@@ -208,8 +189,6 @@ def create_fingernail_node_group(
         nail_group.links.new(
             target_length_pos.outputs["Value"], base_pos_combine.inputs["Z"]
         )
-
-    # === Raycast to find surface position ===
     offset_dist = nail_group.nodes.new("ShaderNodeMath")
     offset_dist.label = "Offset Distance"
     offset_dist.operation = "MULTIPLY"
@@ -247,9 +226,6 @@ def create_fingernail_node_group(
     )
     nail_group.links.new(ray_start.outputs["Vector"], raycast.inputs["Source Position"])
     nail_group.links.new(ray_dir.outputs["Vector"], raycast.inputs["Ray Direction"])
-
-    # === Create Mesh Grid for angular wedge ===
-    # Grid X = angle parameter (0 to wrap_amount), Grid Y = length parameter
     grid = nail_group.nodes.new("GeometryNodeMeshGrid")
     grid.label = "Attachment Grid"
     grid.inputs["Vertices X"].default_value = SEGMENT_SAMPLE_COUNT
@@ -263,8 +239,6 @@ def create_fingernail_node_group(
     sep_grid = nail_group.nodes.new("ShaderNodeSeparateXYZ")
     sep_grid.label = "Grid XY"
     nail_group.links.new(grid_pos.outputs["Position"], sep_grid.inputs["Vector"])
-
-    # === Angle parameter: map grid X (-0.5 to 0.5) to angle (0 to wrap_amount) ===
     angle_param = nail_group.nodes.new("ShaderNodeMath")
     angle_param.label = "Angle Param 0-1"
     angle_param.operation = "ADD"
@@ -274,8 +248,6 @@ def create_fingernail_node_group(
     angle_clamp = nail_group.nodes.new("ShaderNodeClamp")
     angle_clamp.label = "Clamp Angle"
     nail_group.links.new(angle_param.outputs["Value"], angle_clamp.inputs["Value"])
-
-    # Evaluate Angle Float Curve to shape thickness based on angle
     evaluate_angle_curve = nail_group.nodes.new("NodeEvaluateClosure")
     evaluate_angle_curve.label = "Evaluate Angle Curve"
     evaluate_angle_curve.define_signature = True
@@ -287,9 +259,6 @@ def create_fingernail_node_group(
     nail_group.links.new(
         angle_clamp.outputs["Result"], evaluate_angle_curve.inputs["Value"]
     )
-
-    # Map angle param to actual angle: angle = (param - 0.5) * wrap_amount
-    # This centers the wrap around the curl axis
     angle_centered = nail_group.nodes.new("ShaderNodeMath")
     angle_centered.label = "Center Angle"
     angle_centered.operation = "SUBTRACT"
@@ -301,8 +270,6 @@ def create_fingernail_node_group(
     angle_scaled.operation = "MULTIPLY"
     nail_group.links.new(angle_centered.outputs["Value"], angle_scaled.inputs[0])
     nail_group.links.new(input_node.outputs["Wrap Amount"], angle_scaled.inputs[1])
-
-    # === Length parameter: map grid Y to 0-1 ===
     length_param = nail_group.nodes.new("ShaderNodeMath")
     length_param.label = "Length Param 0-1"
     length_param.operation = "ADD"
@@ -312,9 +279,6 @@ def create_fingernail_node_group(
     length_clamp = nail_group.nodes.new("ShaderNodeClamp")
     length_clamp.label = "Clamp Length"
     nail_group.links.new(length_param.outputs["Value"], length_clamp.inputs["Value"])
-
-    # === Evaluate Height Float Curve per-vertex (along nail height) ===
-    # The height curve modulates thickness based on position along the nail's length
     evaluate_height_curve = nail_group.nodes.new("NodeEvaluateClosure")
     evaluate_height_curve.label = "Evaluate Height Curve"
     evaluate_height_curve.define_signature = True
@@ -324,12 +288,9 @@ def create_fingernail_node_group(
         input_node.outputs["Height Float Curve"],
         evaluate_height_curve.inputs["Closure"],
     )
-    # Use length_clamp (grid Y parameter 0-1) for per-vertex evaluation
     nail_group.links.new(
         length_clamp.outputs["Result"], evaluate_height_curve.inputs["Value"]
     )
-
-    # === Calculate radial position (wedge around curl axis) ===
     cos_angle = nail_group.nodes.new("ShaderNodeMath")
     cos_angle.label = "cos(angle)"
     cos_angle.operation = "COSINE"
@@ -339,9 +300,6 @@ def create_fingernail_node_group(
     sin_angle.label = "sin(angle)"
     sin_angle.operation = "SINE"
     nail_group.links.new(angle_scaled.outputs["Value"], sin_angle.inputs[0])
-
-    # === Per-vertex thickness = max_thickness * height_curve(length) * angle_curve(angle) ===
-    # Thickness modulated by height curve (per-vertex along nail length)
     thickness_from_height = nail_group.nodes.new("ShaderNodeMath")
     thickness_from_height.label = "Thickness from Height"
     thickness_from_height.operation = "MULTIPLY"
@@ -351,8 +309,6 @@ def create_fingernail_node_group(
     nail_group.links.new(
         evaluate_height_curve.outputs["Value"], thickness_from_height.inputs[1]
     )
-
-    # Final thickness modulated by angle curve
     thickness_modulated = nail_group.nodes.new("ShaderNodeMath")
     thickness_modulated.label = "Thickness Modulated"
     thickness_modulated.operation = "MULTIPLY"
@@ -362,8 +318,6 @@ def create_fingernail_node_group(
     nail_group.links.new(
         evaluate_angle_curve.outputs["Value"], thickness_modulated.inputs[1]
     )
-
-    # Radial distance = segment_radius + thickness * (1 + some offset)
     radial_offset = nail_group.nodes.new("ShaderNodeMath")
     radial_offset.label = "Radial Offset"
     radial_offset.operation = "MULTIPLY"
@@ -375,8 +329,6 @@ def create_fingernail_node_group(
     radial_dist.operation = "ADD"
     nail_group.links.new(segment_radius.outputs["Value"], radial_dist.inputs[0])
     nail_group.links.new(radial_offset.outputs["Value"], radial_dist.inputs[1])
-
-    # Add thickness modulation
     radial_with_thickness = nail_group.nodes.new("ShaderNodeMath")
     radial_with_thickness.label = "Radial + Thickness"
     radial_with_thickness.operation = "ADD"
@@ -384,26 +336,16 @@ def create_fingernail_node_group(
     nail_group.links.new(
         thickness_modulated.outputs["Value"], radial_with_thickness.inputs[1]
     )
-
-    # === Calculate position for each grid point ===
-    # The position is: (radial * cos(angle), radial * sin(angle), z_along_height)
-    # But we need to map this to the correct axes based on curl direction
-
-    # X component (based on side axis for curl direction)
     x_component = nail_group.nodes.new("ShaderNodeMath")
     x_component.label = "X Component"
     x_component.operation = "MULTIPLY"
     nail_group.links.new(radial_with_thickness.outputs["Value"], x_component.inputs[0])
     nail_group.links.new(cos_angle.outputs["Value"], x_component.inputs[1])
-
-    # Y component (based on curl axis depth - the thickness direction)
     y_component = nail_group.nodes.new("ShaderNodeMath")
     y_component.label = "Y Component"
     y_component.operation = "MULTIPLY"
     nail_group.links.new(radial_with_thickness.outputs["Value"], y_component.inputs[0])
     nail_group.links.new(sin_angle.outputs["Value"], y_component.inputs[1])
-
-    # Z component (along length axis) = sample_z + length_param * height
     z_offset = nail_group.nodes.new("ShaderNodeMath")
     z_offset.label = "Z Offset"
     z_offset.operation = "MULTIPLY"
@@ -415,20 +357,10 @@ def create_fingernail_node_group(
     z_component.operation = "ADD"
     nail_group.links.new(sample_z.outputs["Value"], z_component.inputs[0])
     nail_group.links.new(z_offset.outputs["Value"], z_component.inputs[1])
-
-    # Combine into final position (map to correct axes based on curl direction)
     final_pos_combine = nail_group.nodes.new("ShaderNodeCombineXYZ")
     final_pos_combine.label = "Final Position"
 
-    # Map components to axes based on curl direction:
-    # At angle=0 (center), the nail should point toward the curl axis direction
-    # x_component = radial * cos(angle), y_component = radial * sin(angle)
-    # At angle=0: cos=1, sin=0, so x_component=radial, y_component=0
-    # To point toward curl axis at center, curl axis gets cos (=radial), side axis gets sin (=0)
-
     if curl_direction == "X":
-        # curl=X (points X+), side=Y, length=Z
-        # At angle=0: X=radial (cos), Y=0 (sin)
         nail_group.links.new(
             x_component.outputs["Value"], final_pos_combine.inputs["X"]
         )
@@ -439,8 +371,6 @@ def create_fingernail_node_group(
             z_component.outputs["Value"], final_pos_combine.inputs["Z"]
         )
     elif curl_direction == "Y":
-        # curl=Y (points Y+), side=X, length=Z
-        # At angle=0: X=0 (sin), Y=radial (cos)
         nail_group.links.new(
             y_component.outputs["Value"], final_pos_combine.inputs["X"]
         )
@@ -451,8 +381,6 @@ def create_fingernail_node_group(
             z_component.outputs["Value"], final_pos_combine.inputs["Z"]
         )
     else:  # "Z"
-        # curl=Z (points Z+), side=X, length=Y
-        # At angle=0: X=0 (sin), Z=radial (cos)
         nail_group.links.new(
             y_component.outputs["Value"], final_pos_combine.inputs["X"]
         )
@@ -462,24 +390,18 @@ def create_fingernail_node_group(
         nail_group.links.new(
             x_component.outputs["Value"], final_pos_combine.inputs["Z"]
         )
-
-    # === Apply position to grid ===
     set_position = nail_group.nodes.new("GeometryNodeSetPosition")
     set_position.label = "Apply Position"
     nail_group.links.new(grid.outputs["Mesh"], set_position.inputs["Geometry"])
     nail_group.links.new(
         final_pos_combine.outputs["Vector"], set_position.inputs["Position"]
     )
-
-    # === Join with input geometry ===
     join_geo = nail_group.nodes.new("GeometryNodeJoinGeometry")
     join_geo.label = "Join Geometry"
     nail_group.links.new(input_node.outputs["Geometry"], join_geo.inputs["Geometry"])
     nail_group.links.new(set_position.outputs["Geometry"], join_geo.inputs["Geometry"])
 
     nail_group.links.new(join_geo.outputs["Geometry"], output_node.inputs["Geometry"])
-
-    # Auto-layout all nodes based on their connections
     auto_layout_nodes(nail_group)
 
     return nail_group

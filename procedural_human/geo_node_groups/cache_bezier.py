@@ -18,23 +18,15 @@ def get_precompute_edge_data_group():
     ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
     ng.interface.new_socket("orig_geo", in_out="INPUT", socket_type="NodeSocketGeometry")
     ng.interface.new_socket("Result", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    
-    # Internal Logic
     in_node = ng.nodes.new("NodeGroupInput")
     out_node = ng.nodes.new("NodeGroupOutput")
-    
-    # 1. Get Vertex Positions
     pos_node = ng.nodes.new("GeometryNodeInputPosition")
     edge_verts = ng.nodes.new("GeometryNodeInputMeshEdgeVertices")
-    
-    # Sample Position of Vertex 1
     s_v1 = create_node(ng, "GeometryNodeSampleIndex", {
         "Geometry": in_node.outputs["orig_geo"], "Domain": "POINT", "Data Type": "FLOAT_VECTOR",
         "Index": edge_verts.outputs["Vertex Index 1"]
     })
     link_or_set(ng, s_v1.inputs["Value"], pos_node.outputs[0])
-    
-    # Sample Position of Vertex 2
     s_v2 = create_node(ng, "GeometryNodeSampleIndex", {
         "Geometry": in_node.outputs["orig_geo"], "Domain": "POINT", "Data Type": "FLOAT_VECTOR",
         "Index": edge_verts.outputs["Vertex Index 2"]
@@ -43,8 +35,6 @@ def get_precompute_edge_data_group():
     
     P0_can = s_v1.outputs[0]
     P3_can = s_v2.outputs[0]
-    
-    # 2. Reconstruct Handles from Scalar Attributes (x, y, z)
     def get_handle_vec(prefix):
         x = get_attr(ng, f"{prefix}_x", "FLOAT")
         y = get_attr(ng, f"{prefix}_y", "FLOAT")
@@ -60,8 +50,6 @@ def get_precompute_edge_data_group():
     
     P1_can = vec_math_op(ng, "ADD", P0_can, h_start)
     P2_can = vec_math_op(ng, "ADD", P3_can, h_end)
-    
-    # 3. Store these on the Edge Domain
     def store_vec(geo, name, val):
         s = create_node(ng, "GeometryNodeStoreNamedAttribute", {
             "Geometry": geo, "Name": name, "Domain": "EDGE", "Data Type": "FLOAT_VECTOR", "Value": val
@@ -113,8 +101,6 @@ def get_sample_cached_bezier_group():
     ng.interface.new_socket("P1", in_out="OUTPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("P2", in_out="OUTPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("P3", in_out="OUTPUT", socket_type="NodeSocketVector")
-    
-    # Internal Logic
     in_node = ng.nodes.new("NodeGroupInput")
     out_node = ng.nodes.new("NodeGroupOutput")
     
@@ -123,7 +109,6 @@ def get_sample_cached_bezier_group():
             "Geometry": in_node.outputs["source_geo"], "Domain": "EDGE", "Data Type": "FLOAT_VECTOR",
             "Index": in_node.outputs["edge_idx"]
         })
-        # Use simple Named Attribute input for the Value
         attr = ng.nodes.new("GeometryNodeInputNamedAttribute")
         attr.data_type = "FLOAT_VECTOR"
         attr.inputs["Name"].default_value = name
@@ -134,9 +119,6 @@ def get_sample_cached_bezier_group():
     c_p1 = samp("edge_cache_p1")
     c_p2 = samp("edge_cache_p2")
     c_p3 = samp("edge_cache_p3")
-    
-    # If Forward: P0=cP0, P1=cP1...
-    # If Backward: P0=cP3, P1=cP2, P2=cP1, P3=cP0
     
     final_p0 = switch_vec(ng, in_node.outputs["is_fwd"], c_p3, c_p0)
     final_p1 = switch_vec(ng, in_node.outputs["is_fwd"], c_p2, c_p1)

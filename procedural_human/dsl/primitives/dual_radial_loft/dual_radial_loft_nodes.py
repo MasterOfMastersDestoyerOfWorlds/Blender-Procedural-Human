@@ -26,8 +26,6 @@ def create_dual_radial_loft_group(name: str = "Dual Radial Loft"):
         return bpy.data.node_groups[group_name]
 
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
-
-    # --- Interface ---
     group.interface.new_socket(
         name="Curve X (Front)", in_out="INPUT", socket_type="NodeSocketGeometry"
     )
@@ -43,22 +41,14 @@ def create_dual_radial_loft_group(name: str = "Dual Radial Loft"):
     group.interface.new_socket(
         name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
     )
-
-    # --- Nodes ---
     input_node = group.nodes.new("NodeGroupInput")
     output_node = group.nodes.new("NodeGroupOutput")
-
-    # 1. Grid (Topology)
-    # X = U (Curve Parameter 0-1)
-    # Y = V (Revolution Angle 0-1 which maps to 0-360)
     grid = group.nodes.new("GeometryNodeMeshGrid")
     grid.inputs["Size X"].default_value = 1.0
     grid.inputs["Size Y"].default_value = 1.0
 
     group.links.new(input_node.outputs["Resolution U"], grid.inputs["Vertices X"])
     group.links.new(input_node.outputs["Resolution V"], grid.inputs["Vertices Y"])
-
-    # Map Grid (default -0.5 to 0.5) to (0 to 1)
     grid_pos = group.nodes.new("GeometryNodeInputPosition")
     sep_grid = group.nodes.new("ShaderNodeSeparateXYZ")
     group.links.new(grid_pos.outputs["Position"], sep_grid.inputs["Vector"])
@@ -81,36 +71,23 @@ def create_dual_radial_loft_group(name: str = "Dual Radial Loft"):
 
     u_param = map_u.outputs["Result"]
     v_param = map_v.outputs["Result"]
-
-    # 2. Sample Curves
-    # We sample both curves at the same 'U' parameter.
-    # This assumes both curves are parameterized similarly (e.g. start at bottom pole).
-
-    # Curve 1 (XY Plane)
     sample_1 = group.nodes.new("GeometryNodeSampleCurve")
     sample_1.data_type = "FLOAT_VECTOR"
     sample_1.mode = "FACTOR"
     sample_1.use_all_curves = True
     group.links.new(input_node.outputs["Curve X (Front)"], sample_1.inputs["Curves"])
     group.links.new(u_param, sample_1.inputs["Factor"])
-
-    # Curve 2 (ZY Plane)
     sample_2 = group.nodes.new("GeometryNodeSampleCurve")
     sample_2.data_type = "FLOAT_VECTOR"
     sample_2.mode = "FACTOR"
     sample_2.use_all_curves = True
     group.links.new(input_node.outputs["Curve Y (Side)"], sample_2.inputs["Curves"])
     group.links.new(u_param, sample_2.inputs["Factor"])
-
-    # Extract Coordinates
     sep_1 = group.nodes.new("ShaderNodeSeparateXYZ")
     group.links.new(sample_1.outputs["Position"], sep_1.inputs["Vector"])
 
     sep_2 = group.nodes.new("ShaderNodeSeparateXYZ")
     group.links.new(sample_2.outputs["Position"], sep_2.inputs["Vector"])
-
-    # 3. Revolution Math
-    # Angle = V * 2*Pi (360 degrees)
 
     tau_node = group.nodes.new("ShaderNodeMath")
     tau_node.operation = "MULTIPLY"
@@ -125,56 +102,33 @@ def create_dual_radial_loft_group(name: str = "Dual Radial Loft"):
     sin_t = group.nodes.new("ShaderNodeMath")
     sin_t.operation = "SINE"
     group.links.new(theta, sin_t.inputs[0])
-
-    # 4. Calculate Final Position
-
-    # X = Curve1.X * cos(theta)
-    # Note: We use Curve1.X directly (signed).
-    # Because cos(theta) cycles pos/neg, this will fill all quadrants correctly.
     final_x = group.nodes.new("ShaderNodeMath")
     final_x.operation = "MULTIPLY"
     group.links.new(sep_1.outputs["X"], final_x.inputs[0])
     group.links.new(cos_t.outputs["Value"], final_x.inputs[1])
-
-    # Z = Curve2.Z * sin(theta)
     final_z = group.nodes.new("ShaderNodeMath")
     final_z.operation = "MULTIPLY"
     group.links.new(sep_2.outputs["Z"], final_z.inputs[0])
     group.links.new(sin_t.outputs["Value"], final_z.inputs[1])
-
-    # Y = Mix(Curve1.Y, Curve2.Y)
-    # We average the heights to keep the mesh connected if inputs vary slightly.
     mix_y = group.nodes.new("ShaderNodeMix")
     mix_y.data_type = "FLOAT"
     mix_y.inputs["Factor"].default_value = 0.5
     group.links.new(sep_1.outputs["Y"], mix_y.inputs["A"])
     group.links.new(sep_2.outputs["Y"], mix_y.inputs["B"])
-
-    # Combine
     combine = group.nodes.new("ShaderNodeCombineXYZ")
     group.links.new(final_x.outputs["Value"], combine.inputs["X"])
     group.links.new(mix_y.outputs["Result"], combine.inputs["Y"])
     group.links.new(final_z.outputs["Value"], combine.inputs["Z"])
-
-    # 5. Output
     set_pos = group.nodes.new("GeometryNodeSetPosition")
     group.links.new(grid.outputs["Mesh"], set_pos.inputs["Geometry"])
     group.links.new(combine.outputs["Vector"], set_pos.inputs["Position"])
-
-    # Merge By Distance
-    # This seals the 'Seam' where 0 degrees meets 360 degrees,
-    # and collapses the Poles where radius is 0.
     merge = group.nodes.new("GeometryNodeMergeByDistance")
     merge.inputs["Distance"].default_value = 0.001
     group.links.new(set_pos.outputs["Geometry"], merge.inputs["Geometry"])
-
-    # Recalculate Normals (Important for lighting on generated spheres)
     normals = group.nodes.new("GeometryNodeSetShadeSmooth")
 
     group.links.new(merge.outputs["Geometry"], normals.inputs["Geometry"])
     group.links.new(normals.outputs["Geometry"], output_node.inputs["Geometry"])
-
-    # Auto Layout
     try:
         auto_layout_nodes(group)
     except Exception:

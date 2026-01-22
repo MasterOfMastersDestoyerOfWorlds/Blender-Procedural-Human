@@ -13,47 +13,12 @@ from bpy.props import StringProperty, EnumProperty, IntProperty
 from bpy.utils import previews
 
 from procedural_human.decorators.panel_decorator import procedural_panel
+from procedural_human.image_search.search_operators import get_search_instance
 from procedural_human.logger import logger
-
-# Global preview collection for search result thumbnails
-_preview_collections = {}
+from procedural_human.image_search.search_asset_manager import get_search_preview_collection
 
 
-def get_search_preview_collection():
-    """Get or create the preview collection for search results."""
-    if "yandex_search" not in _preview_collections:
-        _preview_collections["yandex_search"] = previews.new()
-    return _preview_collections["yandex_search"]
 
-
-def clear_search_previews():
-    """Clear all search result previews."""
-    if "yandex_search" in _preview_collections:
-        pcoll = _preview_collections["yandex_search"]
-        pcoll.clear()
-
-
-def load_image_preview(filepath: str, name: str) -> int:
-    """
-    Load an image into the preview collection.
-    
-    Args:
-        filepath: Path to the image file
-        name: Unique name for this preview
-        
-    Returns:
-        The icon_id for use in UI elements
-    """
-    pcoll = get_search_preview_collection()
-    
-    if name not in pcoll:
-        try:
-            pcoll.load(name, filepath, 'IMAGE')
-        except Exception as e:
-            logger.error(f"Failed to load preview for {name}: {e}")
-            return 0
-    
-    return pcoll[name].icon_id
 
 
 def get_search_thumbnails_items(self, context):
@@ -63,8 +28,6 @@ def get_search_thumbnails_items(self, context):
     """
     items = []
     pcoll = get_search_preview_collection()
-    
-    # Get cached search results from scene
     search_results = context.scene.get("yandex_search_cached_results", [])
     
     for i, result in enumerate(search_results):
@@ -77,8 +40,6 @@ def get_search_thumbnails_items(self, context):
                 pcoll[name].icon_id,  # icon
                 i  # value
             ))
-    
-    # Must have at least one item
     if not items:
         items.append(("NONE", "No Results", "", 0, 0))
     
@@ -90,8 +51,6 @@ def _on_thumbnail_selection_changed(self, context):
     selected = self.yandex_search_thumbnails
     if not selected or selected == "NONE":
         return
-    
-    # Find the cached result info
     cached_results = self.get("yandex_search_cached_results", [])
     result_info = None
     for result in cached_results:
@@ -107,13 +66,8 @@ def _on_thumbnail_selection_changed(self, context):
         return
     
     try:
-        # Load image into Blender
         image = bpy.data.images.load(filepath)
-        
-        # Store reference for segmentation
         self["segmentation_image"] = image.name
-        
-        # Show in all IMAGE_EDITOR areas
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
                 if area.type == 'IMAGE_EDITOR':
@@ -171,8 +125,6 @@ def register_search_properties():
         name="Selected Index",
         default=0
     )
-    
-    # Local folder properties
     bpy.types.Scene.segmentation_local_folder = StringProperty(
         name="Local Folder",
         description="Path to a folder containing images to load",
@@ -181,29 +133,7 @@ def register_search_properties():
     )
 
 
-def unregister_search_properties():
-    """Unregister scene properties."""
-    try:
-        del bpy.types.Scene.yandex_search_query
-        del bpy.types.Scene.yandex_search_orientation
-        del bpy.types.Scene.yandex_search_size
-        del bpy.types.Scene.yandex_search_thumbnails
-        del bpy.types.Scene.yandex_search_selected_index
-        del bpy.types.Scene.segmentation_local_folder
-    except:
-        pass
-    
-    # Clean up local folder manager
-    try:
-        from procedural_human.segmentation.local_folder_manager import LocalFolderManager
-        LocalFolderManager.cleanup()
-    except:
-        pass
-    
-    # Clean up preview collections
-    for pcoll in _preview_collections.values():
-        previews.remove(pcoll)
-    _preview_collections.clear()
+
 
 
 @procedural_panel
@@ -219,17 +149,11 @@ class SegmentationSearchPanel(Panel):
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        
-        # Local folder section
         box = layout.box()
         box.label(text="Local Folder", icon='FILE_FOLDER')
-        
-        # Folder path display and browse button
         row = box.row(align=True)
         row.prop(scene, "segmentation_local_folder", text="")
         row.operator("segmentation.browse_local_folder", text="", icon='FILEBROWSER')
-        
-        # Show folder status and controls
         folder = scene.segmentation_local_folder
         if folder:
             image_count = scene.get("segmentation_local_image_count", 0)
@@ -237,22 +161,14 @@ class SegmentationSearchPanel(Panel):
             row = box.row(align=True)
             row.operator("segmentation.refresh_local_folder", text="Refresh", icon='FILE_REFRESH')
             row.operator("segmentation.clear_local_folder", text="", icon='X')
-        
-        # Search input section
         layout.separator()
         box = layout.box()
         box.label(text="Web Image Search", icon='VIEWZOOM')
-        
-        # Search query input
         row = box.row(align=True)
         row.prop(scene, "yandex_search_query", text="", icon='VIEWZOOM')
-        
-        # Orientation and size filters (directly visible)
         row = box.row(align=True)
         row.prop(scene, "yandex_search_orientation", text="")
         row.prop(scene, "yandex_search_size", text="")
-        
-        # Search and clear buttons
         row = box.row(align=True)
         op = row.operator("segmentation.yandex_search", text="Search", icon='VIEWZOOM')
         if hasattr(scene, "yandex_search_query"):
@@ -262,27 +178,19 @@ class SegmentationSearchPanel(Panel):
         if hasattr(scene, "yandex_search_size"):
             op.size = scene.yandex_search_size
         row.operator("segmentation.clear_search_history", text="", icon='X')
-        
-        # Show search results info
         result_count = scene.get("yandex_search_results", 0)
         if result_count > 0:
             query = scene.get("yandex_search_query_last", "")
             box.label(text=f"Found {result_count} results for '{query}'")
-        
-        # Thumbnail grid - click to auto-load
         layout.separator()
         box = layout.box()
         box.label(text="Click to Load", icon='IMAGE_DATA')
-        
-        # Display thumbnail grid using template_icon_view
         pcoll = get_search_preview_collection()
         if len(pcoll) > 0:
             box.template_icon_view(scene, "yandex_search_thumbnails", show_labels=True)
         else:
             box.label(text="No search results yet")
             box.label(text="Enter a query above and click Search")
-        
-        # Current image info
         for area in context.screen.areas:
             if area.type == 'IMAGE_EDITOR':
                 for space in area.spaces:
@@ -308,7 +216,6 @@ class AssetBrowserSegmentationPanel(Panel):
     
     @classmethod
     def poll(cls, context):
-        # Only show in Asset Browser mode
         if context.area and context.area.type == 'FILE_BROWSER':
             for space in context.area.spaces:
                 if space.type == 'FILE_BROWSER':
@@ -317,15 +224,11 @@ class AssetBrowserSegmentationPanel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        
-        # Instructions
         box = layout.box()
         box.label(text="Click to select & load", icon='RESTRICT_SELECT_OFF')
         box.label(text="to Image Editor", icon='IMAGE_DATA')
         
         layout.separator()
-        
-        # Show current segmentation image
         seg_image = context.scene.get("segmentation_image", "")
         if seg_image and seg_image in bpy.data.images:
             layout.label(text="Current Image:", icon='IMAGE_DATA')
@@ -350,7 +253,6 @@ class SegmentationSearchHistoryPanel(Panel):
         layout = self.layout
         
         try:
-            from procedural_human.segmentation.operators.search_operators import get_search_instance
             search = get_search_instance()
             history = search.get_history()
             

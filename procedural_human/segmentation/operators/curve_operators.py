@@ -46,7 +46,6 @@ class InsertCurveAsNewObjectOperator(Operator):
     )
     
     def execute(self, context):
-        # Get selected curves
         selected_curves = [obj for obj in context.selected_objects if obj.type == 'CURVE']
         
         if not selected_curves:
@@ -54,42 +53,24 @@ class InsertCurveAsNewObjectOperator(Operator):
             return {'CANCELLED'}
         
         try:
-            # Join curves if multiple selected
             if len(selected_curves) > 1:
-                # Make first curve active
                 context.view_layer.objects.active = selected_curves[0]
                 bpy.ops.object.join()
                 curve_obj = context.active_object
             else:
                 curve_obj = selected_curves[0]
-            
-            # Convert curve to mesh first
             bpy.ops.object.select_all(action='DESELECT')
             curve_obj.select_set(True)
             context.view_layer.objects.active = curve_obj
-            
-            # Create a new mesh object
             mesh = bpy.data.meshes.new(name=f"{curve_obj.name}_Lofted")
             mesh_obj = bpy.data.objects.new(f"{curve_obj.name}_Lofted", mesh)
             context.collection.objects.link(mesh_obj)
-            
-            # Add geometry nodes modifier
             modifier = mesh_obj.modifiers.new(name="LoftSpheriod", type='NODES')
-            
-            # Get or create the LoftSpheriod node group
             try:
                 from procedural_human.geo_node_groups.loft_spheroid import create_loft_spheriod_group
                 node_group = create_loft_spheriod_group()
                 modifier.node_group = node_group
-                
-                # Set the curve as input geometry
-                # The LoftSpheriod expects curve geometry
-                # We need to copy the curve data to the mesh object
-                
-                # For now, we'll parent the curve to the mesh
                 curve_obj.parent = mesh_obj
-                
-                # Set modifier inputs if they exist
                 if "CurveResolution" in modifier.node_group.interface.items_tree.keys():
                     modifier["Input_2"] = self.curve_resolution
                 if "Radial Resolution" in modifier.node_group.interface.items_tree.keys():
@@ -100,8 +81,6 @@ class InsertCurveAsNewObjectOperator(Operator):
             except ImportError as e:
                 logger.warning(f"LoftSpheriod group not available: {e}")
                 self.report({'WARNING'}, "LoftSpheriod not available, created basic mesh")
-            
-            # Select the new object
             bpy.ops.object.select_all(action='DESELECT')
             mesh_obj.select_set(True)
             context.view_layer.objects.active = mesh_obj
@@ -154,14 +133,11 @@ class InsertCurveOnExistingObjectOperator(Operator):
     )
     
     def execute(self, context):
-        # Get selected curves
         selected_curves = [obj for obj in context.selected_objects if obj.type == 'CURVE']
         
         if not selected_curves:
             self.report({'WARNING'}, "No curves selected")
             return {'CANCELLED'}
-        
-        # Get target object
         target = bpy.data.objects.get(self.target_object)
         if target is None:
             self.report({'WARNING'}, f"Target object '{self.target_object}' not found")
@@ -169,25 +145,14 @@ class InsertCurveOnExistingObjectOperator(Operator):
         
         try:
             for curve_obj in selected_curves:
-                # Create a copy of the curve
                 new_curve = curve_obj.copy()
                 new_curve.data = curve_obj.data.copy()
                 context.collection.objects.link(new_curve)
-                
-                # Apply rotation offset (around Z axis, in XY plane)
                 rotation_radians = math.radians(self.rotation_offset)
                 rotation_matrix = Matrix.Rotation(rotation_radians, 4, 'Z')
-                
-                # Apply rotation to curve location
                 new_curve.location = rotation_matrix @ curve_obj.location
-                
-                # Rotate the curve itself
                 new_curve.rotation_euler.z += rotation_radians
-                
-                # Parent to target object
                 new_curve.parent = target
-                
-                # Rename
                 new_curve.name = f"{target.name}_{curve_obj.name}_rotated"
             
             self.report({'INFO'}, f"Added {len(selected_curves)} curves to {target.name}")
@@ -199,7 +164,6 @@ class InsertCurveOnExistingObjectOperator(Operator):
             return {'CANCELLED'}
     
     def invoke(self, context, event):
-        # Try to get the active object as target if it's not a curve
         if context.active_object and context.active_object.type != 'CURVE':
             self.target_object = context.active_object.name
         return context.window_manager.invoke_props_dialog(self)
@@ -298,8 +262,6 @@ class SimpleRotateMeshCurveOperator(Operator):
         )
         from procedural_human.segmentation.operators.novel_view_operators import set_contours
         from procedural_human.segmentation.mask_to_curve import find_contours, simplify_contour
-        
-        # Get masks and image
         masks = get_current_masks()
         enabled_indices = get_enabled_mask_indices(context)
         image = get_active_image(context)
@@ -307,12 +269,8 @@ class SimpleRotateMeshCurveOperator(Operator):
         if not masks or not enabled_indices or not image:
             self.report({'WARNING'}, "No masks or image available")
             return {'CANCELLED'}
-        
-        # Use first enabled mask
         mask_idx = enabled_indices[0]
         mask = masks[mask_idx]
-        
-        # Get PIL image for depth estimation
         original_pixels = get_original_image_pixels()
         if original_pixels is not None:
             from PIL import Image as PILImage
@@ -323,68 +281,34 @@ class SimpleRotateMeshCurveOperator(Operator):
             pil_image = PILImage.fromarray(pixels, mode='RGB')
         else:
             pil_image = blender_image_to_pil(image)
-        
-        # 1. Extract Front Contour
-        # Use bottom-left mask for contour extraction (Blender coords)
         mask_bottom_left = np.flipud(mask)
         front_contours = find_contours(mask_bottom_left.astype(np.uint8))
         
         if not front_contours:
             self.report({'ERROR'}, "Could not extract contour from mask")
             return {'CANCELLED'}
-        
-        # Get the largest contour
         front_contour = max(front_contours, key=len)
-        
-        # Apply simplification if enabled
         if self.simplify:
             front_contour = simplify_contour(front_contour, epsilon=self.simplify_amount)
-        
-        # 2. Estimate Depth / Scaling
         scaling_factor = self.thickness_scale
         
         if self.use_depth_estimation:
             try:
                 from procedural_human.depth_estimation.depth_estimator import DepthEstimator
                 estimator = DepthEstimator.get_instance()
-                
-                # Check if loaded, if not, warn but continue (or load?)
-                # For responsiveness, we might want to load it. 
-                # But loading is blocking here? DepthEstimator.ensure_loaded is blocking.
-                # Let's trust it loads reasonably fast or is already loaded.
                 if not estimator.is_loaded() and not estimator.is_loading():
                     self.report({'INFO'}, "Loading depth model...")
-                
-                # Calculate ratio
-                # Note: mask passed to get_thickness_ratio should match PIL image (top-left)
                 ratio = estimator.get_thickness_ratio(pil_image, mask)
-                
-                # Apply to scaling factor
                 scaling_factor *= ratio
                 logger.info(f"Depth estimation ratio: {ratio:.3f}, Final scale: {scaling_factor:.3f}")
                 
             except Exception as e:
                 logger.warning(f"Depth estimation failed: {e}")
                 self.report({'WARNING'}, f"Depth estimation failed, using manual scale. {e}")
-        
-        # 3. Create Side Contour (Scaled copy of front)
-        # We scale the X coordinates (which correspond to width in 2D profile)
         side_contour = front_contour.copy()
-        
-        # Center X around 0 before scaling?
-        # normalize_contour in mesh_curve_operators centers it anyway.
-        # But we want to scale the 'width' relative to its own center.
         x_center = side_contour[:, 0].mean()
         side_contour[:, 0] = (side_contour[:, 0] - x_center) * scaling_factor + x_center
-        
-        # 4. Store Contours
-        # We don't use convex hull for simple rotation typically, as the profile shape IS the shape.
-        # But CreateDualMeshCurvesOperator has a flag for it.
-        # We'll set both to same contour for now.
         set_contours(front_contour, side_contour, None)
-        
-        # 5. Call CreateDualMeshCurvesOperator
-        # We invoke it to run immediately
         bpy.ops.segmentation.create_dual_mesh_curves(
             'EXEC_DEFAULT', 
             use_convex_hull=False,  # Don't hull the side view, use the actual rotated profile

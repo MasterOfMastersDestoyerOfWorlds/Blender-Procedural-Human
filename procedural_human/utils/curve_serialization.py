@@ -201,12 +201,9 @@ def update_profiles_file(preset_name, preset_data):
     otherwise appends to finger_segment_profiles.py.
     """
     import os
-
-    # Check if preset already exists in registry
     location = register_preset_class.get_preset_location(preset_name)
 
     if location and location.get("file_path") and os.path.exists(location["file_path"]):
-        # Preset exists, replace it using tree-sitter
         file_path = location["file_path"]
         success = replace_get_data_method(file_path, preset_name, preset_data)
 
@@ -217,8 +214,6 @@ def update_profiles_file(preset_name, preset_data):
             logger.info(
                 f"Warning: Could not replace preset '{preset_name}' in {file_path}, appending instead"
             )
-
-    # Preset doesn't exist or replacement failed, append to default location
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
     target_path = os.path.join(
@@ -365,20 +360,12 @@ def _auto_save_curves(obj, changed_curves):
         return
 
     presets_file = ensure_presets_file_exists(source_file)
-
-    # Collect ALL float curves and group by component
     all_curves = _get_dsl_object_curves(obj)
-
-    # Group curves by component prefix (first token before space)
-    # e.g., "Segment_0 X Profile" -> component = "Segment_0"
-    # e.g., "Joint_0 0°" -> component = "Joint_0"
-    # e.g., "Attachment_Attachment Angle Profile" -> component = "Attachment_Attachment"
     components = {}
     for label, curve_data in all_curves.items():
         node = curve_data["node"]
         data = serialize_float_curve_node(node)
         if data:
-            # Extract component from label prefix (first token before space)
             parts = label.split()
             component = parts[0] if parts else label
 
@@ -388,13 +375,9 @@ def _auto_save_curves(obj, changed_curves):
 
     if not components:
         return
-
-    # Create one preset per component
     presets_to_update = []
     for component, curves_data in components.items():
-        # Preset name: {InstanceName}_{Component} (e.g., Index_Segment_0)
         preset_name = f"{instance_name}_{component}"
-        # Safe class name for Python
         safe_class_name = f"Preset{preset_name.replace('_', '').replace(' ', '')}Curves"
 
         presets_to_update.append(
@@ -408,7 +391,6 @@ def _auto_save_curves(obj, changed_curves):
     success = batch_update_preset_classes(presets_file, presets_to_update)
 
     if success:
-        # Register each component preset
         for preset_info in presets_to_update:
             register_preset_class.register_preset_data(
                 preset_info["preset_name"], preset_info["curves_data"], presets_file

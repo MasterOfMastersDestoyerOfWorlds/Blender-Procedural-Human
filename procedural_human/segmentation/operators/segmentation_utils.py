@@ -19,20 +19,13 @@ def bilinear_sample(image: np.ndarray, x: float, y: float) -> float:
         Interpolated value at (x, y)
     """
     h, w = image.shape
-    # Clamp coordinates to valid range
     x = np.clip(x, 0, w - 1)
     y = np.clip(y, 0, h - 1)
-    
-    # Get integer coordinates (floor)
     x0, y0 = int(np.floor(x)), int(np.floor(y))
     x1 = min(x0 + 1, w - 1)
     y1 = min(y0 + 1, h - 1)
-    
-    # Get fractional parts
     fx = x - x0
     fy = y - y0
-    
-    # Bilinear interpolation
     v00 = image[y0, x0]
     v10 = image[y0, x1]
     v01 = image[y1, x0]
@@ -60,12 +53,9 @@ def simplify_contour(contour: np.ndarray, epsilon: float = 0.01) -> np.ndarray:
         return contour
     
     try:
-        # Calculate epsilon based on arc length
         diffs = np.diff(contour, axis=0)
         arc_length = np.sum(np.sqrt(np.sum(diffs**2, axis=1)))
         actual_epsilon = epsilon * arc_length
-        
-        # Use cv2.approxPolyDP for Douglas-Peucker simplification
         approx = cv2.approxPolyDP(
             contour.reshape(-1, 1, 2).astype(np.float32), 
             actual_epsilon, 
@@ -95,20 +85,15 @@ def simplify_polyline(points: np.ndarray, epsilon: float = 0.01) -> np.ndarray:
         return points
     
     try:
-        # Handle 3D points by simplifying only X,Y and keeping Z
         if points.shape[1] == 3:
             xy = points[:, :2]
             z = points[:, 2]
         else:
             xy = points
             z = None
-        
-        # Calculate epsilon based on arc length
         diffs = np.diff(xy, axis=0)
         arc_length = np.sum(np.sqrt(np.sum(diffs**2, axis=1)))
         actual_epsilon = epsilon * arc_length
-        
-        # Use cv2.approxPolyDP for Douglas-Peucker simplification (open curve)
         approx = cv2.approxPolyDP(
             xy.reshape(-1, 1, 2).astype(np.float32), 
             actual_epsilon, 
@@ -118,14 +103,11 @@ def simplify_polyline(points: np.ndarray, epsilon: float = 0.01) -> np.ndarray:
         simplified_xy = approx.reshape(-1, 2)
         
         if z is not None:
-            # Interpolate Z values for the simplified points
-            # Find the parameter along the original curve for each simplified point
             orig_diffs = np.diff(xy, axis=0)
             orig_dist = np.concatenate([[0], np.cumsum(np.sqrt(np.sum(orig_diffs**2, axis=1)))])
             
             simplified_z = []
             for pt in simplified_xy:
-                # Find closest point on original curve
                 dists = np.sqrt(np.sum((xy - pt)**2, axis=1))
                 closest_idx = np.argmin(dists)
                 simplified_z.append(z[closest_idx])
@@ -154,28 +136,18 @@ def resample_polyline(points: np.ndarray, n: int) -> np.ndarray:
     """
     if len(points) < 2:
         return points
-    
-    # Compute cumulative distances along the path
     diffs = np.diff(points, axis=0)
     distances = np.sqrt(np.sum(diffs**2, axis=1))
     cumulative = np.concatenate([[0], np.cumsum(distances)])
     total_length = cumulative[-1]
     
     if total_length < 1e-6:
-        # Path has zero length, return first point repeated
         return np.tile(points[0], (n, 1))
-    
-    # Generate evenly spaced parameter values
     t_target = np.linspace(0, total_length, n)
-    
-    # Interpolate points
     resampled = []
     for t in t_target:
-        # Find the segment containing t
         idx = np.searchsorted(cumulative, t, side='right') - 1
         idx = max(0, min(idx, len(points) - 2))
-        
-        # Interpolate within the segment
         if cumulative[idx + 1] > cumulative[idx]:
             seg_t = (t - cumulative[idx]) / (cumulative[idx + 1] - cumulative[idx])
         else:

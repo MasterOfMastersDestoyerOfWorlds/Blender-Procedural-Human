@@ -20,15 +20,12 @@ def menu_func(self, context):
 
 
 def register():
-    # Unregister first if already registered (for hot-reload support)
     try:
         bpy.utils.unregister_class(PROCEDURAL_MT_add_menu)
     except RuntimeError:
         pass
     
     bpy.utils.register_class(PROCEDURAL_MT_add_menu)
-    
-    # Remove existing menu entry if present, then add
     try:
         bpy.types.VIEW3D_MT_add.remove(menu_func)
     except ValueError:

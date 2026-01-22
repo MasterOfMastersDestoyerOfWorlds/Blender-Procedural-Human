@@ -29,7 +29,6 @@ def get_caller_file_path() -> Optional[str]:
     """
     frame = inspect.currentframe()
     try:
-        # Go up the stack to find the caller
         caller_frame = frame.f_back
         if caller_frame:
             caller_frame = caller_frame.f_back
@@ -81,7 +80,6 @@ def scan_directory_for_presets(directory: str) -> List[Dict]:
     presets = []
 
     for root, dirs, files in os.walk(directory):
-        # Skip hidden directories and common ignore patterns
         dirs[:] = [
             d
             for d in dirs
@@ -92,9 +90,6 @@ def scan_directory_for_presets(directory: str) -> List[Dict]:
             if file.endswith(".py"):
                 file_path = os.path.join(root, file)
                 try:
-                    # Try to find any preset classes in this file
-                    # We'll need to parse and check for decorators
-                    # For now, we'll rely on the registry to provide preset names
                     pass
                 except Exception as e:
                     logger.info(f"Error scanning {file_path}: {e}")
@@ -155,8 +150,6 @@ def find_class_with_decorator(
     tree = parser.parse(source_bytes)
 
     source_lines = source_bytes.decode("utf-8").split("\n")
-
-    # Query to find decorated class definitions
     query_string = """
     (decorated_definition
       decorator: (call
@@ -172,22 +165,17 @@ def find_class_with_decorator(
 
     query = get_python_language().query(query_string)
     captures = query.captures(tree.root_node)
-
-    # Build a map of captures by type
     captures_map = {}
     for node, capture_name in captures:
         if capture_name not in captures_map:
             captures_map[capture_name] = []
         captures_map[capture_name].append(node)
-
-    # Find matching decorator
     for i, decorator_attr_node in enumerate(captures_map.get("@decorator_attr", [])):
         decorator_attr = source_bytes[
             decorator_attr_node.start_byte : decorator_attr_node.end_byte
         ].decode("utf-8")
 
         if decorator_attr == decorator_name:
-            # Check if preset_name matches if provided
             if preset_name:
                 preset_name_nodes = captures_map.get("@preset_name_string", [])
                 if i < len(preset_name_nodes):
@@ -202,21 +190,15 @@ def find_class_with_decorator(
                     )
                     if preset_name_str != preset_name:
                         continue
-
-            # Get class name
             class_name_nodes = captures_map.get("@class_name", [])
             if i < len(class_name_nodes):
                 class_name_node = class_name_nodes[i]
                 class_name = source_bytes[
                     class_name_node.start_byte : class_name_node.end_byte
                 ].decode("utf-8")
-
-                # Get class body
                 class_body_nodes = captures_map.get("@class_body", [])
                 if i < len(class_body_nodes):
                     class_body_node = class_body_nodes[i]
-
-                    # Find get_data method
                     get_data_start = None
                     get_data_end = None
 
@@ -239,8 +221,6 @@ def find_class_with_decorator(
                                     )  # 1-indexed
                                     get_data_end = child.end_point[0] + 1  # 1-indexed
                                     break
-
-                    # Get decorator line
                     decorator_obj_nodes = captures_map.get("@decorator_obj", [])
                     decorator_line = None
                     if i < len(decorator_obj_nodes):
@@ -278,19 +258,11 @@ def replace_get_data_method(file_path: str, preset_name: str, new_data: dict) ->
 
     if not class_info or not class_info.get("get_data_start_line"):
         return False
-
-    # Read the file
     with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
-
-    # Format the new data as JSON
     formatted_data = json.dumps(new_data, indent=4)
-
-    # Find the get_data method and replace its return statement
     get_data_start = class_info["get_data_start_line"] - 1  # Convert to 0-indexed
     get_data_end = class_info["get_data_end_line"] - 1  # Convert to 0-indexed
-
-    # Find the return statement line
     return_line_idx = None
     indent = None
 
@@ -303,8 +275,6 @@ def replace_get_data_method(file_path: str, preset_name: str, new_data: dict) ->
             break
 
     if return_line_idx is None:
-        # No return statement found, add one
-        # Find the method body start (first non-empty line after def get_data)
         method_body_start = get_data_start + 1
         while method_body_start < len(lines) and not lines[method_body_start].strip():
             method_body_start += 1
@@ -314,20 +284,13 @@ def replace_get_data_method(file_path: str, preset_name: str, new_data: dict) ->
                 : len(lines[method_body_start]) - len(lines[method_body_start].lstrip())
             ]
             indent += "    "  # Add extra indent for return statement
-
-        # Replace everything from method body start to end with new return
         new_lines = lines[:method_body_start]
         new_lines.append(f"{indent}return {formatted_data}\n")
         new_lines.extend(lines[get_data_end:])
         lines = new_lines
     else:
-        # Replace the return statement
         new_return_line = f"{indent}return {formatted_data}\n"
-
-        # Replace from return line to end of method
         lines = lines[:return_line_idx] + [new_return_line] + lines[get_data_end:]
-
-    # Write back to file
     with open(file_path, "w", encoding="utf-8") as f:
         f.writelines(lines)
 
@@ -674,7 +637,6 @@ def find_preset_class_range(file_path: str, preset_name: str) -> Optional[Dict]:
             if decorators and class_node:
                 for decorator_node in decorators:
                     decorator_text = _get_node_text(decorator_node, source_bytes)
-                    # Check both positional and keyword arg forms
                     if (
                         f'register_preset_class("{preset_name}")' in decorator_text
                         or f'register_preset_class(name="{preset_name}")'
@@ -891,8 +853,6 @@ def _compact_blank_lines(lines: List[str], max_consecutive: int = 2) -> List[str
         else:
             blank_count = 0
             result.append(line)
-
-    # Also trim trailing blank lines
     while result and result[-1].strip() == "":
         result.pop()
 
@@ -939,8 +899,6 @@ def batch_update_preset_classes(
     ranges_to_remove.sort(key=lambda x: x[0], reverse=True)
     for start_line, end_line in ranges_to_remove:
         lines = lines[:start_line] + lines[end_line:]
-
-    # Compact blank lines to prevent accumulation (max 2 consecutive)
     lines = _compact_blank_lines(lines, max_consecutive=2)
 
     for preset_info in presets:

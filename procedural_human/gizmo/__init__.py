@@ -7,12 +7,7 @@ including the Bezier handle gizmo system for lofting curves.
 
 import sys
 from pathlib import Path
-
-# Helper to add bundled venv site-packages to path
 def _setup_gizmo_path():
-    # Go up one level from gizmo/ to procedural_human/
-    # Then look for .venv/Lib/site-packages
-    # __file__ is procedural_human/gizmo/__init__.py
     current_dir = Path(__file__).parent
     addon_root = current_dir.parent
     venv_site_packages = addon_root / ".venv" / "Lib" / "site-packages"

@@ -22,15 +22,12 @@ class SegmentationControlsPanel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        
-        # SAM3 Status
         box = layout.box()
         box.label(text="SAM3 Status", icon='MOD_MASK')
         
         try:
             from procedural_human.segmentation.sam_integration import SAM3Manager
             if SAM3Manager.is_loading():
-                # Show loading progress
                 progress = SAM3Manager.get_loading_progress()
                 box.label(text="  Model: Loading...", icon='TIME')
                 if progress:
@@ -51,20 +48,12 @@ class SegmentationControlsPanel(Panel):
                     box.operator("segmentation.load_sam3_model", text="Load Model", icon='IMPORT')
         except:
             box.label(text="  Model: Not available", icon='ERROR')
-        
-        # Segmentation methods
         layout.separator()
         box = layout.box()
         box.label(text="Segment Image", icon='SELECT_SET')
-        
-        # Text prompt segmentation
         col = box.column(align=True)
         col.operator("segmentation.segment_by_prompt", text="Segment by Prompt", icon='TEXT')
-        
-        # Point click segmentation
         col.operator("segmentation.segment_by_point", text="Click to Segment", icon='PIVOT_CURSOR')
-        
-        # Depth Estimation
         layout.separator()
         box = layout.box()
         box.label(text="Depth Estimation", icon='CAMERA_DATA')
@@ -82,15 +71,11 @@ class SegmentationControlsPanel(Panel):
         
         col = box.column(align=True)
         col.operator("segmentation.estimate_depth", text="Estimate Depth", icon='RENDER_STILL')
-        
-        # View Mode Toggle
         layout.separator()
         box = layout.box()
         box.label(text="View Mode", icon='RESTRICT_VIEW_OFF')
         
         view_mode = context.scene.get("segmentation_view_mode", "MASKS")
-        
-        # Row 1: Basic View Modes
         row = box.row(align=True)
         row.scale_y = 1.2
         
@@ -102,8 +87,6 @@ class SegmentationControlsPanel(Panel):
         
         op = row.operator("segmentation.set_view_mode", text="None", depress=(view_mode == "NONE"))
         op.mode = "NONE"
-        
-        # Row 2: Debug/Analysis Modes
         row = box.row(align=True)
         row.scale_y = 1.2
         
@@ -118,11 +101,7 @@ class SegmentationControlsPanel(Panel):
         
         op = row.operator("segmentation.set_view_mode", text="Ridges", depress=(view_mode == "RIDGES"))
         op.mode = "RIDGES"
-        
-        # Debug toggle
         box.prop(context.scene, "show_debug_planes", text="Show Debug Planes (3D)", toggle=True)
-        
-        # Current masks info with UIList
         layout.separator()
         box = layout.box()
         box.label(text="Current Masks", icon='MOD_MASK')
@@ -130,7 +109,6 @@ class SegmentationControlsPanel(Panel):
         mask_count = context.scene.get("segmentation_mask_count", 0)
         
         if mask_count > 0:
-            # Mask list with selection
             settings = context.scene.segmentation_mask_settings
             
             row = box.row()
@@ -143,31 +121,21 @@ class SegmentationControlsPanel(Panel):
                 "active_mask_index",
                 rows=min(4, max(2, len(settings.masks)))
             )
-            
-            # Selection buttons
             row = box.row(align=True)
             row.operator("segmentation.select_all_masks", text="All", icon='CHECKBOX_HLT')
             row.operator("segmentation.deselect_all_masks", text="None", icon='CHECKBOX_DEHLT')
             row.operator("segmentation.invert_mask_selection", text="Invert", icon='ARROW_LEFTRIGHT')
             row.operator("segmentation.refresh_overlay", text="", icon='FILE_REFRESH')
-            
-            # Count enabled masks
             enabled_count = sum(1 for m in settings.masks if m.enabled)
             box.label(text=f"  {enabled_count}/{mask_count} mask(s) selected")
-            
-            # Action buttons
             row = box.row(align=True)
             row.operator("segmentation.masks_to_curves", text="Convert to Curves", icon='CURVE_DATA')
             row.operator("segmentation.clear_masks", text="", icon='X')
         else:
             box.label(text="  No masks available")
-        
-        # Novel View Generation
         layout.separator()
         box = layout.box()
         box.label(text="3D Novel View", icon='VIEW3D')
-        
-        # Server status (uses cached value to avoid blocking UI)
         try:
             from procedural_human.novel_view_gen.server_manager import (
                 is_server_running_cached,
@@ -182,7 +150,6 @@ class SegmentationControlsPanel(Panel):
                 error = get_server_start_error()
                 if error:
                     box.label(text="  Hunyuan3D: Failed", icon='ERROR')
-                    # Show truncated error
                     col = box.column()
                     col.scale_y = 0.6
                     col.label(text=f"    {error[:50]}...")
@@ -191,8 +158,6 @@ class SegmentationControlsPanel(Panel):
             box.operator("segmentation.check_hunyuan_server", text="Check Server", icon='FILE_REFRESH')
         except:
             box.label(text="  Hunyuan3D: Not available", icon='ERROR')
-        
-        # Check if generation is in progress
         try:
             from procedural_human.segmentation.operators.novel_view_operators import (
                 is_generation_running,
@@ -201,12 +166,9 @@ class SegmentationControlsPanel(Panel):
             generation_running = is_generation_running()
         except:
             generation_running = False
-        
-        # Novel view operators
         col = box.column(align=True)
         
         if generation_running:
-            # Show progress
             progress = get_generation_progress()
             col.label(text=progress, icon='TIME')
             col.operator("segmentation.cancel_novel_view", text="Cancel", icon='CANCEL')
@@ -216,13 +178,9 @@ class SegmentationControlsPanel(Panel):
         else:
             col.enabled = False
             col.operator("segmentation.generate_novel_view", text="Generate Novel View (need masks)", icon='MESH_MONKEY')
-        
-        # Show generated mesh count
         hunyuan_count = context.scene.get("hunyuan_mesh_count", 0)
         if hunyuan_count > 0:
             box.label(text=f"  {hunyuan_count} mesh(es) in Hunyuan_Meshes")
-        
-        # Novel view contour info
         front_pts = context.scene.get("novel_view_front_points", 0)
         side_pts = context.scene.get("novel_view_side_points", 0)
         
@@ -231,20 +189,14 @@ class SegmentationControlsPanel(Panel):
             row.label(text=f"  Front: {front_pts} pts, Side: {side_pts} pts")
             
             row = box.row(align=True)
-            # This operator is now mainly for manual contour adjustments or debugging
-            # as both GenerateNovelView and SimpleRotateMesh call it automatically
             row.operator("segmentation.create_dual_mesh_curves", text="Recreate Mesh", icon='MESH_DATA')
             row.operator("segmentation.clear_novel_contours", text="", icon='X')
-        
-        # Depth-based mesh generation
         layout.separator()
         box = layout.box()
         box.label(text="Depth Profile Mesh", icon='MESH_DATA')
         col = box.column(align=True)
         col.operator("segmentation.create_depth_profile_mesh", text="Create Depth Profile Mesh", icon='MESH_ICOSPHERE')
         col.operator("segmentation.create_hessian_ridge_mesh", text="Create Ridge Mesh", icon='IPO_EASE_IN_OUT')
-        
-        # Show status
         try:
             from procedural_human.segmentation.operators.segmentation_operators import get_current_depth_map
             depth_map = get_current_depth_map()
@@ -255,8 +207,6 @@ class SegmentationControlsPanel(Panel):
                 box.label(text="  (Run 'Estimate Depth' first)", icon='INFO')
         except:
             pass
-        
-        # Instructions
         layout.separator()
         box = layout.box()
         box.label(text="Instructions", icon='INFO')
@@ -284,12 +234,8 @@ class SegmentationAdvancedPanel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        
-        # SAM3 settings
         box = layout.box()
         box.label(text="SAM3 Configuration", icon='PREFERENCES')
-        
-        # Show model path
         col = box.column(align=True)
         col.scale_y = 0.7
         col.label(text="Model Path:")
@@ -298,8 +244,6 @@ class SegmentationAdvancedPanel(Panel):
             col.label(text=f"  {SAM3Manager.MODEL_PATH}")
         except:
             col.label(text="  (bundled with addon)")
-        
-        # Memory management
         layout.separator()
         box = layout.box()
         box.label(text="Memory", icon='MEMORY')
@@ -316,8 +260,6 @@ class SegmentationAdvancedPanel(Panel):
                 box.label(text="Model not loaded")
         except:
             box.label(text="SAM3 not available")
-        
-        # Test mesh curves
         layout.separator()
         box = layout.box()
         box.label(text="Testing", icon='EXPERIMENTAL')
@@ -326,9 +268,6 @@ class SegmentationAdvancedPanel(Panel):
             text="Create Test Mesh Curves",
             icon='MESH_TORUS'
         )
-
-
-# Operator to unload SAM model
 from bpy.types import Operator
 from procedural_human.decorators.operator_decorator import procedural_operator
 

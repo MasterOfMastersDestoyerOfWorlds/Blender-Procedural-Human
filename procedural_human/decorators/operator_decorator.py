@@ -57,7 +57,6 @@ class procedural_operator(DiscoverableClassDecorator):
         )
         for op_cls in procedural_operator.registry.values():
             try:
-                # Unregister first if already registered (hot-reload support)
                 try:
                     bpy.utils.unregister_class(op_cls)
                 except RuntimeError:

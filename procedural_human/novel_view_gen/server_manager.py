@@ -10,15 +10,9 @@ Usage:
         stop_hunyuan_server,
         is_server_running,
     )
-    
-    # Start server (called during addon register)
     start_hunyuan_server()
-    
-    # Check if running
     if is_server_running():
         print("Server is up!")
-    
-    # Stop server (called via atexit on Blender quit)
     stop_hunyuan_server()
 """
 
@@ -33,14 +27,10 @@ import urllib.request
 import urllib.error
 
 from procedural_human.logger import logger
-
-# Server state
 _server_process: Optional[subprocess.Popen] = None
 _server_thread: Optional[threading.Thread] = None
 _server_port: int = 8082
 _server_host: str = "localhost"
-
-# Default paths - can be configured via preferences
 _hunyuan_install_path: Optional[str] = None
 _python_executable: Optional[str] = None
 
@@ -52,15 +42,11 @@ def _is_valid_hunyuan_install(path: Path) -> bool:
 
 def _get_addon_root() -> Path:
     """Get the root directory of the procedural_human addon."""
-    # This file is at: procedural_human/novel_view_gen/server_manager.py
-    # Addon root is: procedural_human/
     return Path(__file__).parent.parent
 
 
 def _get_submodule_path() -> Path:
     """Get the path to the Hunyuan3D-2 submodule (procedural_human/novel_view_gen/Hunyuan3D-2)."""
-    # Submodule is at: procedural_human/novel_view_gen/Hunyuan3D-2
-    # This file is at: procedural_human/novel_view_gen/server_manager.py
     return Path(__file__).parent / "Hunyuan3D-2"
 
 
@@ -95,9 +81,6 @@ def get_local_model_weights_path() -> Optional[Path]:
     """
     novel_view_gen = _get_novel_view_gen_path()
     weights_base = novel_view_gen / "weights"
-    
-    # Check multiple possible source locations for model files
-    # Priority: weights/ directory, then novel_view_gen/ directly
     source_dirs = [weights_base, novel_view_gen]
     
     source_dir = None
@@ -124,16 +107,11 @@ def get_local_model_weights_path() -> Optional[Path]:
             break
     
     if source_dir is not None:
-        # Local weights found - set up the correct path structure
-        # DiT model: hunyuan3d-dit-v2-mini-turbo
-        # VAE model: hunyuan3d-vae-v2-mini-turbo
         
         dit_dir = weights_base / "tencent" / "Hunyuan3D-2mini" / "hunyuan3d-dit-v2-mini-turbo"
         vae_dir = weights_base / "tencent" / "Hunyuan3D-2mini" / "hunyuan3d-vae-v2-mini-turbo"
         
         import shutil
-        
-        # Set up DiT model directory
         if not dit_dir.exists() or not (dit_dir / "config.yaml").exists():
             try:
                 dit_dir.mkdir(parents=True, exist_ok=True)
@@ -153,15 +131,11 @@ def get_local_model_weights_path() -> Optional[Path]:
             except Exception as e:
                 logger.warning(f"[Hunyuan3D] Failed to set up DiT model directory: {e}")
                 return None
-        
-        # Set up VAE model directory if we have vae config
         if vae_config_file and vae_config_file.exists() and not (vae_dir / "config.yaml").exists():
             try:
                 vae_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(vae_config_file, vae_dir / "config.yaml")
                 logger.info(f"[Hunyuan3D] Copied vae.config.yaml to {vae_dir}/config.yaml")
-                
-                # Check for separate VAE weights in source directory
                 vae_safetensors = source_dir / "vae.model.fp16.safetensors"
                 vae_ckpt = source_dir / "vae.model.fp16.ckpt"
                 
@@ -174,11 +148,8 @@ def get_local_model_weights_path() -> Optional[Path]:
                     
             except Exception as e:
                 logger.warning(f"[Hunyuan3D] Failed to set up VAE model directory: {e}")
-                # Continue - VAE might be downloaded from HuggingFace
         
         return weights_base
-    
-    # Check if weights are already in the expected structure
     expected_dit_dir = weights_base / "tencent" / "Hunyuan3D-2mini" / "hunyuan3d-dit-v2-mini-turbo"
     expected_safetensors = expected_dit_dir / "model.fp16.safetensors"
     expected_ckpt = expected_dit_dir / "model.fp16.ckpt"
@@ -204,26 +175,18 @@ def get_hunyuan_path() -> Optional[Path]:
         Path to Hunyuan3D-2 directory or None if not found
     """
     global _hunyuan_install_path
-    
-    # Check configured path (must have api_server.py)
     if _hunyuan_install_path:
         configured = Path(_hunyuan_install_path)
         if _is_valid_hunyuan_install(configured):
             return configured
-    
-    # Check environment variable (must have api_server.py)
     env_path = os.environ.get("HUNYUAN3D_PATH")
     if env_path:
         env_dir = Path(env_path)
         if _is_valid_hunyuan_install(env_dir):
             return env_dir
-    
-    # Check git submodule location (tools/Hunyuan3D-2)
     submodule_path = _get_submodule_path()
     if _is_valid_hunyuan_install(submodule_path):
         return submodule_path
-    
-    # Check common locations
     common_paths = [
         Path.home() / "Hunyuan3D-2",
         Path.home() / "hunyuan3d-2",
@@ -249,20 +212,14 @@ def get_python_executable() -> str:
     
     if _python_executable and Path(_python_executable).exists():
         return _python_executable
-    
-    # Check for venv in Hunyuan3D directory
     hunyuan_path = get_hunyuan_path()
     if hunyuan_path:
         venv_python = hunyuan_path / ".venv" / "Scripts" / "python.exe"
         if venv_python.exists():
             return str(venv_python)
-        
-        # Check for conda env
         conda_python = hunyuan_path / "venv" / "Scripts" / "python.exe"
         if conda_python.exists():
             return str(conda_python)
-    
-    # Fall back to system Python
     return sys.executable
 
 
@@ -289,9 +246,6 @@ def configure_server(
         _python_executable = python_path
     _server_host = host
     _server_port = port
-
-
-# Server startup status for async tracking
 _server_starting: bool = False
 _server_start_error: Optional[str] = None
 
@@ -310,8 +264,6 @@ def is_port_in_use(port: int) -> bool:
         True if port is in use, False if available
     """
     import socket
-    
-    # Check IPv4
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
@@ -321,8 +273,6 @@ def is_port_in_use(port: int) -> bool:
             return True
     except socket.error:
         pass
-    
-    # Check IPv6
     try:
         sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
         sock.settimeout(1)
@@ -332,8 +282,6 @@ def is_port_in_use(port: int) -> bool:
             return True
     except socket.error:
         pass
-    
-    # Also try to bind to the port to see if it's truly available
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -377,14 +325,10 @@ def start_hunyuan_server(
         True if server started (or starting if non-blocking), False on error
     """
     global _server_process, _server_port, _server_host, _server_starting, _server_start_error
-    
-    # Update port/host first so is_server_running checks the correct address
     if port:
         _server_port = port
     if host:
         _server_host = host
-    
-    # Check if we already have a subprocess running
     if _server_process is not None:
         logger.info("[Hunyuan3D] Server subprocess already running")
         return True
@@ -392,20 +336,13 @@ def start_hunyuan_server(
     if _server_starting:
         logger.info("[Hunyuan3D] Server already starting...")
         return True
-    
-    # Check if server is already running externally (different process or previous session)
     logger.info(f"[Hunyuan3D] Checking if server is already running on port {_server_port}...")
     
     if is_server_running(use_cache=False):
         logger.info(f"[Hunyuan3D] Server already running on http://{_server_host}:{_server_port} (reusing)")
         return True
-    
-    # Check if port is already in use (even by a non-responding process)
-    # If something is on the port, it might be a Hunyuan server still starting up
     if is_port_in_use(_server_port):
         logger.info(f"[Hunyuan3D] Port {_server_port} is in use, waiting for server to become ready...")
-        
-        # Wait for the server to respond (it might be loading models)
         if blocking:
             logger.info(f"[Hunyuan3D] Blocking wait for existing server...")
             ready = _wait_for_server_ready(timeout=120)
@@ -417,7 +354,6 @@ def start_hunyuan_server(
                 logger.warning(f"[Hunyuan3D] {_server_start_error}. Try restarting Blender.")
                 return False
         else:
-            # Non-blocking: Start a thread to wait for the existing server
             logger.info(f"[Hunyuan3D] Starting background check for existing server...")
             
             def wait_for_existing_server():
@@ -455,16 +391,12 @@ def start_hunyuan_server(
         return False
     
     python_exe = get_python_executable()
-    
-    # Check for local model weights
     local_weights_path = get_local_model_weights_path()
     env = os.environ.copy()
     
     if local_weights_path:
         env["HY3DGEN_MODELS"] = str(local_weights_path)
         logger.info(f"[Hunyuan3D] Using local model weights from: {local_weights_path}")
-    
-    # Build command with valid api_server.py arguments only
     cmd = [
         python_exe,
         str(api_server_script),
@@ -482,7 +414,6 @@ def start_hunyuan_server(
     if blocking:
         return _start_server_blocking(cmd, hunyuan_path, env)
     else:
-        # Start in background thread
         _server_starting = True
         _server_start_error = None
         thread = threading.Thread(
@@ -508,11 +439,7 @@ def _start_server_blocking(cmd: list, cwd: Path, env: dict = None) -> bool:
             env=env,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
-        
-        # Start thread to log output
         _start_output_logger()
-        
-        # Wait for server to be ready
         ready = _wait_for_server_ready(timeout=120)
         
         if ready:
@@ -551,11 +478,7 @@ def _start_server_async(cmd: list, cwd: Path, env: dict = None):
         )
         
         logger.info(f"[Hunyuan3D] Process started with PID {_server_process.pid}")
-        
-        # Give the process a moment to start
         time.sleep(1)
-        
-        # Check if process immediately crashed
         poll_result = _server_process.poll()
         if poll_result is not None:
             stderr_output = ""
@@ -569,20 +492,14 @@ def _start_server_async(cmd: list, cwd: Path, env: dict = None):
             logger.error(f"[Hunyuan3D] {_server_start_error}")
             _server_process = None
             return
-        
-        # Start thread to log output
         _start_output_logger()
-        
-        # Wait for server to be ready (up to 120 seconds)
         ready = _wait_for_server_ready(timeout=120)
         
         if ready:
             logger.info(f"[Hunyuan3D] Server started on http://{_server_host}:{_server_port}")
         else:
-            # Check if process died
             if _server_process and _server_process.poll() is not None:
                 exit_code = _server_process.returncode
-                # Try to get stderr
                 stderr_output = ""
                 if _server_process.stderr:
                     try:
@@ -614,7 +531,6 @@ def _start_output_logger():
         if _server_process and _server_process.stdout:
             try:
                 for line in _server_process.stdout:
-                    # Log at INFO level so user can see startup messages
                     logger.info(f"[Hunyuan3D Server] {line.rstrip()}")
             except Exception as e:
                 logger.warning(f"[Hunyuan3D] stdout logger error: {e}")
@@ -623,7 +539,6 @@ def _start_output_logger():
         if _server_process and _server_process.stderr:
             try:
                 for line in _server_process.stderr:
-                    # Log stderr as warnings/errors
                     logger.warning(f"[Hunyuan3D Server ERR] {line.rstrip()}")
             except Exception as e:
                 logger.warning(f"[Hunyuan3D] stderr logger error: {e}")
@@ -656,13 +571,9 @@ def _wait_for_server_ready(timeout: float = 120, poll_interval: float = 2.0) -> 
         if is_server_running():
             logger.info(f"[Hunyuan3D] Server responded after {elapsed}s")
             return True
-        
-        # Check if process died
         if _server_process and _server_process.poll() is not None:
             logger.error(f"[Hunyuan3D] Server process exited with code {_server_process.returncode}")
             return False
-        
-        # Log progress every 10 seconds
         if check_count % 5 == 0:
             logger.info(f"[Hunyuan3D] Waiting for server... ({elapsed}s elapsed, PID {_server_process.pid if _server_process else 'None'})")
         
@@ -685,14 +596,10 @@ def stop_hunyuan_server():
     logger.info("[Hunyuan3D] Stopping server...")
     
     try:
-        # Try graceful shutdown first
         _server_process.terminate()
-        
-        # Wait for process to exit (with timeout)
         try:
             _server_process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            # Force kill if graceful shutdown fails
             logger.warning("[Hunyuan3D] Server did not stop gracefully, forcing kill")
             _server_process.kill()
             _server_process.wait(timeout=2)
@@ -705,9 +612,6 @@ def stop_hunyuan_server():
     finally:
         _server_process = None
         _server_thread = None
-
-
-# Cached server status for UI (avoids blocking on every panel draw)
 _cached_server_status: Optional[bool] = None
 _cached_status_time: float = 0
 _CACHE_DURATION: float = 10.0  # Cache duration in seconds
@@ -724,30 +628,19 @@ def is_server_running(use_cache: bool = False) -> bool:
         True if server is up and responding
     """
     global _cached_server_status, _cached_status_time
-
-    # Return cached value if requested and still valid
     if use_cache and _cached_server_status is not None:
         if time.time() - _cached_status_time < _CACHE_DURATION:
             return _cached_server_status
-
-    # Perform actual check with short timeout
-    # The api_server.py doesn't have a /health endpoint, so we check /status/ping
-    # which will return 404 but proves the server is running
     result = False
     try:
         url = f"http://{_server_host}:{_server_port}/status/ping"
         req = urllib.request.Request(url, method="GET")
         with urllib.request.urlopen(req, timeout=0.5) as response:
-            # Any response means server is running
             result = True
     except urllib.error.HTTPError as e:
-        # 404 or other HTTP errors mean the server IS running (just no such endpoint)
         result = True
     except (urllib.error.URLError, TimeoutError, OSError, ConnectionRefusedError):
-        # Connection refused or timeout means server is NOT running
         result = False
-
-    # Cache the result
     _cached_server_status = result
     _cached_status_time = time.time()
 

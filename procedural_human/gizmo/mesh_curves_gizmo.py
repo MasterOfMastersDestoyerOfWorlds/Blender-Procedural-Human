@@ -453,7 +453,6 @@ class LoftHandleGizmoGroup(GizmoGroup):
 
     def draw_prepare(self, context):
         """Update gizmo positions and visibility each frame."""
-        # Only show gizmos if the loft tool is active
         if not _is_loft_tool_active(context):
             for gz in self._gizmos:
                 gz.hide = True

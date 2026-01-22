@@ -11,10 +11,9 @@ import os
 from pathlib import Path
 from typing import Optional, List, Set
 
+from procedural_human.image_search.search_asset_manager import SearchAssetManager
+from procedural_human.image_search.search_asset_manager import get_search_preview_collection, load_image_preview
 from procedural_human.logger import logger
-
-
-# Supported image extensions
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff', '.tif'}
 
 
@@ -57,8 +56,6 @@ class LocalFolderManager:
         for item in folder_path.iterdir():
             if item.is_file() and item.suffix.lower() in IMAGE_EXTENSIONS:
                 image_files.append(item)
-        
-        # Sort by name for consistent ordering
         image_files.sort(key=lambda p: p.name.lower())
         
         logger.info(f"Found {len(image_files)} images in folder: {folder_path}")
@@ -75,21 +72,18 @@ class LocalFolderManager:
         Returns:
             Number of images successfully loaded
         """
-        from procedural_human.segmentation.search_asset_manager import SearchAssetManager
         
         path = Path(folder_path)
         if not path.exists() or not path.is_dir():
             logger.error(f"Invalid folder path: {folder_path}")
             return 0
         
-        # Clear previous local folder assets
-        cls.clear_local_assets()
+        # Ensure asset library is registered before adding assets
+        SearchAssetManager.register_asset_library()
         
-        # Set the new watched folder
+        cls.clear_local_assets()
         cls._watched_folder = path
         cls._known_files.clear()
-        
-        # Scan and load all images
         image_files = cls.scan_folder(path)
         success_count = 0
         cached_results = []
@@ -100,14 +94,14 @@ class LocalFolderManager:
                 success_count += 1
                 cached_results.append(result_info)
                 cls._known_files.add(str(image_path))
-        
-        # Store cached results for panel display (merge with existing search results)
         cls._update_cached_results(cached_results)
         
-        # Always refresh asset browser (even if no images, to update display)
-        SearchAssetManager.refresh_asset_browser()
+        # Debug: log material assets created
+        local_mats = [m for m in bpy.data.materials if m.name.startswith("local_")]
+        local_assets = [m for m in local_mats if m.asset_data is not None]
+        logger.info(f"Created {len(local_mats)} local materials, {len(local_assets)} marked as assets")
         
-        # Schedule an additional delayed refresh to ensure UI updates
+        SearchAssetManager.refresh_asset_browser()
         def delayed_refresh():
             try:
                 SearchAssetManager.refresh_asset_browser()
@@ -116,8 +110,6 @@ class LocalFolderManager:
             return None  # Don't repeat
         
         bpy.app.timers.register(delayed_refresh, first_interval=0.5)
-        
-        # Start the folder watcher if not running
         cls._start_watcher()
         
         logger.info(f"Loaded {success_count} images from local folder: {folder_path}")
@@ -131,17 +123,9 @@ class LocalFolderManager:
         """
         try:
             scene = bpy.context.scene
-            
-            # Get existing web search results (keep them)
             existing_results = scene.get("yandex_search_cached_results", [])
-            
-            # Filter out old local results (they start with "local_")
             web_results = [r for r in existing_results if not r.get("name", "").startswith("local_")]
-            
-            # Combine web results with new local results
             combined = web_results + local_results
-            
-            # Store combined results
             scene["yandex_search_cached_results"] = combined
             
             logger.info(f"Updated cached results: {len(web_results)} web + {len(local_results)} local")
@@ -160,19 +144,12 @@ class LocalFolderManager:
         Returns:
             Dict with result info if successful, None otherwise
         """
-        from procedural_human.segmentation.search_asset_manager import SearchAssetManager
-        from procedural_human.segmentation.panels.search_panel import load_image_preview
         
         try:
-            # Create a clean name from the filename
             name = image_path.stem[:30]  # Limit length
             name = name.replace(" ", "_").replace("/", "_").replace("\\", "_")
             full_name = f"{index:03d}_{name}"
-            
-            # Add as local asset (for Asset Browser)
             asset = SearchAssetManager.add_local_image_asset(str(image_path), full_name)
-            
-            # Also load into preview collection (for panel thumbnail display)
             preview_name = f"local_{index:03d}"
             icon_id = load_image_preview(str(image_path), preview_name)
             
@@ -198,7 +175,6 @@ class LocalFolderManager:
         Returns:
             Number of new images added
         """
-        from procedural_human.segmentation.search_asset_manager import SearchAssetManager
         
         if cls._watched_folder is None:
             logger.warning("No folder is being watched")
@@ -207,11 +183,7 @@ class LocalFolderManager:
         if not cls._watched_folder.exists():
             logger.warning(f"Watched folder no longer exists: {cls._watched_folder}")
             return 0
-        
-        # Scan for all images
         image_files = cls.scan_folder(cls._watched_folder)
-        
-        # Find new images
         new_count = 0
         new_results = []
         current_index = len(cls._known_files)
@@ -227,11 +199,8 @@ class LocalFolderManager:
                     current_index += 1
         
         if new_count > 0:
-            # Update cached results with new images
             cls._append_to_cached_results(new_results)
             SearchAssetManager.refresh_asset_browser()
-            
-            # Schedule delayed refresh to ensure UI updates
             def delayed_refresh():
                 try:
                     SearchAssetManager.refresh_asset_browser()
@@ -273,7 +242,6 @@ class LocalFolderManager:
             return None
         
         try:
-            # Quick check for new files
             new_files = []
             for item in cls._watched_folder.iterdir():
                 if item.is_file() and item.suffix.lower() in IMAGE_EXTENSIONS:
@@ -315,16 +283,9 @@ class LocalFolderManager:
     @classmethod
     def clear_local_assets(cls):
         """Clear all local folder assets and stop watching."""
-        from procedural_human.segmentation.search_asset_manager import SearchAssetManager
-        
-        # Stop the watcher
         cls._stop_watcher()
-        
-        # Clear local previews from the preview collection
         try:
-            from procedural_human.segmentation.panels.search_panel import get_search_preview_collection
             pcoll = get_search_preview_collection()
-            # Remove local_ prefixed previews
             local_keys = [k for k in pcoll.keys() if k.startswith("local_")]
             for key in local_keys:
                 try:
@@ -333,18 +294,13 @@ class LocalFolderManager:
                     pass
         except Exception:
             pass
-        
-        # Clear local entries from cached results
         try:
             scene = bpy.context.scene
             existing_results = scene.get("yandex_search_cached_results", [])
-            # Keep only non-local results
             web_results = [r for r in existing_results if not r.get("name", "").startswith("local_")]
             scene["yandex_search_cached_results"] = web_results
         except Exception:
             pass
-        
-        # Clear local materials from Blender
         for mat_name in list(bpy.data.materials.keys()):
             if mat_name.startswith("local_"):
                 try:
@@ -352,8 +308,6 @@ class LocalFolderManager:
                     bpy.data.materials.remove(mat)
                 except Exception:
                     pass
-        
-        # Clear local images from Blender
         for img_name in list(bpy.data.images.keys()):
             if img_name.startswith("local_"):
                 try:
@@ -361,8 +315,6 @@ class LocalFolderManager:
                     bpy.data.images.remove(img)
                 except Exception:
                     pass
-        
-        # Clear tracking
         cls._watched_folder = None
         cls._known_files.clear()
         

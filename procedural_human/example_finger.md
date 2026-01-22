@@ -7,7 +7,6 @@ Finger = (segment_lengths=[], radius_taper=0.85, curl_axis=Y):
         seg = Segment(length=segment_lengths[i], radius=radius, profile_lookup=i) 
         segments.append(seg)
         radius = radius * radius_taper
-        #profiles are looked up from registry or created otherwise. They should be intuited from the name and class of the object so for the proximal segment on the index finger we should look for Index_Finger_Segment_0, if we eveutally extend this to hands, with symetry it should be R_Hand_Index_Finger_Segment_0
     Nail = RadialAttachment(type=DualRadial, size_ratio=0.3, rotation=curl_axis) #id would be Index_Finger_Nail or Thumb_Finger_Nail
     Knuckle = Joint(type=QuadRadial, overlap=0.2) #optional profiles id that looks up by name otherwise use or create "Ring_Finger_Knuckle_Joint" profile curves
     AttachRaycast(last(segments), Nail)

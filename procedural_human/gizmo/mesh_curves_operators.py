@@ -16,15 +16,8 @@ import time
 import numpy as np
 
 from procedural_human.gizmo.mesh_curves_gizmo import *
-
-
-
-# Legacy names (kept for reference)
 ATTR_HANDLE_LEFT = "handle_left"
 ATTR_HANDLE_RIGHT = "handle_right"
-
-# Quarter-circle handle ratio: for a perfect quarter circle arc,
-# the handle length should be edge_length * QUARTER_CIRCLE_RATIO
 QUARTER_CIRCLE_RATIO = 0.5523  # 4 * (sqrt(2) - 1) / 3
 
 
@@ -46,7 +39,6 @@ def _calculate_handle_for_vertex(edge, vert, mesh_center, handle_len):
     Returns:
         Vector: The handle offset from the vertex
     """
-    # Get directions of other edges at this vertex
     other_dirs = []
     for other_edge in vert.link_edges:
         if other_edge != edge:
@@ -55,7 +47,6 @@ def _calculate_handle_for_vertex(edge, vert, mesh_center, handle_len):
             other_dirs.append(other_dir)
     
     if other_dirs:
-        # Average direction of other edges
         avg_dir = Vector((0, 0, 0))
         for d in other_dirs:
             avg_dir += d
@@ -63,24 +54,16 @@ def _calculate_handle_for_vertex(edge, vert, mesh_center, handle_len):
         
         if avg_dir.length > 0.0001:
             return -avg_dir.normalized() * handle_len  # NEGATE to point outward
-    
-    # Fallback: use perpendicular outward direction
     edge_vec = edge.other_vert(vert).co - vert.co
     edge_dir = edge_vec.normalized()
-    
-    # Outward from mesh center
     outward = vert.co - mesh_center
     if outward.length < 0.0001:
         outward = Vector((0, 0, 1))
     else:
         outward.normalize()
-    
-    # Project onto plane perpendicular to edge
     outward_perp = outward - edge_dir * outward.dot(edge_dir)
     if outward_perp.length > 0.0001:
         return outward_perp.normalized() * handle_len
-    
-    # Last resort: use vertex normal
     if vert.normal.length > 0:
         return vert.normal.normalized() * handle_len
     
@@ -97,7 +80,6 @@ def ensure_edge_layers(bm):
     Returns:
         Tuple of (start_x, start_y, start_z, end_x, end_y, end_z) layer references
     """
-    # Get or create layers for start handle (at edge.verts[0])
     start_x = bm.edges.layers.float.get(LAYER_HANDLE_START_X)
     if start_x is None:
         start_x = bm.edges.layers.float.new(LAYER_HANDLE_START_X)
@@ -109,8 +91,6 @@ def ensure_edge_layers(bm):
     start_z = bm.edges.layers.float.get(LAYER_HANDLE_START_Z)
     if start_z is None:
         start_z = bm.edges.layers.float.new(LAYER_HANDLE_START_Z)
-    
-    # Get or create layers for end handle (at edge.verts[1])
     end_x = bm.edges.layers.float.get(LAYER_HANDLE_END_X)
     if end_x is None:
         end_x = bm.edges.layers.float.new(LAYER_HANDLE_END_X)
@@ -169,8 +149,6 @@ def calculate_auto_handles_bmesh(bm):
     layers = ensure_edge_layers(bm)
     bm.verts.ensure_lookup_table()
     bm.edges.ensure_lookup_table()
-    
-    # Calculate mesh center for fallback direction
     mesh_center = Vector((0, 0, 0))
     for v in bm.verts:
         mesh_center += v.co
@@ -185,20 +163,13 @@ def calculate_auto_handles_bmesh(bm):
         edge_len = edge_vec.length
         
         if edge_len < 0.0001:
-            # Degenerate edge - zero handles
             set_edge_handles(edge, layers, Vector((0, 0, 0)), Vector((0, 0, 0)))
             continue
-        
-        # Handle length for quarter-circle arc
         handle_len = edge_len * QUARTER_CIRCLE_RATIO
-        
-        # Calculate handles using adjacent edge averaging
         start_handle = _calculate_handle_for_vertex(edge, v0, mesh_center, handle_len)
         end_handle = _calculate_handle_for_vertex(edge, v1, mesh_center, handle_len)
         
         set_edge_handles(edge, layers, start_handle, end_handle)
-    
-    # Post-process: make handles coplanar at each vertex using PCA
     for vert in bm.verts:
         make_handles_coplanar_at_vertex(vert, layers)
 
@@ -215,15 +186,11 @@ def calculate_auto_handles(obj):
         return
     
     mesh = obj.data
-    
-    # Check if we're in edit mode - use BMesh
     if obj.mode == 'EDIT':
         bm = bmesh.from_edit_mesh(mesh)
         calculate_auto_handles_bmesh(bm)
         bmesh.update_edit_mesh(mesh)
         return
-    
-    # Object mode - use mesh attributes (legacy support)
     ensure_handle_attributes(obj)
     
     handle_left_attr = mesh.attributes[ATTR_HANDLE_LEFT]
@@ -329,12 +296,8 @@ class InitializeLoftHandlesOperator(Operator):
     def execute(self, context):
         obj = context.object
         mesh = obj.data
-        
-        # Enter edit mode if not already
         if context.mode != 'EDIT_MESH':
             bpy.ops.object.mode_set(mode='EDIT')
-        
-        # Get BMesh and create/populate layers
         bm = bmesh.from_edit_mesh(mesh)
         calculate_auto_handles_bmesh(bm)
         bmesh.update_edit_mesh(mesh)
@@ -359,7 +322,6 @@ class RecalculateLoftHandlesOperator(Operator):
         obj = context.object
         if not (obj and obj.type == 'MESH'):
             return False
-        # Check if BMesh has handle layers
         try:
             bm = bmesh.from_edit_mesh(obj.data)
             return has_edge_handle_layers(bm)
@@ -405,8 +367,6 @@ class ClearLoftHandlesOperator(Operator):
         mesh = obj.data
         
         bm = bmesh.from_edit_mesh(mesh)
-        
-        # Remove BMesh edge float layers (new per-edge system)
         edge_layer_names = [
             LAYER_HANDLE_START_X, LAYER_HANDLE_START_Y, LAYER_HANDLE_START_Z,
             LAYER_HANDLE_END_X, LAYER_HANDLE_END_Y, LAYER_HANDLE_END_Z

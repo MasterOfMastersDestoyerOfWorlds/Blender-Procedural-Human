@@ -81,16 +81,12 @@ class YandexImageSearch:
     Uses web scraping to fetch image results from Yandex Images.
     Search history is maintained for quick access to previous searches.
     """
-    
-    # Orientation filter mapping
     ORIENTATION_MAP = {
         "any": "",
         "horizontal": "horizontal",
         "vertical": "vertical",
         "square": "square",
     }
-    
-    # Size filter mapping
     SIZE_MAP = {
         "any": "",
         "small": "small",
@@ -132,27 +128,18 @@ class YandexImageSearch:
         Returns:
             List of SearchResult objects
         """
-        # Add to history
         search_query = SearchQuery(query=query, orientation=orientation, size=size)
         self._add_to_history(search_query)
         
         logger.info(f"Searching for: '{query}' (orientation={orientation}, size={size})")
-        
-        # Track which source was used for notifications
         self._last_source_used = "Unsplash"
         self._fallback_messages = []
-        
-        # Try Unsplash first (most reliable, no captcha issues)
         results = self._search_unsplash(query, per_page)
-        
-        # If Unsplash failed, try DuckDuckGo as fallback
         if not results:
             logger.info("Unsplash returned no results, trying DuckDuckGo fallback...")
             self._fallback_messages.append("Unsplash failed, trying DuckDuckGo...")
             results = self._search_duckduckgo(query, per_page)
             self._last_source_used = "DuckDuckGo"
-        
-        # If still no results, try Yandex (likely to be blocked by captcha)
         if not results:
             logger.info("DuckDuckGo returned no results, trying Yandex fallback...")
             self._fallback_messages.append("DuckDuckGo failed, trying Yandex...")
@@ -186,8 +173,6 @@ class YandexImageSearch:
         import json
         
         results = []
-        
-        # Build search URL - use the JSON API endpoint
         base_url = "https://yandex.com/images/search"
         params = {
             "text": query,
@@ -195,16 +180,10 @@ class YandexImageSearch:
             "format": "json",  # Request JSON format
             "request": '{"blocks":[{"block":"serp-controller"}]}',
         }
-        
-        # Add orientation filter
         if orientation != "any" and orientation in self.ORIENTATION_MAP:
             params["iorient"] = self.ORIENTATION_MAP[orientation]
-        
-        # Add size filter
         if size != "any" and size in self.SIZE_MAP:
             params["isize"] = self.SIZE_MAP[size]
-        
-        # More complete browser headers to avoid bot detection
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -220,18 +199,13 @@ class YandexImageSearch:
         }
         
         try:
-            # First try without format=json to get regular HTML
             params_html = {k: v for k, v in params.items() if k not in ["format", "request"]}
             response = requests.get(base_url, params=params_html, headers=headers, timeout=30)
             response.raise_for_status()
             
             logger.info(f"Yandex search returned status {response.status_code}")
             html_content = response.text
-            
-            # Debug: log a snippet of the response
             logger.info(f"Response length: {len(html_content)} chars")
-            
-            # Save response to file for debugging
             debug_file = os.path.join(self._cache_dir, "yandex_debug_response.html")
             try:
                 with open(debug_file, "w", encoding="utf-8") as f:
@@ -242,9 +216,6 @@ class YandexImageSearch:
                 logger.info(f"Saved Yandex response to: {debug_file}")
             except Exception as e:
                 logger.warning(f"Could not save debug file: {e}")
-            
-            # Method 1: Look for serp-item data in data-bem attributes (escaped JSON)
-            # Pattern matches both single and double quoted data-bem
             bem_pattern = r'data-bem=[\'"]({.*?serp-item.*?})[\'"]'
             bem_matches = re.findall(bem_pattern, html_content)
             
@@ -252,7 +223,6 @@ class YandexImageSearch:
             
             for match in bem_matches:
                 try:
-                    # Unescape HTML entities
                     unescaped = match.replace('&quot;', '"').replace('&amp;', '&').replace('&#39;', "'")
                     data = json.loads(unescaped)
                     
@@ -271,10 +241,7 @@ class YandexImageSearch:
                             results.append(result)
                 except (json.JSONDecodeError, KeyError, TypeError) as e:
                     continue
-            
-            # Method 2: Look for img_href pattern in the raw HTML
             if not results:
-                # Pattern for Yandex's image URLs in various formats
                 patterns = [
                     r'"img_href"\s*:\s*"([^"]+)"',
                     r'"origin"\s*:\s*{\s*"url"\s*:\s*"([^"]+)"',
@@ -288,7 +255,6 @@ class YandexImageSearch:
                     logger.info(f"Pattern {pattern[:30]}... found {len(matches)} matches")
                     
                     for url in matches:
-                        # Unescape URL
                         url = url.replace("\\/", "/").replace("\\u002F", "/")
                         
                         if url in seen_urls:
@@ -310,10 +276,7 @@ class YandexImageSearch:
                     
                     if len(results) >= per_page:
                         break
-            
-            # Method 3: Look for preview/thumbnail URLs (avatars.mds.yandex.net)
             if not results:
-                # Yandex uses avatars.mds.yandex.net for thumbnails
                 thumb_pattern = r'(https?://avatars\.mds\.yandex\.net/[^"\'>\s]+)'
                 thumb_matches = re.findall(thumb_pattern, html_content)
                 
@@ -323,7 +286,6 @@ class YandexImageSearch:
                 for url in thumb_matches:
                     if url in seen_urls:
                         continue
-                    # Skip very small sizes
                     if "/n=" in url or "orig" in url or any(s in url for s in ["/200x", "/300x", "/400x", "/500x"]):
                         seen_urls.add(url)
                         results.append(SearchResult(
@@ -352,8 +314,6 @@ class YandexImageSearch:
         results = []
         
         try:
-            # DuckDuckGo uses a token-based API
-            # First, get a token from the main search page
             token_url = "https://duckduckgo.com/"
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -361,8 +321,6 @@ class YandexImageSearch:
             
             session = requests.Session()
             resp = session.get(token_url, headers=headers, timeout=10)
-            
-            # Extract vqd token
             vqd_match = re.search(r'vqd=([^&]+)', resp.text)
             if not vqd_match:
                 vqd_match = re.search(r"vqd='([^']+)'", resp.text)
@@ -374,8 +332,6 @@ class YandexImageSearch:
                 return results
             
             vqd = vqd_match.group(1)
-            
-            # Now search images
             search_url = "https://duckduckgo.com/i.js"
             params = {
                 "l": "us-en",
@@ -418,7 +374,6 @@ class YandexImageSearch:
         results = []
         
         try:
-            # Unsplash public search endpoint
             search_url = f"https://unsplash.com/napi/search/photos"
             params = {
                 "query": query,
@@ -456,16 +411,11 @@ class YandexImageSearch:
     
     def _add_to_history(self, query: SearchQuery):
         """Add a query to search history, removing duplicates."""
-        # Remove existing entries with same query text
         self.search_history = [
             q for q in self.search_history 
             if q.query.lower() != query.query.lower()
         ]
-        
-        # Add new query at the beginning
         self.search_history.insert(0, query)
-        
-        # Trim history if needed
         if len(self.search_history) > self.max_history:
             self.search_history = self.search_history[:self.max_history]
     

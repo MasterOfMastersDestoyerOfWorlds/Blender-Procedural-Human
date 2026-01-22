@@ -7,6 +7,4 @@ Contains panels for:
 - Curve insertion options
 """
 
-# Panels are auto-discovered via the @procedural_panel decorator
-
 

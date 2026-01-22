@@ -21,7 +21,6 @@ def workspace_add_menu_draw(self, context):
     
     if procedural_workspace.registry:
         layout.separator()
-        # Add each workspace directly to the menu (no submenu)
         for class_name, workspace_cls in procedural_workspace.registry.items():
             op = layout.operator(
                 "workspace.open_procedural_workspace",
@@ -34,7 +33,6 @@ def workspace_add_menu_draw(self, context):
 @persistent
 def _create_workspace_on_load(dummy):
     """Handler to create workspaces when a new file is loaded."""
-    # Delay execution slightly to ensure Blender is ready
     if procedural_workspace.registry:
         bpy.app.timers.register(
             procedural_workspace._auto_create_workspaces, 
@@ -53,7 +51,6 @@ class procedural_workspace(DiscoverableClassDecorator):
             
             @staticmethod
             def create_layout(context):
-                # Workspace layout creation logic
                 pass
     """
 
@@ -66,14 +63,9 @@ class procedural_workspace(DiscoverableClassDecorator):
             setattr(cls, key, value)
         
         class_name = cls.__name__
-        
-        # Auto-generate name if not provided
         if not hasattr(cls, "name"):
-            # Convert CamelCase to Title With Spaces
             name_without_workspace = re.sub(r"Workspace$", "", class_name)
             cls.name = DiscoverableClassDecorator.to_title_with_spaces(name_without_workspace)
-        
-        # Ensure create_layout method exists
         if not hasattr(cls, "create_layout"):
             raise NotImplementedError(
                 f"Workspace class {class_name} must implement create_layout(context) method"
@@ -92,8 +84,6 @@ class procedural_workspace(DiscoverableClassDecorator):
         )
         for workspace_cls in procedural_workspace.registry.values():
             logger.info(f"  - {workspace_cls.name}")
-        
-        # Register the generic workspace opener operator (unregister first for hot-reload)
         try:
             try:
                 bpy.utils.unregister_class(OpenProceduralWorkspaceOperator)
@@ -102,8 +92,6 @@ class procedural_workspace(DiscoverableClassDecorator):
             bpy.utils.register_class(OpenProceduralWorkspaceOperator)
         except Exception as e:
             logger.warning(f"Could not register workspace operator: {e}")
-        
-        # Add to workspace add menu (remove first if exists, for hot-reload)
         try:
             try:
                 bpy.types.TOPBAR_MT_workspace_menu.remove(workspace_add_menu_draw)
@@ -112,15 +100,11 @@ class procedural_workspace(DiscoverableClassDecorator):
             bpy.types.TOPBAR_MT_workspace_menu.append(workspace_add_menu_draw)
         except Exception as e:
             logger.warning(f"Could not append to workspace menu: {e}")
-        
-        # Register load_post handler to create workspaces on new file
         try:
             if _create_workspace_on_load not in bpy.app.handlers.load_post:
                 bpy.app.handlers.load_post.append(_create_workspace_on_load)
         except Exception as e:
             logger.warning(f"Could not register load_post handler: {e}")
-        
-        # Schedule auto-creation of workspaces after Blender is fully loaded
         if cls.registry:
             bpy.app.timers.register(cls._auto_create_workspaces, first_interval=0.5)
 
@@ -147,20 +131,14 @@ class procedural_workspace(DiscoverableClassDecorator):
                 return 0.2
             
             for class_name, workspace_cls in cls.registry.items():
-                # Check if workspace already exists - skip if it does
-                # (Don't try to recreate - just use existing one)
                 if workspace_cls.name in bpy.data.workspaces:
                     logger.info(f"Workspace '{workspace_cls.name}' already exists, skipping auto-create")
                     continue
                 
                 logger.info(f"Auto-creating workspace: {workspace_cls.name}")
-                
-                # Store the current workspace to return to it
                 original_workspace = window.workspace
                 
                 try:
-                    # Use a workspace without animation timeline as base
-                    # "Modeling" workspace doesn't have the animation timeline
                     base_workspace = None
                     for ws_name in ["Modeling", "Sculpting", "UV Editing", "Layout"]:
                         if ws_name in bpy.data.workspaces:
@@ -173,28 +151,17 @@ class procedural_workspace(DiscoverableClassDecorator):
                     if base_workspace:
                         window.workspace = base_workspace
                         logger.info(f"Using '{base_workspace.name}' as base workspace")
-                    
-                    # Duplicate the current workspace
                     with context.temp_override(window=window, screen=window.screen):
                         bpy.ops.workspace.duplicate()
-                    
-                    # Rename the new workspace
                     new_workspace = window.workspace
                     new_workspace.name = workspace_cls.name
-                    
-                    # Join all areas into one to get a clean slate
                     logger.info("Joining all areas to create clean workspace...")
                     main_area = join_all_areas_to_one(context)
                     
                     if main_area:
-                        # Set it to VIEW_3D as a base
                         main_area.type = 'VIEW_3D'
-                    
-                    # Apply the custom layout (this will split and configure areas)
                     with context.temp_override(window=window, screen=window.screen):
                         workspace_cls.create_layout(context)
-                    
-                    # Switch back to original workspace
                     if original_workspace is not None:
                         window.workspace = original_workspace
                     
@@ -213,20 +180,15 @@ class procedural_workspace(DiscoverableClassDecorator):
         """
         Unregister all decorated workspace classes, menu, and operator.
         """
-        # Remove from workspace add menu
         try:
             bpy.types.TOPBAR_MT_workspace_menu.remove(workspace_add_menu_draw)
         except Exception:
             pass
-        
-        # Remove load_post handler
         try:
             if _create_workspace_on_load in bpy.app.handlers.load_post:
                 bpy.app.handlers.load_post.remove(_create_workspace_on_load)
         except Exception:
             pass
-        
-        # Unregister operator
         try:
             bpy.utils.unregister_class(OpenProceduralWorkspaceOperator)
         except Exception:
@@ -252,30 +214,22 @@ class procedural_workspace(DiscoverableClassDecorator):
             return False
         
         workspace_cls = cls.registry[workspace_class_name]
-        
-        # Check if workspace already exists
         if workspace_cls.name in bpy.data.workspaces:
             if force_recreate:
-                # Delete existing workspace using operator
                 logger.info(f"Force recreating workspace: {workspace_cls.name}")
                 try:
-                    # Switch to the workspace we want to delete
                     ws_to_delete = bpy.data.workspaces[workspace_cls.name]
                     context.window.workspace = ws_to_delete
-                    # Delete it (this switches to another workspace)
                     bpy.ops.workspace.delete()
                     logger.info(f"Deleted workspace: {workspace_cls.name}")
                 except Exception as e:
                     logger.warning(f"Could not delete workspace: {e}")
                     return False
             else:
-                # Switch to existing workspace
                 context.window.workspace = bpy.data.workspaces[workspace_cls.name]
                 return True
         
         try:
-            # Use a workspace without animation timeline as base
-            # "Modeling" workspace doesn't have the animation timeline
             base_workspace = None
             for ws_name in ["Modeling", "Sculpting", "UV Editing", "Layout"]:
                 if ws_name in bpy.data.workspaces:
@@ -285,23 +239,14 @@ class procedural_workspace(DiscoverableClassDecorator):
             if base_workspace:
                 context.window.workspace = base_workspace
                 logger.info(f"Using '{base_workspace.name}' as base workspace")
-            
-            # Duplicate the current workspace
             bpy.ops.workspace.duplicate()
-            
-            # Rename the new workspace
             new_workspace = context.window.workspace
             new_workspace.name = workspace_cls.name
-            
-            # Join all areas into one to get a clean slate
             logger.info("Joining all areas to create clean workspace...")
             main_area = join_all_areas_to_one(context)
             
             if main_area:
-                # Set it to VIEW_3D as a base
                 main_area.type = 'VIEW_3D'
-            
-            # Call the class's layout creation method
             workspace_cls.create_layout(context)
             
             logger.info(f"Created workspace: {workspace_cls.name}")
@@ -343,18 +288,11 @@ def split_area_horizontal(context, area, factor=0.5):
     if screen is None:
         logger.warning("Cannot split area horizontally: no screen available")
         return None
-    
-    # Store original area count
     original_areas = list(screen.areas)
-    
-    # Override context for the split operation
     with context.temp_override(area=area, region=area.regions[0]):
         bpy.ops.screen.area_split(direction='HORIZONTAL', factor=factor)
-    
-    # Find the new area
     new_areas = [a for a in screen.areas if a not in original_areas]
     if new_areas:
-        # The original area becomes the top, new area is bottom
         return area, new_areas[0]
     
     return None
@@ -376,18 +314,11 @@ def split_area_vertical(context, area, factor=0.5):
     if screen is None:
         logger.warning("Cannot split area vertically: no screen available")
         return None
-    
-    # Store original area count
     original_areas = list(screen.areas)
-    
-    # Override context for the split operation
     with context.temp_override(area=area, region=area.regions[0]):
         bpy.ops.screen.area_split(direction='VERTICAL', factor=factor)
-    
-    # Find the new area
     new_areas = [a for a in screen.areas if a not in original_areas]
     if new_areas:
-        # The original area becomes the left, new area is right
         return area, new_areas[0]
     
     return None
@@ -425,25 +356,16 @@ def join_all_areas_to_one(context):
     while len(screen.areas) > 1 and attempts < max_attempts:
         attempts += 1
         joined = False
-        
-        # Get all areas sorted by position (bottom-left to top-right)
         areas = sorted(screen.areas, key=lambda a: (a.y, a.x))
-        
-        # Try to find two adjacent areas to join
         for i, area in enumerate(areas):
             if joined:
                 break
-                
-            # Try to join with areas to the right or above
             for other_area in areas[i+1:]:
                 if joined:
                     break
-                    
-                # Check if areas are horizontally adjacent (share vertical edge)
                 if (abs(area.x + area.width - other_area.x) < 5 and
                     area.y < other_area.y + other_area.height and
                     area.y + area.height > other_area.y):
-                    # Join horizontally - cursor on the shared edge
                     cursor_x = area.x + area.width
                     cursor_y = max(area.y, other_area.y) + min(area.height, other_area.height) // 2
                     try:
@@ -452,12 +374,9 @@ def join_all_areas_to_one(context):
                         joined = True
                     except Exception:
                         pass
-                        
-                # Check if areas are vertically adjacent (share horizontal edge)
                 elif (abs(area.y + area.height - other_area.y) < 5 and
                       area.x < other_area.x + other_area.width and
                       area.x + area.width > other_area.x):
-                    # Join vertically - cursor on the shared edge
                     cursor_x = max(area.x, other_area.x) + min(area.width, other_area.width) // 2
                     cursor_y = area.y + area.height
                     try:
@@ -468,13 +387,10 @@ def join_all_areas_to_one(context):
                         pass
         
         if not joined:
-            # If no join was successful, try a simpler approach
-            # Just try to join the first two areas
             if len(screen.areas) >= 2:
                 area1 = screen.areas[0]
                 area2 = screen.areas[1]
                 try:
-                    # Try joining at the boundary
                     cursor_x = (area1.x + area1.width + area2.x) // 2
                     cursor_y = (area1.y + area1.height + area2.y) // 2
                     with context.temp_override(area=area1):
@@ -485,7 +401,6 @@ def join_all_areas_to_one(context):
     if len(screen.areas) == 1:
         return screen.areas[0]
     elif len(screen.areas) > 0:
-        # Return the largest remaining area
         return max(screen.areas, key=lambda a: a.width * a.height)
     return None
 

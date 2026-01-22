@@ -1,6 +1,4 @@
 import bpy
-
-# --- Helpers ---
 def is_socket(obj):
     """Check if an object is a Blender node socket.
     
@@ -242,15 +240,10 @@ def smoother_step(group, t):
     :param t: Input parameter (socket or float).
     :returns: Output socket with the smoothstep value.
     """
-    # s1 = 6*t - 15
     s1 = math_op(group, "SUBTRACT", math_op(group, "MULTIPLY", t, 6.0), 15.0)
-    # s2 = t * s1 + 10 = 6t^2 - 15t + 10
     s2 = math_op(group, "ADD", math_op(group, "MULTIPLY", t, s1), 10.0)
-    # result = t^3 * s2
     t3 = math_op(group, "POWER", t, 3.0)
     return math_op(group, "MULTIPLY", t3, s2)
-
-# tan(α/2) = sqrt((1 - cos(α)) / (1 + cos(α)))
 def tan_half_angle(group, cos_a):
     """Calculate tan(α/2) from cos(α).
     
@@ -258,7 +251,6 @@ def tan_half_angle(group, cos_a):
     :param cos_a: Cosine of the angle (socket or float). Clamped to avoid numerical issues.
     :returns: Output socket with tan(α/2).
     """
-    # Clamp to avoid numerical issues
     cos_clamped = math_op(group, "MINIMUM", 0.9999, math_op(group, "MAXIMUM", -0.9999, cos_a))
     numer = math_op(group, "SUBTRACT", 1.0, cos_clamped)
     denom = math_op(group, "ADD", 1.0, cos_clamped)
@@ -337,12 +329,8 @@ def get_edge_control_points_group():
     ng.interface.new_socket("P1", in_out="OUTPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("P2", in_out="OUTPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("P3", in_out="OUTPUT", socket_type="NodeSocketVector")
-    
-    # Internal Logic
     in_node = ng.nodes.new("NodeGroupInput")
     out_node = ng.nodes.new("NodeGroupOutput")
-    
-    # Helper function to get vertex position (which: 0 -> Vertex Index 1, 1 -> Vertex Index 2)
     def edge_vertex_pos(which):
         s_edge = create_node(ng, "GeometryNodeSampleIndex", {
             "Geometry": in_node.outputs["orig_geo"], "Domain": "EDGE", "Data Type": "INT", "Index": in_node.outputs["edge_id"]
@@ -354,8 +342,6 @@ def get_edge_control_points_group():
         })
         ng.links.new(ng.nodes.new("GeometryNodeInputPosition").outputs[0], s_pos.inputs["Value"])
         return s_pos.outputs[0]
-    
-    # Helper function to get handle vector
     def edge_handle_vec(prefix):
         def comp(c):
             s = create_node(ng, "GeometryNodeSampleIndex", {
@@ -376,8 +362,6 @@ def get_edge_control_points_group():
     p_v2 = edge_vertex_pos(1)
     h_start = edge_handle_vec("handle_start")  # relative to v1
     h_end = edge_handle_vec("handle_end")      # relative to v2
-
-    # Endpoint mix
     mix_p0 = ng.nodes.new("ShaderNodeMix")
     mix_p0.data_type = "VECTOR"
     ng.links.new(in_node.outputs["fwd"], mix_p0.inputs["Factor"])
@@ -391,8 +375,6 @@ def get_edge_control_points_group():
     ng.links.new(p_v1, mix_p3.inputs["A"])
     ng.links.new(p_v2, mix_p3.inputs["B"])
     P3 = mix_p3.outputs["Result"]
-
-    # Handles depend on direction
     p1_fwd = vec_math_op(ng, "ADD", p_v1, h_start)
     p1_bwd = vec_math_op(ng, "ADD", p_v2, h_end)
     mix_p1 = ng.nodes.new("ShaderNodeMix")
@@ -458,8 +440,6 @@ def get_bezier_eval_group():
     ng.interface.new_socket("P3", in_out="INPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("t", in_out="INPUT", socket_type="NodeSocketFloat")
     ng.interface.new_socket("Result", in_out="OUTPUT", socket_type="NodeSocketVector")
-    
-    # Internal Logic (Your original bezier_eval logic goes here)
     in_node = ng.nodes.new("NodeGroupInput")
     out_node = ng.nodes.new("NodeGroupOutput")
     
@@ -519,8 +499,6 @@ def get_bezier_deriv_group():
     ng.interface.new_socket("P3", in_out="INPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("t", in_out="INPUT", socket_type="NodeSocketFloat")
     ng.interface.new_socket("Result", in_out="OUTPUT", socket_type="NodeSocketVector")
-    
-    # Internal Logic
     in_node = ng.nodes.new("NodeGroupInput")
     out_node = ng.nodes.new("NodeGroupOutput")
     
@@ -571,19 +549,15 @@ def sample_face_corner_pos(group, face_idx_node, prepared_geo, sort_index):
     :param sort_index: Sort index of the corner within the face (0, 1, 2, or 3).
     :returns: Output socket with the corner position vector.
     """
-    # Get the corner index for this face at the given sort position
     cof_corner = group.nodes.new("GeometryNodeCornersOfFace")
     group.links.new(face_idx_node.outputs[0], cof_corner.inputs["Face Index"])
     cof_corner.inputs["Weights"].default_value = 0.0
     cof_corner.inputs["Sort Index"].default_value = sort_index
     corner_at_sort = cof_corner.outputs["Corner Index"]
-    
-    # Sample the corner_pos at that corner index
     sample = create_node(group,"GeometryNodeSampleIndex", {
         "Geometry": prepared_geo, "Domain": "CORNER", "Data Type": "FLOAT_VECTOR",
         "Index": corner_at_sort
     })
-    # Get the corner_pos attribute from prepared_geo
     corner_pos_attr_w = group.nodes.new("GeometryNodeInputNamedAttribute")
     corner_pos_attr_w.data_type = "FLOAT_VECTOR"
     corner_pos_attr_w.inputs["Name"].default_value = "corner_pos"
@@ -610,20 +584,13 @@ def get_domain_edge_distance_group():
     ng.interface.new_socket("domain_p_x", in_out="INPUT", socket_type="NodeSocketFloat")
     ng.interface.new_socket("domain_p_y", in_out="INPUT", socket_type="NodeSocketFloat")
     ng.interface.new_socket("Result", in_out="OUTPUT", socket_type="NodeSocketFloat")
-    
-    # Internal Logic
     in_node = ng.nodes.new("NodeGroupInput")
     out_node = ng.nodes.new("NodeGroupOutput")
-    
-    # Must use the same flip_domain logic as in mean-value coordinates
-    # to ensure domain edge positions match the computed domain_p_x/y.
     angle_step_local = math_op(ng, "DIVIDE", 6.283185307, in_node.outputs["N_field"])
     
     i_float_local = int_to_float(ng, in_node.outputs["i_idx"])
     i_prev = int_op(ng, "MODULO", int_op(ng, "ADD", int_op(ng, "SUBTRACT", in_node.outputs["i_idx"], 1), in_node.outputs["N_field"]), in_node.outputs["N_field"])
     i_prev_float = int_to_float(ng, i_prev)
-    
-    # CCW angles (same formula as in mean-value coords)
     base_angle_prev = math_op(ng, "MULTIPLY", math_op(ng, "ADD", i_prev_float, 0.5), angle_step_local)
     theta0_ccw = math_op(ng, "ADD", base_angle_prev, 3.14159265)
     theta0 = theta0_ccw

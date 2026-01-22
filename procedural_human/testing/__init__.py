@@ -17,11 +17,7 @@ from .topology_checker import (
     get_latest_csvs,
 )
 
-# Note: test_operators are auto-registered via @procedural_operator decorator
-# They will be available when loaded in Blender
-
 __all__ = [
-    # Topology checker
     "TopologyCheckResult",
     "check_corner_topology",
     "check_all_corners",

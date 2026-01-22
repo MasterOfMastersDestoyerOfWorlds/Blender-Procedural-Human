@@ -73,9 +73,6 @@ class Finger:
                 self.finger_nail_attachment,
             ]
         )
-
-
-# Finger instances with anatomical measurements (in mm)
 Index = Finger([39.78, 22.38, 15.82])
 Thumb = Finger([46.22, 31.57])
 Middle = Finger([44.63, 26.33, 17.40])

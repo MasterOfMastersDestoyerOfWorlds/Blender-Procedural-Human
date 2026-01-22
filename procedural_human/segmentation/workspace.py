@@ -5,12 +5,14 @@ This module defines the custom workspace layout for the segmentation workflow.
 """
 
 import bpy
+from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.decorators.workspace_decorator import (
     procedural_workspace,
     split_area_horizontal,
     split_area_vertical,
     set_area_type,
 )
+from procedural_human.image_search.search_asset_manager import SearchAssetManager
 from procedural_human.logger import logger
 
 
@@ -58,8 +60,6 @@ class CurveSegmentationWorkspace:
         if screen is None:
             logger.error("No screen available in context")
             return
-        
-        # Find the main VIEW_3D area
         main_area = None
         for area in screen.areas:
             if area.type == 'VIEW_3D':
@@ -67,7 +67,6 @@ class CurveSegmentationWorkspace:
                 break
         
         if main_area is None:
-            # If no VIEW_3D, use the first available area
             for area in screen.areas:
                 main_area = area
                 break
@@ -75,17 +74,9 @@ class CurveSegmentationWorkspace:
         if main_area is None:
             logger.error("No areas found in screen")
             return
-            
-        # DEBUG: Log all areas to understand layout
         logger.info(f"Screen '{screen.name}' has {len(screen.areas)} areas:")
         for i, area in enumerate(screen.areas):
             logger.info(f"  Area {i}: Type={area.type}, X={area.x}, Y={area.y}, W={area.width}, H={area.height}")
-        
-
-        
-
-        # Step 1: Split horizontally to create top (2/3) and bottom (1/3) areas
-        # Factor 0.33 means the split happens at 1/3 from bottom
         result = split_area_horizontal(context, main_area, factor=0.33)
         if result is None:
             logger.error("Failed to split area horizontally")
@@ -93,31 +84,20 @@ class CurveSegmentationWorkspace:
         
         top_area, bottom_area = result
         try:
-            
-                        
-            # Step 2: Set bottom area to FILE_BROWSER (Asset Browser mode)
             set_area_type(bottom_area, 'FILE_BROWSER')
-            
-            # Configure as Asset Browser showing search results
             _configure_asset_browser(bottom_area)
-            
-            # Step 3: Split top area vertically to create left and right
             result = split_area_vertical(context, top_area, factor=0.5)
             if result is None:
                 logger.error("Failed to split area vertically")
                 return
             
             left_area, right_area = result
-            
-            # Step 4: Set area types (VIEW_3D on left, IMAGE_EDITOR on right)
             set_area_type(left_area, 'VIEW_3D')  # 3D preview
             set_area_type(right_area, 'IMAGE_EDITOR')  # Segmentation view
             
             for space in left_area.spaces:
                 if space.type == 'VIEW_3D':
                     space.shading.type = 'MATERIAL'
-
-            # Open sidebars for panels (search panel will be in IMAGE_EDITOR sidebar)
             for area in [left_area, right_area]:
                 for space in area.spaces:
                     if hasattr(space, 'show_region_ui'):
@@ -125,21 +105,14 @@ class CurveSegmentationWorkspace:
 
             timeline_area = None
             bottom_candidates = []
-            
-            # Identify candidate areas that are likely at the bottom
-            # Standard animation/info areas
             target_types = {'TIMELINE', 'DOPESHEET_EDITOR', 'GRAPH_EDITOR', 'NLA_EDITOR', 'CONSOLE', 'INFO'}
             
             for area in screen.areas:
                 if area.type in target_types:
-                    # Store tuple of (y_position, area) to find the bottom-most
                     bottom_candidates.append((area.y, area))
-            
-            # Sort candidates by Y position (ascending = bottom first)
             bottom_candidates.sort(key=lambda x: x[0])
             
             if bottom_candidates:
-                # Use the lowest area
                 timeline_area = bottom_candidates[0][1]
                 logger.info(f"Found bottom candidate area: Type={timeline_area.type}, Y={timeline_area.y}")
                 override = {
@@ -167,46 +140,30 @@ def _configure_asset_browser(area):
     Args:
         area: The FILE_BROWSER area to configure
     """
-    from procedural_human.segmentation.search_asset_manager import SearchAssetManager
-    
-    # Ensure the asset library is registered
     SearchAssetManager.register_asset_library()
     
     for space in area.spaces:
         if space.type == 'FILE_BROWSER':
             try:
-                # Set to asset browse mode
                 if hasattr(space, 'browse_mode'):
                     space.browse_mode = 'ASSETS'
-                
-                # Configure params - needs a delay for params to be ready
                 def configure_params():
                     try:
                         params = space.params
                         if params is None:
                             return 0.1  # Retry
-                        
-                        # Set display to thumbnails
                         if hasattr(params, 'display_type'):
                             params.display_type = 'THUMBNAIL'
-                        
-                        # Set thumbnail size
                         if hasattr(params, 'display_size'):
                             params.display_size = 96
-                        
-                        # Set the asset library reference to our library
-                        # Use the exact library name as registered
                         lib_name = SearchAssetManager.LIBRARY_NAME
                         if hasattr(params, 'asset_library_reference'):
                             try:
                                 params.asset_library_reference = lib_name
                                 logger.info(f"Set Asset Browser to library: {lib_name}")
                             except Exception as e:
-                                # If the library doesn't exist yet, fall back to LOCAL
                                 logger.warning(f"Could not set to {lib_name}, using LOCAL: {e}")
                                 params.asset_library_reference = 'LOCAL'
-                        
-                        # Filter to show materials (our assets are materials)
                         if hasattr(params, 'use_filter'):
                             params.use_filter = True
                         if hasattr(params, 'use_filter_material'):
@@ -216,8 +173,6 @@ def _configure_asset_browser(area):
                     except Exception as e:
                         logger.warning(f"Error configuring params: {e}")
                     return None  # Don't repeat timer
-                
-                # Schedule delayed configuration to ensure params is ready
                 bpy.app.timers.register(configure_params, first_interval=0.2)
                 
             except Exception as e:
@@ -225,13 +180,9 @@ def _configure_asset_browser(area):
             break
 
 
-# Operator to create/switch to the workspace
-from bpy.types import Operator
-from procedural_human.decorators.operator_decorator import procedural_operator
-
 
 @procedural_operator
-class OpenCurveSegmentationWorkspace(Operator):
+class OpenCurveSegmentationWorkspace(bpy.types.Operator):
     """Open the Curve Segmentation workspace"""
     
     bl_idname = "workspace.open_curve_segmentation"

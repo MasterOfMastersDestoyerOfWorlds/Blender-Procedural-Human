@@ -7,6 +7,4 @@ Contains operators for:
 - Curve creation and insertion
 """
 
-# Operators are auto-discovered via the @procedural_operator decorator
-
 

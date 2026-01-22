@@ -23,7 +23,6 @@ Usage:
         
         @staticmethod
         def create_layout(context):
-            # Layout creation logic
             pass
 
 Classes decorated with these decorators are automatically discovered and

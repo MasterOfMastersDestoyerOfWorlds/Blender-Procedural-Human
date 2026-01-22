@@ -1,4 +1,3 @@
-#Requires -Version 5.1
 <#
 .SYNOPSIS
     Setup script for Hunyuan3D-2 submodule.
@@ -26,7 +25,6 @@
     
 .EXAMPLE
     .\setup_hunyuan3d.ps1 -CudaVersion cu118 -DownloadModel
-#>
 
 param(
     [ValidateSet("cu118", "cu121", "cu124", "cpu")]
@@ -38,8 +36,6 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
-# Get script directory
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Hunyuan3DDir = Join-Path $ScriptDir "Hunyuan3D-2"
 $VenvDir = Join-Path $Hunyuan3DDir ".venv"
@@ -48,15 +44,11 @@ Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  Hunyuan3D-2 Setup Script" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
-
-# Check if Hunyuan3D-2 submodule exists
 if (-not (Test-Path (Join-Path $Hunyuan3DDir "api_server.py"))) {
     Write-Host "ERROR: Hunyuan3D-2 submodule not found at $Hunyuan3DDir" -ForegroundColor Red
     Write-Host "Run: git submodule update --init" -ForegroundColor Yellow
     exit 1
 }
-
-# Check for uv
 $uvPath = Get-Command uv -ErrorAction SilentlyContinue
 if (-not $uvPath) {
     Write-Host "ERROR: 'uv' is not installed." -ForegroundColor Red
@@ -64,8 +56,6 @@ if (-not $uvPath) {
     exit 1
 }
 Write-Host "[OK] uv found: $($uvPath.Source)" -ForegroundColor Green
-
-# Check for CUDA (optional warning)
 if ($CudaVersion -ne "cpu") {
     $nvccPath = Get-Command nvcc -ErrorAction SilentlyContinue
     if (-not $nvccPath) {
@@ -85,8 +75,6 @@ Write-Host "  - CUDA version: $CudaVersion"
 Write-Host "  - Build extensions: $(-not $SkipExtensions)"
 Write-Host "  - Download model: $DownloadModel"
 Write-Host ""
-
-# Create virtual environment
 Write-Host "Step 1: Creating virtual environment..." -ForegroundColor Cyan
 Push-Location $Hunyuan3DDir
 try {
@@ -97,16 +85,12 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Failed to create virtual environment" }
         Write-Host "  [OK] Virtual environment created" -ForegroundColor Green
     }
-
-    # Activate virtual environment
     $activateScript = Join-Path $VenvDir "Scripts\Activate.ps1"
     if (-not (Test-Path $activateScript)) {
         throw "Activation script not found: $activateScript"
     }
     . $activateScript
     Write-Host "  [OK] Virtual environment activated" -ForegroundColor Green
-
-    # Install PyTorch
     Write-Host ""
     Write-Host "Step 2: Installing PyTorch with $CudaVersion..." -ForegroundColor Cyan
     if ($CudaVersion -eq "cpu") {
@@ -116,34 +100,24 @@ try {
     }
     if ($LASTEXITCODE -ne 0) { throw "Failed to install PyTorch" }
     Write-Host "  [OK] PyTorch installed" -ForegroundColor Green
-
-    # Install requirements
     Write-Host ""
     Write-Host "Step 3: Installing Hunyuan3D requirements..." -ForegroundColor Cyan
     uv pip install -r requirements.txt
     if ($LASTEXITCODE -ne 0) { throw "Failed to install requirements" }
     Write-Host "  [OK] Requirements installed" -ForegroundColor Green
-
-    # Install package in editable mode
     Write-Host ""
     Write-Host "Step 4: Installing Hunyuan3D package..." -ForegroundColor Cyan
     uv pip install -e .
     if ($LASTEXITCODE -ne 0) { throw "Failed to install package" }
     Write-Host "  [OK] Package installed" -ForegroundColor Green
-
-    # Build custom extensions
     if (-not $SkipExtensions) {
         Write-Host ""
         Write-Host "Step 5: Building custom CUDA extensions..." -ForegroundColor Cyan
-        
-        # Install setuptools and wheel (required for building extensions)
         Write-Host "  Installing build dependencies (setuptools, wheel)..." -ForegroundColor Gray
         uv pip install setuptools wheel
         if ($LASTEXITCODE -ne 0) { 
             Write-Host "  [WARN] Failed to install setuptools" -ForegroundColor Yellow
         }
-        
-        # Custom rasterizer
         $rasterizerDir = Join-Path $Hunyuan3DDir "hy3dgen\texgen\custom_rasterizer"
         if (Test-Path $rasterizerDir) {
             Write-Host "  Building custom_rasterizer..." -ForegroundColor Gray
@@ -159,8 +133,6 @@ try {
                 Pop-Location
             }
         }
-
-        # Differentiable renderer
         $rendererDir = Join-Path $Hunyuan3DDir "hy3dgen\texgen\differentiable_renderer"
         if (Test-Path $rendererDir) {
             Write-Host "  Building differentiable_renderer..." -ForegroundColor Gray
@@ -180,8 +152,6 @@ try {
         Write-Host ""
         Write-Host "Step 5: Skipping custom CUDA extensions (--SkipExtensions)" -ForegroundColor Yellow
     }
-
-    # Download model
     if ($DownloadModel) {
         Write-Host ""
         Write-Host "Step 6: Downloading Hunyuan3D-2mini turbo model..." -ForegroundColor Cyan

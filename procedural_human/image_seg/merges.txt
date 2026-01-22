@@ -1,4 +1,3 @@
-#version: 0.2
 i n
 t h
 a n
@@ -12321,7 +12320,6 @@ schol ar</w>
 ren o</w>
 ðŁĺ Ģ
 v ents</w>
-# âĢ¦</w>
 terrori sts</w>
 ca sey</w>
 cardin als</w>
@@ -14970,7 +14968,6 @@ fr ames</w>
 girl s
 clear ing</w>
 glu ten
-# #</w>
 super natural</w>
 ju bi
 ph one
@@ -29631,7 +29628,6 @@ m ire</w>
 chel le</w>
 sl ack</w>
 groo vy</w>
-# :</w>
 up loading</w>
 !!!!!!!! !!!!!!!!
 siem ens</w>
@@ -30978,7 +30974,6 @@ c bb</w>
 australi ans</w>
 rc mp</w>
 game art</w>
-# ...</w>
 kor n</w>
 extre mism</w>
 fruit ful</w>
@@ -33749,7 +33744,6 @@ tr onic</w>
 scri b
 co on
 an war</w>
-# âĢİ</w>
 jal ape
 flori da
 qu aid</w>
@@ -34549,7 +34543,6 @@ tra verse</w>
 incen se</w>
 am munition</w>
 ho dges</w>
-# @</w>
 hail state</w>
 tart an</w>
 witch craft</w>

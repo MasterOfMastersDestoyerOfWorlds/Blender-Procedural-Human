@@ -12,8 +12,6 @@ def create_store_attributes_on_points_group():
         return bpy.data.node_groups[group_name]
 
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
-
-    # --- Interface ---
     socket = group.interface.new_socket(name="Mesh", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Curve", in_out="INPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Value", in_out="INPUT", socket_type="NodeSocketVector")
@@ -24,8 +22,6 @@ def create_store_attributes_on_points_group():
     socket.default_value = [0.0, 0.0, 0.0]
     socket.min_value = -3.4028234663852886e+38
     socket.max_value = 3.4028234663852886e+38
-
-    # --- Nodes ---
     nodes = group.nodes
     links = group.links
     group_output = nodes.new("NodeGroupOutput")
@@ -34,14 +30,12 @@ def create_store_attributes_on_points_group():
     group_output.location = (952.5218505859375, 0.0)
     group_output.bl_label = "Group Output"
     group_output.is_active_output = True
-    # Links for group_output
 
     group_input = nodes.new("NodeGroupInput")
     group_input.name = "Group Input"
     group_input.label = ""
     group_input.location = (-962.5218505859375, 0.0)
     group_input.bl_label = "Group Input"
-    # Links for group_input
 
     curve_to_points = nodes.new("GeometryNodeCurveToPoints")
     curve_to_points.name = "Curve to Points"
@@ -49,11 +43,8 @@ def create_store_attributes_on_points_group():
     curve_to_points.location = (-396.429443359375, -119.66419982910156)
     curve_to_points.bl_label = "Curve to Points"
     curve_to_points.mode = "COUNT"
-    # Count
     curve_to_points.inputs[1].default_value = 1
-    # Length
     curve_to_points.inputs[2].default_value = 0.10000000149011612
-    # Links for curve_to_points
     links.new(group_input.outputs[0], curve_to_points.inputs[0])
 
     store_named_attribute = nodes.new("GeometryNodeStoreNamedAttribute")
@@ -63,11 +54,8 @@ def create_store_attributes_on_points_group():
     store_named_attribute.bl_label = "Store Named Attribute"
     store_named_attribute.data_type = "FLOAT_VECTOR"
     store_named_attribute.domain = "POINT"
-    # Selection
     store_named_attribute.inputs[1].default_value = True
-    # Name
     store_named_attribute.inputs[2].default_value = "handle_left"
-    # Links for store_named_attribute
     links.new(curve_to_points.outputs[0], store_named_attribute.inputs[0])
 
     sample_index = nodes.new("GeometryNodeSampleIndex")
@@ -78,7 +66,6 @@ def create_store_attributes_on_points_group():
     sample_index.data_type = "FLOAT_VECTOR"
     sample_index.domain = "POINT"
     sample_index.clamp = False
-    # Links for sample_index
     links.new(sample_index.outputs[0], store_named_attribute.inputs[3])
     links.new(group_input.outputs[0], sample_index.inputs[0])
 
@@ -87,7 +74,6 @@ def create_store_attributes_on_points_group():
     index.label = ""
     index.location = (-745.1072387695312, -20.25994873046875)
     index.bl_label = "Index"
-    # Links for index
     links.new(index.outputs[0], sample_index.inputs[2])
 
     named_attribute = nodes.new("GeometryNodeInputNamedAttribute")
@@ -96,9 +82,7 @@ def create_store_attributes_on_points_group():
     named_attribute.location = (-762.5218505859375, 112.67343139648438)
     named_attribute.bl_label = "Named Attribute"
     named_attribute.data_type = "FLOAT_VECTOR"
-    # Name
     named_attribute.inputs[0].default_value = "handle_left"
-    # Links for named_attribute
     links.new(named_attribute.outputs[0], sample_index.inputs[1])
 
     store_named_attribute_001 = nodes.new("GeometryNodeStoreNamedAttribute")
@@ -108,11 +92,8 @@ def create_store_attributes_on_points_group():
     store_named_attribute_001.bl_label = "Store Named Attribute"
     store_named_attribute_001.data_type = "FLOAT_VECTOR"
     store_named_attribute_001.domain = "POINT"
-    # Selection
     store_named_attribute_001.inputs[1].default_value = True
-    # Name
     store_named_attribute_001.inputs[2].default_value = "handle_right"
-    # Links for store_named_attribute_001
     links.new(store_named_attribute.outputs[0], store_named_attribute_001.inputs[0])
 
     sample_index_001 = nodes.new("GeometryNodeSampleIndex")
@@ -123,7 +104,6 @@ def create_store_attributes_on_points_group():
     sample_index_001.data_type = "FLOAT_VECTOR"
     sample_index_001.domain = "POINT"
     sample_index_001.clamp = False
-    # Links for sample_index_001
     links.new(index.outputs[0], sample_index_001.inputs[2])
     links.new(sample_index_001.outputs[0], store_named_attribute_001.inputs[3])
     links.new(group_input.outputs[0], sample_index_001.inputs[0])
@@ -134,9 +114,7 @@ def create_store_attributes_on_points_group():
     named_attribute_001.location = (-476.89056396484375, 351.2769470214844)
     named_attribute_001.bl_label = "Named Attribute"
     named_attribute_001.data_type = "FLOAT_VECTOR"
-    # Name
     named_attribute_001.inputs[0].default_value = "handle_right"
-    # Links for named_attribute_001
     links.new(named_attribute_001.outputs[0], sample_index_001.inputs[1])
 
     sample_index_002 = nodes.new("GeometryNodeSampleIndex")
@@ -147,7 +125,6 @@ def create_store_attributes_on_points_group():
     sample_index_002.data_type = "FLOAT_VECTOR"
     sample_index_002.domain = "POINT"
     sample_index_002.clamp = False
-    # Links for sample_index_002
     links.new(index.outputs[0], sample_index_002.inputs[2])
     links.new(group_input.outputs[1], sample_index_002.inputs[1])
     links.new(group_input.outputs[0], sample_index_002.inputs[0])
@@ -159,11 +136,8 @@ def create_store_attributes_on_points_group():
     store_named_attribute_002.bl_label = "Store Named Attribute"
     store_named_attribute_002.data_type = "FLOAT_VECTOR"
     store_named_attribute_002.domain = "POINT"
-    # Selection
     store_named_attribute_002.inputs[1].default_value = True
-    # Name
     store_named_attribute_002.inputs[2].default_value = "handle_start"
-    # Links for store_named_attribute_002
     links.new(store_named_attribute_001.outputs[0], store_named_attribute_002.inputs[0])
     links.new(sample_index_002.outputs[0], store_named_attribute_002.inputs[3])
 
@@ -175,7 +149,6 @@ def create_store_attributes_on_points_group():
     sample_index_003.data_type = "FLOAT_VECTOR"
     sample_index_003.domain = "POINT"
     sample_index_003.clamp = False
-    # Links for sample_index_003
     links.new(index.outputs[0], sample_index_003.inputs[2])
     links.new(group_input.outputs[0], sample_index_003.inputs[0])
     links.new(group_input.outputs[2], sample_index_003.inputs[1])
@@ -187,11 +160,8 @@ def create_store_attributes_on_points_group():
     store_named_attribute_003.bl_label = "Store Named Attribute"
     store_named_attribute_003.data_type = "FLOAT_VECTOR"
     store_named_attribute_003.domain = "POINT"
-    # Selection
     store_named_attribute_003.inputs[1].default_value = True
-    # Name
     store_named_attribute_003.inputs[2].default_value = "handle_end"
-    # Links for store_named_attribute_003
     links.new(sample_index_003.outputs[0], store_named_attribute_003.inputs[3])
     links.new(store_named_attribute_002.outputs[0], store_named_attribute_003.inputs[0])
 
@@ -200,9 +170,7 @@ def create_store_attributes_on_points_group():
     store_attributes_on_points.label = ""
     store_attributes_on_points.location = (762.5218505859375, -222.0064697265625)
     store_attributes_on_points.bl_label = "Points to Vertices"
-    # Selection
     store_attributes_on_points.inputs[1].default_value = True
-    # Links for store_attributes_on_points
     links.new(store_named_attribute_003.outputs[0], store_attributes_on_points.inputs[0])
     links.new(store_attributes_on_points.outputs[0], group_output.inputs[0])
 

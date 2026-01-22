@@ -7,14 +7,68 @@ browsing and selection.
 """
 
 import bpy
+from bpy.utils import previews
 import os
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Optional, List
-
 from procedural_human.logger import logger
 
+
+_preview_collections = {}
+
+
+def get_search_preview_collection():
+    """Get or create the preview collection for search results."""
+    if "yandex_search" not in _preview_collections:
+        _preview_collections["yandex_search"] = previews.new()
+    return _preview_collections["yandex_search"]
+
+
+def clear_search_previews():
+    """Clear all search result previews."""
+    if "yandex_search" in _preview_collections:
+        pcoll = _preview_collections["yandex_search"]
+        pcoll.clear()
+
+
+def load_image_preview(filepath: str, name: str) -> int:
+    """
+    Load an image into the preview collection.
+    
+    Args:
+        filepath: Path to the image file
+        name: Unique name for this preview
+        
+    Returns:
+        The icon_id for use in UI elements
+    """
+    pcoll = get_search_preview_collection()
+    
+    if name not in pcoll:
+        try:
+            pcoll.load(name, filepath, 'IMAGE')
+        except Exception as e:
+            logger.error(f"Failed to load preview for {name}: {e}")
+            return 0
+    
+    return pcoll[name].icon_id
+
+def unregister_search_properties():
+    """Unregister scene properties."""
+    try:
+        del bpy.types.Scene.yandex_search_query
+        del bpy.types.Scene.yandex_search_orientation
+        del bpy.types.Scene.yandex_search_size
+        del bpy.types.Scene.yandex_search_thumbnails
+        del bpy.types.Scene.yandex_search_selected_index
+        del bpy.types.Scene.segmentation_local_folder
+    except:
+        pass
+    for pcoll in _preview_collections.values():
+        previews.remove(pcoll)
+    _preview_collections.clear()
 
 class SearchAssetManager:
     """
@@ -28,8 +82,6 @@ class SearchAssetManager:
     """
     
     LIBRARY_NAME = "Search Results"
-    
-    # Catalog UUIDs for different sources (must be valid UUIDs - hex only: 0-9, a-f)
     CATALOG_SEARCH = "7a1c5e2d-8f3b-4a9e-b6c1-2d3e4f5a6b7c"
     CATALOG_LOCAL = "8b2d6f3e-9a4c-5b0f-c7d2-3e4f5a6a7b8d"
     _temp_dir: Optional[Path] = None
@@ -47,8 +99,6 @@ class SearchAssetManager:
         if cls._temp_dir is None or not cls._temp_dir.exists():
             cls._temp_dir = Path(tempfile.mkdtemp(prefix="blender_yandex_search_"))
             logger.info(f"Created temp directory for search assets: {cls._temp_dir}")
-            
-            # Create a blender_assets.cats.txt file for asset catalogs
             cls._create_catalog_file()
         
         return cls._temp_dir
@@ -61,17 +111,9 @@ class SearchAssetManager:
             
         catalog_file = cls._temp_dir / "blender_assets.cats.txt"
         catalog_content = f"""# This is an Asset Catalog Definition file for Blender.
-#
-# Empty lines and lines starting with `#` will be ignored.
-# The first non-ignored line should be the version indicator.
-# Other lines are of the format "UUID:catalog/path/for/assets:Simple Catalog Name"
 
 VERSION 1
-
-# Web Search Results catalog
 {cls.CATALOG_SEARCH}:search_results:Web Search
-
-# Local Folder catalog
 {cls.CATALOG_LOCAL}:local_folder:Local Folder
 """
         try:
@@ -92,18 +134,13 @@ VERSION 1
             
         temp_dir = cls.get_temp_dir()
         prefs = bpy.context.preferences.filepaths.asset_libraries
-        
-        # Check if already registered
         for lib in prefs:
             if lib.name == cls.LIBRARY_NAME:
-                # Update path if needed
                 if lib.path != str(temp_dir):
                     lib.path = str(temp_dir)
                 cls._registered = True
                 logger.info(f"Updated existing asset library: {cls.LIBRARY_NAME}")
                 return
-        
-        # Add new library
         try:
             new_lib = prefs.new(name=cls.LIBRARY_NAME)
             new_lib.path = str(temp_dir)
@@ -116,8 +153,6 @@ VERSION 1
     def unregister_asset_library(cls):
         """Remove the asset library from Blender preferences."""
         prefs = bpy.context.preferences.filepaths.asset_libraries
-        
-        # Find and remove the library
         for i, lib in enumerate(prefs):
             if lib.name == cls.LIBRARY_NAME:
                 prefs.remove(lib)
@@ -128,11 +163,8 @@ VERSION 1
     @classmethod
     def clear_assets(cls):
         """Clear web search assets only (preserves local folder assets)."""
-        # Clear only yandex previews from the preview collection
         try:
-            from procedural_human.segmentation.panels.search_panel import get_search_preview_collection
             pcoll = get_search_preview_collection()
-            # Only remove search_ prefixed previews (web search), not local_
             search_keys = [k for k in pcoll.keys() if k.startswith("search_")]
             for key in search_keys:
                 try:
@@ -141,8 +173,6 @@ VERSION 1
                     pass
         except Exception:
             pass
-        
-        # Remove only yandex materials from Blender
         for mat_name in list(bpy.data.materials.keys()):
             if mat_name.startswith("yandex_"):
                 try:
@@ -150,8 +180,6 @@ VERSION 1
                     bpy.data.materials.remove(mat)
                 except Exception:
                     pass
-        
-        # Remove only yandex images from Blender
         for img_name in list(bpy.data.images.keys()):
             if img_name.startswith("yandex_"):
                 try:
@@ -161,12 +189,9 @@ VERSION 1
                     pass
         
         if cls._temp_dir is None or not cls._temp_dir.exists():
-            # Only clear yandex assets from tracking
             cls._assets = [a for a in cls._assets if not a.startswith("yandex_")]
             logger.info("Cleared web search assets")
             return
-            
-        # Remove only yandex files from temp directory (preserve local_ files)
         for item in cls._temp_dir.iterdir():
             if item.name.startswith("yandex_"):
                 try:
@@ -176,8 +201,6 @@ VERSION 1
                         shutil.rmtree(item)
                 except Exception as e:
                     logger.error(f"Failed to remove {item}: {e}")
-        
-        # Clear only yandex assets from tracking
         cls._assets = [a for a in cls._assets if not a.startswith("yandex_")]
         
         logger.info("Cleared web search assets")
@@ -207,35 +230,22 @@ VERSION 1
             The created Material data-block, or None if failed
         """
         try:
-            # Ensure the image exists
             if not os.path.exists(image_path):
                 logger.error(f"Image not found: {image_path}")
                 return None
-            
-            # Copy image to temp directory if not already there
             temp_dir = cls.get_temp_dir()
             image_filename = f"{prefix}{name}{Path(image_path).suffix}"
             dest_path = temp_dir / image_filename
             
             if str(image_path) != str(dest_path):
                 shutil.copy2(image_path, dest_path)
-            
-            # Create material asset name
             asset_name = f"{prefix}{name}"
-            
-            # Remove existing material with same name
             if asset_name in bpy.data.materials:
                 bpy.data.materials.remove(bpy.data.materials[asset_name])
-            
-            # Create a new material
             mat = bpy.data.materials.new(name=asset_name)
             mat.use_nodes = True
-            
-            # Clear default nodes
             nodes = mat.node_tree.nodes
             nodes.clear()
-            
-            # Create nodes: Image Texture -> Principled BSDF -> Output
             output_node = nodes.new(type='ShaderNodeOutputMaterial')
             output_node.location = (300, 0)
             
@@ -244,34 +254,21 @@ VERSION 1
             
             tex_node = nodes.new(type='ShaderNodeTexImage')
             tex_node.location = (-300, 0)
-            
-            # Load the image
             img = bpy.data.images.load(str(dest_path))
             img.name = f"{asset_name}_img"
             tex_node.image = img
-            
-            # Connect nodes
             links = mat.node_tree.links
             links.new(tex_node.outputs['Color'], bsdf_node.inputs['Base Color'])
             links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
-            
-            # Mark material as asset
             mat.asset_mark()
-            
-            # Set asset metadata
             mat.asset_data.description = f"{description_prefix}: {name}"
             mat.asset_data.catalog_id = catalog_id
-            
-            # Load custom preview using the image file
             try:
                 with bpy.context.temp_override(id=mat):
                     bpy.ops.ed.lib_id_load_custom_preview(filepath=str(dest_path))
             except Exception as e:
                 logger.warning(f"Could not load custom preview: {e}")
-                # Fallback to generated preview
                 mat.asset_generate_preview()
-            
-            # Track this asset
             cls._assets.append(asset_name)
             
             logger.info(f"Added material asset: {asset_name}")
@@ -335,7 +332,6 @@ VERSION 1
         blend_file = temp_dir / "search_results.blend"
         
         try:
-            # Get list of yandex and local materials to save
             mats_to_save = [
                 mat for mat in bpy.data.materials 
                 if (mat.name.startswith("yandex_") or mat.name.startswith("local_")) 
@@ -347,9 +343,6 @@ VERSION 1
                 return
             
             logger.info(f"Saving {len(mats_to_save)} material assets to {blend_file}")
-            
-            # Save to a separate .blend file using wm.save_as_mainfile
-            # This preserves all asset data including previews
             bpy.ops.wm.save_as_mainfile(
                 filepath=str(blend_file),
                 copy=True,  # Don't change current file path
@@ -367,10 +360,7 @@ VERSION 1
     @classmethod
     def refresh_asset_browser(cls):
         """Refresh all Asset Browser areas to show updated assets."""
-        # First save assets to blend file
         cls.save_assets_to_blend()
-        
-        # Find the Asset Browser area and configure it
         file_browser_area = None
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
@@ -378,25 +368,20 @@ VERSION 1
                     file_browser_area = area
                     for space in area.spaces:
                         if space.type == 'FILE_BROWSER':
-                            # Set to asset browse mode
                             if hasattr(space, 'browse_mode'):
                                 space.browse_mode = 'ASSETS'
-                            
-                            # Configure params
                             if hasattr(space, 'params') and space.params:
                                 params = space.params
-                                
-                                # Set display to thumbnails
+                                # Set to LOCAL to show Current File assets
+                                if hasattr(params, 'asset_library_ref'):
+                                    params.asset_library_ref = 'LOCAL'
+                                elif hasattr(params, 'asset_library_reference'):
+                                    params.asset_library_reference = 'LOCAL'
                                 if hasattr(params, 'display_type'):
                                     params.display_type = 'THUMBNAIL'
-                            
-                            # Trigger a refresh
                             area.tag_redraw()
-        
-        # Try to refresh the asset library by invoking the refresh operator
         if file_browser_area:
             try:
-                # Find a region in the area
                 for region in file_browser_area.regions:
                     if region.type == 'WINDOW':
                         with bpy.context.temp_override(area=file_browser_area, region=region):
@@ -405,8 +390,6 @@ VERSION 1
                         break
             except Exception as e:
                 logger.debug(f"library_refresh: {e}")
-        
-        # Also trigger a general UI update
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
                 area.tag_redraw()
@@ -452,14 +435,10 @@ def _load_material_image_to_editor(mat_name: str) -> bool:
     for node in mat.node_tree.nodes:
         if node.type == 'TEX_IMAGE' and node.image:
             image = node.image
-            
-            # Store reference for segmentation
             try:
                 bpy.context.scene["segmentation_image"] = image.name
             except Exception:
                 pass
-            
-            # Load into all Image Editors
             loaded_count = 0
             for window in bpy.context.window_manager.windows:
                 for area in window.screen.areas:
@@ -490,24 +469,18 @@ def _watch_asset_selection():
     global _last_active_asset, _asset_watch_timer_running
     
     try:
-        # Only run in the segmentation workspace
         if not bpy.context.window or bpy.context.window.workspace.name != "Curve Segmentation":
             return 0.5  # Keep checking
-        
-        # Find the Asset Browser area
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
                 if area.type == 'FILE_BROWSER':
                     for space in area.spaces:
                         if space.type == 'FILE_BROWSER' and getattr(space, 'browse_mode', '') == 'ASSETS':
-                            # Try to get active file through context override
                             try:
                                 with bpy.context.temp_override(window=window, area=area, space_data=space):
                                     active_file = getattr(bpy.context, 'active_file', None)
                                     if active_file:
                                         asset_name = getattr(active_file, 'name', '')
-                                        
-                                        # Process yandex or local materials if changed
                                         if asset_name and _is_segmentation_asset(asset_name) and asset_name != _last_active_asset:
                                             _last_active_asset = asset_name
                                             logger.info(f"Asset selected: {asset_name}")
@@ -533,11 +506,8 @@ def _on_depsgraph_update(scene, depsgraph):
     global _last_active_asset
     
     try:
-        # Check if we're in the segmentation workspace
         if bpy.context.window.workspace.name != "Curve Segmentation":
             return
-        
-        # Check the active object's active material
         obj = bpy.context.active_object
         if obj is None or not hasattr(obj, 'active_material'):
             return
@@ -545,29 +515,19 @@ def _on_depsgraph_update(scene, depsgraph):
         mat = obj.active_material
         if mat is None:
             return
-        
-        # Only process segmentation materials (yandex or local)
         if not _is_segmentation_asset(mat.name):
             return
-        
-        # Avoid processing the same material multiple times
         if mat.name == _last_active_asset:
             return
         
         _last_active_asset = mat.name
-        
-        # Find the image in the material's node tree
         if mat.node_tree is None:
             return
         
         for node in mat.node_tree.nodes:
             if node.type == 'TEX_IMAGE' and node.image:
                 image = node.image
-                
-                # Store reference for segmentation
                 scene["segmentation_image"] = image.name
-                
-                # Load into all Image Editors
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
                         if area.type == 'IMAGE_EDITOR':
@@ -580,7 +540,6 @@ def _on_depsgraph_update(scene, depsgraph):
                 break
                 
     except Exception as e:
-        # Silently ignore errors in depsgraph handler
         pass
  
 
@@ -589,12 +548,8 @@ def register():
     global _asset_watch_timer_running
     
     SearchAssetManager.register_asset_library()
-    
-    # Add depsgraph handler to detect material applications
     if _on_depsgraph_update not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update)
-    
-    # Start the asset selection watcher timer
     if not _asset_watch_timer_running:
         bpy.app.timers.register(_watch_asset_selection, first_interval=1.0, persistent=True)
         _asset_watch_timer_running = True
@@ -604,16 +559,12 @@ def register():
 def unregister():
     """Unregister and clean up."""
     global _asset_watch_timer_running
-    
-    # Stop the asset selection watcher timer
     if _asset_watch_timer_running:
         try:
             bpy.app.timers.unregister(_watch_asset_selection)
         except Exception:
             pass
         _asset_watch_timer_running = False
-    
-    # Remove depsgraph handler
     if _on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update)
     

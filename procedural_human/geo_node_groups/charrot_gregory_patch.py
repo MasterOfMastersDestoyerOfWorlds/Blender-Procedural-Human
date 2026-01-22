@@ -11,8 +11,6 @@ def create_charrot_gregory_group():
         bpy.data.node_groups.remove(bpy.data.node_groups[group_name])
 
     group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
-    
-    # --- Interface ---
     group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     group.interface.new_socket(name="Subdivisions", in_out="INPUT", socket_type="NodeSocketInt").default_value = 4
     group.interface.new_socket(name="Merge By Distance", in_out="INPUT", socket_type="NodeSocketBool").default_value = True
@@ -20,21 +18,15 @@ def create_charrot_gregory_group():
   
     nodes = group.nodes    
     links = group.links  
-
-    # --- 1. INPUTS & OPTIMIZATION PRE-PASS ---
     group_input = nodes.new("NodeGroupInput")
     group_output = nodes.new("NodeGroupOutput")
     raw_geo = group_input.outputs["Geometry"]  
-
-    # OPTIMIZATION: Cache Bezier points on edges before doing anything else
     orig_geo = precompute_edge_data_node(group, raw_geo)
 
     corner_idx = nodes.new("GeometryNodeInputIndex").outputs[0]
     face_of_corner = nodes.new("GeometryNodeFaceOfCorner")
     links.new(corner_idx, face_of_corner.inputs["Corner Index"])
     face_idx = face_of_corner.outputs["Face Index"]
-    
-    # --- 2. STORE TOPOLOGY ---
     face_idx_node = nodes.new("GeometryNodeInputIndex")
     corners_of_face = nodes.new("GeometryNodeCornersOfFace")
     links.new(face_idx_node.outputs[0], corners_of_face.inputs["Face Index"])
@@ -55,8 +47,6 @@ def create_charrot_gregory_group():
         "Value": N_total
     })
     links.new(store_loop_start.outputs[0], store_N.inputs[0])
-
-    # Store Edge info
     edges_of_corner = nodes.new("GeometryNodeEdgesOfCorner")
     links.new(corner_idx, edges_of_corner.inputs["Corner Index"])
     
@@ -84,8 +74,6 @@ def create_charrot_gregory_group():
     })
     links.new(store_edge_idx.outputs[0], store_is_fwd.inputs[0])
     prepared_geo = store_is_fwd.outputs[0]
-    
-    # --- 3. WACHSPRESS PARAMETERIZATION ---
     accum_idx = create_node(group, "GeometryNodeAccumulateField", {
         "Value": 1, "Group ID": face_idx, "Domain": "CORNER"
     })
@@ -113,16 +101,12 @@ def create_charrot_gregory_group():
     })
     links.new(prepared_geo, store_uv.inputs[0])
     geo_with_uv = store_uv.outputs[0]
-
-    # --- 4. SPLIT & SUBDIVIDE ---
     split = create_node(group,"GeometryNodeSplitEdges", {"Mesh": geo_with_uv})
     subdiv = create_node(group,"GeometryNodeSubdivideMesh", {
         "Mesh": split.outputs[0],
         "Level": group_input.outputs["Subdivisions"]
     })
     subdivided_geo = subdiv.outputs[0]
-
-    # Retrieve Interpolated UV
     domain_uv_node = nodes.new("GeometryNodeInputNamedAttribute")
     domain_uv_node.data_type = "FLOAT_VECTOR"
     domain_uv_node.inputs["Name"].default_value = "domain_uv_interp"
@@ -135,25 +119,18 @@ def create_charrot_gregory_group():
         "Geometry": subdivided_geo, "Domain": "POINT", "Attribute": N_field
     })
     max_N = stat_N.outputs["Max"]
-    
-   # --- LOOP B: Sum Weights (OPTIMIZED) ---
     repB_in = nodes.new("GeometryNodeRepeatInput")
     repB_out = nodes.new("GeometryNodeRepeatOutput")
     repB_in.pair_with_output(repB_out)
     repB_out.repeat_items.new("GEOMETRY", "Geometry")
     repB_out.repeat_items.new("FLOAT", "SumW")
     repB_out.repeat_items.new("INT", "IterIdx")
-    # Optimization: Chain the next distance to the next iteration
     repB_out.repeat_items.new("FLOAT", "PrevDist") 
 
     links.new(subdivided_geo, repB_in.inputs["Geometry"]) 
     links.new(max_N, repB_in.inputs["Iterations"])
     repB_in.inputs["SumW"].default_value = 0.0
     repB_in.inputs["IterIdx"].default_value = 0
-    
-    # Initialize PrevDist (Dist for i=0)
-    # Note: For the very first iteration, PrevDist is actually Distance(0). 
-    # Logic inside loop: D0 = PrevDist. D1 = Calculate(i+1). Output PrevDist = D1.
     init_D0 = domain_edge_distance_node(group, 0, N_field, domain_p_x, domain_p_y)
     links.new(init_D0, repB_in.inputs["PrevDist"])
 
@@ -167,8 +144,6 @@ def create_charrot_gregory_group():
     
     D0 = B_prev_D
     D1 = domain_edge_distance_node(group, B_ip1, N_field, domain_p_x, domain_p_y)
-    
-    # w_i calculation
     D0_safe = math_op(group, "MAXIMUM", D0, 1e-8)
     D1_safe = math_op(group, "MAXIMUM", D1, 1e-8)
     denom = math_op(group, "MULTIPLY", D0_safe, D1_safe)
@@ -184,8 +159,6 @@ def create_charrot_gregory_group():
     
     sumW = repB_out.outputs["SumW"]
     orig_loop_start_field = get_attr(group, "orig_loop_start", "INT")
-
-    # --- LOOP C: Accumulate surface (OPTIMIZED) ---
     repC_in = nodes.new("GeometryNodeRepeatInput")
     repC_out = nodes.new("GeometryNodeRepeatOutput")
     repC_in.pair_with_output(repC_out)
@@ -200,7 +173,6 @@ def create_charrot_gregory_group():
     repC_in.inputs["SumS"].default_value = (0, 0, 0)
     repC_in.inputs["SumB"].default_value = 0.0
     repC_in.inputs["IterIdx"].default_value = 0
-    # Init Dist_i for i=0
     init_C_D0 = domain_edge_distance_node(group, 0, N_field, domain_p_x, domain_p_y)
     links.new(init_C_D0, repC_in.inputs["Dist_i"])
 
@@ -211,8 +183,6 @@ def create_charrot_gregory_group():
     C_Di = repC_in.outputs["Dist_i"]
     
     C_valid = compare_int_less(group, C_i, N_field)
-
-    # Indices
     im1 = int_op(group, "MODULO", int_op(group, "ADD", int_op(group, "SUBTRACT", C_i, 1), N_field), N_field)
     ip1 = int_op(group, "MODULO", int_op(group, "ADD", C_i, 1), N_field)
     im2 = int_op(group, "MODULO", int_op(group, "ADD", int_op(group, "SUBTRACT", C_i, 2), N_field), N_field)
@@ -230,8 +200,6 @@ def create_charrot_gregory_group():
     lam_im1 = math_op(group, "DIVIDE", wprev, sumW)
 
     denom = math_op(group, "MAXIMUM", math_op(group, "ADD", lam_im1, lam_i), 1.0e-8)
-    
-    # Ribbon Params
     s_i_raw = clamp01(group, math_op(group, "DIVIDE", lam_i, denom))
     d_i_raw = clamp01(group, math_op(group, "SUBTRACT", 1.0, math_op(group, "ADD", lam_im1, lam_i)))
     s_i = smoother_step(group, s_i_raw)
@@ -239,7 +207,6 @@ def create_charrot_gregory_group():
     
     def get_edge_data(idx):
         e, f = edge_for_idx(group, idx, orig_loop_start_field, prepared_geo)
-        # Pass the pre-computed 'orig_geo' which now contains the cache
         return sample_cached_bezier_node(group, e, f, orig_geo)
 
     C0, C1, C2, C3 = get_edge_data(C_i)              # C_i
@@ -249,8 +216,6 @@ def create_charrot_gregory_group():
     Ci_si = bezier_eval_node(group, C0, C1, C2, C3, s_i)
     Cim1_1md = bezier_eval_node(group, Cm10, Cm11, Cm12, Cm13, math_op(group, "SUBTRACT", 1.0, d_i))
     Cip1_d = bezier_eval_node(group, Cp10, Cp11, Cp12, Cp13, d_i)
-
-    # Opposing Curve C^{opp}
     Cp20, Cp21, Cp22, Cp23 = get_edge_data(ip2)   # C_{i+2}
     Cm20, Cm21, Cm22, Cm23 = get_edge_data(im2)   # C_{i-2}
     tan_ip2 = vec_math_op(group, "SUBTRACT", Cp21, Cp20)
@@ -262,14 +227,10 @@ def create_charrot_gregory_group():
     P2_opp = vec_math_op(group, "SUBTRACT", P3_opp, tan_im2)
 
     Copp_1ms = bezier_eval_node(group, P0_opp, P1_opp, P2_opp, P3_opp, math_op(group, "SUBTRACT", 1.0, s_i))
-
-    # Coons ribbon R_i
     termA = vec_math_op(group, "SCALE", Ci_si, math_op(group, "SUBTRACT", 1.0, d_i))
     termB = vec_math_op(group, "SCALE", Copp_1ms, d_i)
     termC = vec_math_op(group, "SCALE", Cim1_1md, math_op(group, "SUBTRACT", 1.0, s_i))
     termD = vec_math_op(group, "SCALE", Cip1_d, s_i)
-
-    # Bilinear correction
     Ci0 = C0
     Ci1 = C3
     Cim10 = Cm10

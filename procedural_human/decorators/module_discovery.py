@@ -42,7 +42,6 @@ def discover_modules(
     skip_files = {"__init__.py"}
 
     for dirpath, dirnames, filenames in os.walk(root_path):
-        # Filter out skip_dirs and any hidden directories (starting with .)
         dirnames[:] = [d for d in dirnames if d not in skip_dirs and not d.startswith('.')]
 
         rel_path = Path(dirpath).relative_to(root_path)
@@ -84,8 +83,6 @@ def import_all_modules(force_reload: bool = True) -> Set[str]:
         if module_name in _discovered_modules:
             skipped += 1
             continue
-        
-        # Don't reload decorators, as this clears their registry
         if "decorators" in module_name:
              if module_name in sys.modules:
                  skipped += 1
@@ -98,7 +95,6 @@ def import_all_modules(force_reload: bool = True) -> Set[str]:
                     imported.add(module_name)
                     _discovered_modules.add(module_name)
                 else:
-                    # Skip reload - module is already loaded
                     skipped += 1
                     _discovered_modules.add(module_name)
             else:

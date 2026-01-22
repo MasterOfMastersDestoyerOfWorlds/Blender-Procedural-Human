@@ -12,14 +12,272 @@ from procedural_human.segmentation.operators.mesh_curve_operators import (
     apply_charrot_gregory_patch_modifier
 )
 from procedural_human.segmentation.operators.segmentation_operators import (
-    set_current_spine_path,
     set_current_medialness_map
 )
 import cv2
 from PIL import Image as PILImage
+from procedural_human.segmentation.overlays.spine_overlay import set_current_spine_path
 from scipy.ndimage import distance_transform_edt
-import skfmm # NEW DEPENDENCY: pip install scikit-fmm
-from scipy.ndimage import gaussian_filter # NEW IMPORT
+import skfmm 
+from scipy.ndimage import gaussian_filter 
+
+
+def skeletonize_cv2(mask: np.ndarray) -> np.ndarray:
+    """
+    Compute the skeleton of a binary mask using OpenCV morphological thinning.
+    """
+    import cv2  
+    img = mask.astype(np.uint8) * 255
+    try:
+        import cv2.ximgproc
+        skeleton = cv2.ximgproc.thinning(img, thinningType=cv2.ximgproc.THINNING_ZHANGSUEN)
+        return skeleton
+    except (ImportError, AttributeError):
+        pass
+    skeleton = np.zeros(img.shape, np.uint8)
+    element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+    temp_img = img.copy()
+    
+    while True:
+        open_img = cv2.morphologyEx(temp_img, cv2.MORPH_OPEN, element)
+        temp = cv2.subtract(temp_img, open_img)
+        eroded = cv2.erode(temp_img, element)
+        skeleton = cv2.bitwise_or(skeleton, temp)
+        temp_img = eroded.copy()
+        if cv2.countNonZero(temp_img) == 0:
+            break
+            
+    return skeleton
+
+def simplify_skeleton(skeleton: np.ndarray, epsilon: float = 2.0) -> list:
+    """
+    Convert a pixel skeleton into a simplified graph of branches.
+    Returns: list of branches, where each branch is a list of (y,x) points.
+    """
+    y_idxs, x_idxs = np.where(skeleton > 0)
+    if len(y_idxs) == 0:
+        return []
+        
+    points = set(zip(y_idxs, x_idxs))
+    junctions = []
+    endpoints = []
+    def get_neighbors(p):
+        y, x = p
+        ns = []
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                if dy == 0 and dx == 0: continue
+                n = (y + dy, x + dx)
+                if n in points:
+                    ns.append(n)
+        return ns
+
+    for p in points:
+        ns = get_neighbors(p)
+        count = len(ns)
+        if count == 1:
+            endpoints.append(p)
+        elif count > 2:
+            junctions.append(p)
+    
+    contours, _ = cv2.findContours(skeleton, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    
+    simplified_branches = []
+    for cnt in contours:
+        cnt = cnt.squeeze()
+        if len(cnt.shape) < 2: continue
+        approx = cv2.approxPolyDP(cnt, epsilon, False) 
+        approx = approx.squeeze()
+        if len(approx.shape) < 2: continue
+        simplified_branches.append(approx)
+        
+    return simplified_branches
+
+def find_nearest_point_on_polyline(point: np.ndarray, polyline: np.ndarray) -> tuple:
+    """
+    Find the nearest point on a polyline to a query point.
+    Returns: (nearest_point, distance, segment_index, t)
+    """
+    best_dist = float('inf')
+    best_pt = None
+    best_seg = -1
+    
+    p = point
+    
+    for i in range(len(polyline) - 1):
+        a = polyline[i]
+        b = polyline[i+1]
+        ab = b - a
+        ap = p - a
+        len_sq = np.dot(ab, ab)
+        if len_sq == 0:
+            t = 0
+        else:
+            t = np.dot(ap, ab) / len_sq
+            t = max(0.0, min(1.0, t))
+            
+        closest = a + t * ab
+        dist = np.linalg.norm(p - closest)
+        
+        if dist < best_dist:
+            best_dist = dist
+            best_pt = closest
+            best_seg = i
+            
+    return best_pt, best_dist, best_seg
+
+def create_control_cage(
+    boundary_contour_norm: np.ndarray,
+    skeleton_branches: list,
+    depth_map: np.ndarray,
+    image_width: int,
+    image_height: int,
+    center_x: float,
+    center_y: float,
+    min_depth: float,
+    depth_scale: float = 1.0,
+    name: str = "ControlCage"
+) -> 'bpy.types.Object':
+    """
+    Create a sparse Control Cage mesh for Charrot-Gregory Patches.
+    """
+    bm = bmesh.new()
+    b_verts = []
+    
+    for i, (bx, by) in enumerate(boundary_contour_norm):
+        ix = int(bx * image_width + center_x)
+        iy = int(center_y - by * image_height)
+        ix = max(0, min(image_width - 1, ix))
+        iy = max(0, min(image_height - 1, iy))
+        if iy < 0 or iy >= depth_map.shape[0] or ix < 0 or ix >= depth_map.shape[1]:
+            d = 0.5  # Default/fallback
+        else:
+            d = depth_map[iy, ix]
+            
+        z = (d - min_depth) * depth_scale * 0.5 
+        
+        v = bm.verts.new((bx, by, 0.0)) 
+        b_verts.append(v)
+    b_edges = []
+    for i in range(len(b_verts)):
+        v1 = b_verts[i]
+        v2 = b_verts[(i + 1) % len(b_verts)]
+        e = bm.edges.new((v1, v2))
+        b_edges.append(e)
+    if not skeleton_branches:
+        skeleton_branches = [np.array([[0, -0.5], [0, 0.5]])] 
+    
+    main_branch_pixels = max(skeleton_branches, key=lambda b: len(b)) 
+    main_branch = []
+    for px, py in main_branch_pixels:
+        nx = (px - center_x) / image_width
+        ny = -(py - center_y) / image_height
+        main_branch.append((nx, ny))
+        
+    main_branch = np.array(main_branch)
+    s_front_verts = []
+    s_back_verts = []
+    
+    for nx, ny in main_branch:
+        ix = int(nx * image_width + center_x)
+        iy = int(center_y - ny * image_height)
+        ix = max(0, min(image_width - 1, ix))
+        iy = max(0, min(image_height - 1, iy))
+        
+        if iy < 0 or iy >= depth_map.shape[0] or ix < 0 or ix >= depth_map.shape[1]:
+            d = 0.5
+        else:
+            d = depth_map[iy, ix]
+
+        thickness = (d - min_depth) * depth_scale * 0.5
+        
+        vf = bm.verts.new((nx, ny, thickness))
+        vb = bm.verts.new((nx, ny, -thickness))
+        
+        s_front_verts.append(vf)
+        s_back_verts.append(vb)
+    for i in range(len(s_front_verts) - 1):
+        bm.edges.new((s_front_verts[i], s_front_verts[i+1]))
+        bm.edges.new((s_back_verts[i], s_back_verts[i+1]))
+    b_points = boundary_contour_norm
+    top_idx = np.argmax(b_points[:, 1])
+    bottom_idx = np.argmin(b_points[:, 1])
+    bm.edges.new((b_verts[top_idx], s_front_verts[0])) 
+    bm.edges.new((b_verts[top_idx], s_back_verts[0]))  
+    bm.edges.new((b_verts[bottom_idx], s_front_verts[-1])) 
+    bm.edges.new((b_verts[bottom_idx], s_back_verts[-1]))  
+    b_left_verts = []
+    idx = top_idx
+    if top_idx <= bottom_idx:
+        pass
+    path1 = []
+    curr = top_idx
+    while True:
+        path1.append(b_verts[curr])
+        if curr == bottom_idx:
+            break
+        curr = (curr + 1) % len(b_verts)
+    path2 = []
+    curr = top_idx
+    while True:
+        path2.append(b_verts[curr])
+        if curr == bottom_idx:
+            break
+        curr = (curr - 1) % len(b_verts)
+    mid_p1 = path1[len(path1)//2].co.x
+    mid_p2 = path2[len(path2)//2].co.x
+    
+    if mid_p1 < mid_p2:
+        b_left_verts = path1
+        b_right_verts = path2
+    else:
+        b_left_verts = path2
+        b_right_verts = path1
+    s_front_reversed = list(reversed(s_front_verts))
+    
+    left_front_loop = b_left_verts + s_front_reversed
+    try:
+        if len(left_front_loop) >= 3:
+            bm.faces.new(left_front_loop)
+    except ValueError:
+        logger.warning("Failed to create Left Front face")
+    b_right_up = list(reversed(b_right_verts))
+    s_front_normal = list(s_front_verts)
+    
+    right_front_loop = b_right_up + s_front_normal
+    try:
+        if len(right_front_loop) >= 3:
+            bm.faces.new(right_front_loop)
+    except ValueError:
+        logger.warning("Failed to create Right Front face")
+    s_back_reversed = list(reversed(s_back_verts))
+    b_left_up = list(reversed(b_left_verts)) 
+    s_back_normal = list(s_back_verts) 
+    
+    left_back_loop = s_back_normal + b_left_up
+    try:
+        if len(left_back_loop) >= 3:
+            bm.faces.new(left_back_loop)
+    except ValueError:
+        logger.warning("Failed to create Left Back face")
+    
+    right_back_loop = s_back_reversed + b_right_verts
+    try:
+        if len(right_back_loop) >= 3:
+            bm.faces.new(right_back_loop)
+    except ValueError:
+        logger.warning("Failed to create Right Back face")
+
+    bm.verts.ensure_lookup_table()
+    bm.normal_update()
+    
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
 
 def compute_medialness_speed(mask: np.ndarray, depth_map: np.ndarray, gamma: float = 10.0) -> np.ndarray:
     """
@@ -27,30 +285,17 @@ def compute_medialness_speed(mask: np.ndarray, depth_map: np.ndarray, gamma: flo
     Fuses Boundary Distance (EDT) and Volumetric Depth.
     Ref: Section 4.1 of the Report.
     """
-    # 1. Smooth Depth to remove local noise spikes
     depth_smooth = gaussian_filter(depth_map, sigma=2.0)
-    
-    # 2. Euclidean Distance Transform (EDT) from boundary
-    # This keeps the spine away from jagged edges
     if np.any(mask):
         edt = distance_transform_edt(mask)
     else:
         return np.zeros_like(depth_map)
-
-    # 3. Normalize inputs to 0.0 - 1.0 range
     d_max = np.max(depth_smooth)
     e_max = np.max(edt)
     
     d_norm = depth_smooth / d_max if d_max > 0 else depth_smooth
     edt_norm = edt / e_max if e_max > 0 else edt
-    
-    # 4. Fusion (Medialness M)
-    # Average of geometric center (EDT) and volumetric center (Depth)
     M = 0.5 * edt_norm + 0.5 * d_norm
-    
-    # 5. Potential & Speed Function
-    # P(x) = exp(-gamma * M). Speed F = 1/P = exp(gamma * M).
-    # We use a masked array so the Fast Marching Method ignores the background.
     speed = np.exp(gamma * M)
     
     return np.ma.masked_array(speed, ~mask)
@@ -61,68 +306,39 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
     Ref: Section 5 and 6.2 of the Report.
     Returns: Nx2 array of (x, y) coordinates for the spine.
     """
-    # --- Step 1: Endpoint Detection (Double Sweep) ---
-    
-    # Seed: Start at the point with maximum medialness (thickest/deepest point)
     seed_idx = np.unravel_index(np.argmax(speed_map), speed_map.shape)
     logger.info(f"Geodesic seed (max medialness): {seed_idx}")
-    
-    # Sweep 1: Seed -> All Pixels
-    # Initialize travel time map with 0 at seed
     phi = np.ones_like(speed_map.data)
     phi[seed_idx] = 0
-    # skfmm.travel_time computes geodesic distance on the manifold
     t1 = skfmm.travel_time(np.ma.masked_array(phi, ~mask), speed_map)
     
-    if t1 is None: # Safety check for empty/invalid masks
-        return np.array([seed_idx[::-1]]) # Return seed as single point (x,y)
-    
-    # Convert to filled array for safe argmax (masked values become -inf so they're not selected)
+    if t1 is None: 
+        return np.array([seed_idx[::-1]]) 
     if hasattr(t1, 'filled'):
         t1_for_argmax = t1.filled(-np.inf)
     else:
         t1_for_argmax = np.where(np.isfinite(t1), t1, -np.inf)
-        
-    # Find Tip: The point furthest from the seed (Geodesic extremum 1)
     tip_idx = np.unravel_index(np.argmax(t1_for_argmax), t1.shape)
-    
-    # Sweep 2: Tip -> All Pixels (The manifold we will backtrack on)
     phi[:] = 1
     phi[tip_idx] = 0
     t2 = skfmm.travel_time(np.ma.masked_array(phi, ~mask), speed_map)
-    
-    # Convert to filled array for safe argmax
     if hasattr(t2, 'filled'):
         t2_for_argmax = t2.filled(-np.inf)
     else:
         t2_for_argmax = np.where(np.isfinite(t2), t2, -np.inf)
-    
-    # Find Tail: The point furthest from the Tip (Geodesic extremum 2)
     tail_idx = np.unravel_index(np.argmax(t2_for_argmax), t2.shape)
-    
-    # --- Step 2: Backtracking (Gradient Descent) ---
-    # Trace the path from Tail back to Tip by following the gradient of t2 "downhill"
-    
-    # Convert masked array to regular array, filling masked values with large number
-    # This ensures gradient descent stays inside the valid mask region
     if hasattr(t2, 'filled'):
         t2_filled = t2.filled(np.inf)
     else:
         t2_filled = np.where(np.isfinite(t2), t2, np.inf)
-    
-    # Verify tip and tail are deep inside the mask (not near boundary)
-    # Compute EDT to measure distance from boundary
     edt = distance_transform_edt(mask)
-    min_boundary_dist = 3  # Minimum pixels from boundary
+    min_boundary_dist = 3  
     
     def find_interior_point(idx, t_filled, mask, edt, search_radius=20):
         """Find a valid interior point near idx that's away from mask boundary."""
         r, c = idx
-        # Check if current point is valid and interior
         if mask[r, c] and np.isfinite(t_filled[r, c]) and edt[r, c] >= min_boundary_dist:
             return idx
-        
-        # Search for a point that's both valid and interior
         best_idx = None
         best_score = -np.inf
         for radius in range(1, search_radius + 1):
@@ -131,7 +347,6 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
                     nr, nc = r + dr, c + dc
                     if 0 <= nr < mask.shape[0] and 0 <= nc < mask.shape[1]:
                         if mask[nr, nc] and np.isfinite(t_filled[nr, nc]):
-                            # Score based on travel time (want high) and boundary distance (want high)
                             boundary_dist = edt[nr, nc]
                             if boundary_dist >= min_boundary_dist:
                                 score = t_filled[nr, nc] + boundary_dist * 0.1
@@ -140,8 +355,6 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
                                     best_idx = (nr, nc)
             if best_idx is not None:
                 return best_idx
-        
-        # If no interior point found, just find any valid point
         for radius in range(1, search_radius + 1):
             for dr in range(-radius, radius + 1):
                 for dc in range(-radius, radius + 1):
@@ -149,30 +362,20 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
                     if 0 <= nr < mask.shape[0] and 0 <= nc < mask.shape[1]:
                         if mask[nr, nc] and np.isfinite(t_filled[nr, nc]):
                             return (nr, nc)
-        return idx  # Fallback to original
-    
-    # Ensure tip is interior
+        return idx  
     if not mask[tip_idx] or not np.isfinite(t2_filled[tip_idx]) or edt[tip_idx] < min_boundary_dist:
         logger.warning(f"Tip {tip_idx} is near boundary (edt={edt[tip_idx]:.1f}), finding interior point...")
         tip_idx = find_interior_point(tip_idx, t2_filled, mask, edt)
         logger.info(f"Found interior tip at {tip_idx} (edt={edt[tip_idx]:.1f})")
-    
-    # Ensure tail is interior
     if not mask[tail_idx] or not np.isfinite(t2_filled[tail_idx]) or edt[tail_idx] < min_boundary_dist:
         logger.warning(f"Tail {tail_idx} is near boundary (edt={edt[tail_idx]:.1f}), finding interior point...")
         tail_idx = find_interior_point(tail_idx, t2_filled, mask, edt)
         logger.info(f"Found interior tail at {tail_idx} (edt={edt[tail_idx]:.1f})")
-    
-    # Log endpoint detection results
     tip_tail_dist = np.sqrt((tip_idx[0] - tail_idx[0])**2 + (tip_idx[1] - tail_idx[1])**2)
     logger.info(f"Geodesic endpoints: tip={tip_idx}, tail={tail_idx}, distance={tip_tail_dist:.1f}px")
-    
-    # Get the max travel time for relative threshold (tail is furthest from tip)
     max_travel_time = t2_filled[tail_idx]
     if not np.isfinite(max_travel_time) or max_travel_time <= 0:
         max_travel_time = 1.0
-    
-    # Use 1% of max travel time as threshold instead of absolute 1.0
     time_threshold = max_travel_time * 0.01
     
     logger.info(f"Geodesic backtrack: tip={tip_idx}, tail={tail_idx}, max_time={max_travel_time:.4f}, threshold={time_threshold:.4f}")
@@ -180,35 +383,23 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
     path = []
     current = np.array(tail_idx, dtype=np.float64)
     tip = np.array(tip_idx, dtype=np.float64)
-    
-    # Parameters for gradient descent
     step_size = 0.5
-    max_steps = int(mask.size) # Prevent infinite loops
+    max_steps = int(mask.size) 
     
-    path.append(current[::-1].copy()) # Store as (x, y) - MUST copy to avoid all points being same
+    path.append(current[::-1].copy()) 
     
     for step_num in range(max_steps):
-        # Integer coordinates for indexing
         r, c = int(current[0]), int(current[1])
-        
-        # Stop if we are close to the tip (travel time near zero relative to max)
         t2_val = t2_filled[r, c]
         if not np.isfinite(t2_val) or t2_val < time_threshold or np.linalg.norm(current - tip) < 1.0:
             logger.info(f"Geodesic backtrack stopped at step {step_num}: t2_val={t2_val:.4f}, dist_to_tip={np.linalg.norm(current - tip):.2f}")
             break
-            
-        # Compute local gradient (central differences)
-        # Handle boundaries by clamping
         r_min, r_max = max(0, r-1), min(mask.shape[0]-1, r+1)
         c_min, c_max = max(0, c-1), min(mask.shape[1]-1, c+1)
-        
-        # Get values, treating inf as "wall" (don't go there)
         v_r_max = t2_filled[r_max, c]
         v_r_min = t2_filled[r_min, c]
         v_c_max = t2_filled[r, c_max]
         v_c_min = t2_filled[r, c_min]
-        
-        # If any neighbor is inf, use current value to avoid going that direction
         if not np.isfinite(v_r_max): v_r_max = t2_val
         if not np.isfinite(v_r_min): v_r_min = t2_val
         if not np.isfinite(v_c_max): v_c_max = t2_val
@@ -223,21 +414,13 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
         if norm > 1e-6:
             grad /= norm
         else:
-            break # Stuck in flat area
-            
-        # Move "downhill" (against the gradient of distance)
-        # Try the step, but validate we stay inside the mask
+            break 
         new_pos = current - grad * step_size
-        
-        # Boundary check
         new_pos[0] = np.clip(new_pos[0], 0, mask.shape[0]-1)
         new_pos[1] = np.clip(new_pos[1], 0, mask.shape[1]-1)
         
         new_r, new_c = int(new_pos[0]), int(new_pos[1])
-        
-        # Check if new position is inside mask with finite travel time
         if not mask[new_r, new_c] or not np.isfinite(t2_filled[new_r, new_c]):
-            # Try smaller steps
             found_valid = False
             for substep in [0.25, 0.1, 0.05]:
                 test_pos = current - grad * substep
@@ -250,7 +433,6 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
                     break
             
             if not found_valid:
-                # Try stepping directly toward tip if gradient fails
                 to_tip = tip - current
                 to_tip_norm = np.linalg.norm(to_tip)
                 if to_tip_norm > 1e-6:
@@ -266,11 +448,10 @@ def extract_geodesic_path(mask: np.ndarray, speed_map: np.ndarray) -> np.ndarray
                             break
             
             if not found_valid:
-                # Can't move further, stop here
                 break
         
         current = new_pos
-        path.append(current[::-1].copy()) # Append (x, y) - MUST copy
+        path.append(current[::-1].copy()) 
         
     return np.array(path)
 
@@ -309,43 +490,29 @@ def extract_spine_path_3d(
     Returns:
         Nx3 array of [x, y, z_extent] in Blender normalized coordinates
     """
-    # Resize depth map to match mask if needed
     if depth_map.shape != mask.shape:
         depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
         depth_pil = depth_pil.resize((mask.shape[1], mask.shape[0]), PILImage.BILINEAR)
         depth_map = np.array(depth_pil).astype(np.float32) / 255.0
-    
-    # Get min/max depth within the mask for z_extent calculation
     mask_depths = depth_map[mask]
     if len(mask_depths) == 0:
-        # Empty mask fallback - return minimal 2-point path
         return np.array([[0, -0.5, 0], [0, 0.5, 0]])
     
     min_depth = mask_depths.min()
     max_depth = mask_depths.max()
     depth_range = max_depth - min_depth if max_depth > min_depth else 1.0
-    
-    # --- Geodesic Spine Extraction ---
     try:
-        # 1. Compute Medialness Speed Map
         speed_map = compute_medialness_speed(mask, depth_map)
-        
-        # Store medialness map for debug visualization
         set_current_medialness_map(speed_map.copy() if hasattr(speed_map, 'copy') else speed_map)
-        
-        # 2. Extract the Geodesic Ridge (list of x,y coordinates in image space)
         spine_path_xy = extract_geodesic_path(mask, speed_map)
         
         logger.info(f"Geodesic spine extracted: {len(spine_path_xy)} points, "
                     f"x range [{spine_path_xy[:, 0].min():.1f}, {spine_path_xy[:, 0].max():.1f}], "
                     f"y range [{spine_path_xy[:, 1].min():.1f}, {spine_path_xy[:, 1].max():.1f}]")
-        
-        # Store spine path for debug visualization
         set_current_spine_path(spine_path_xy.copy())
         
     except (ImportError, Exception) as e:
         logger.warning(f"Geodesic extraction failed ({e}), falling back to simple center.")
-        # Fallback: create a vertical line down the middle
         y_indices = np.where(np.any(mask, axis=1))[0]
         if len(y_indices) > 0:
             spine_path_xy = np.column_stack([
@@ -357,10 +524,6 @@ def extract_spine_path_3d(
 
     if len(spine_path_xy) < 2:
         return np.array([[0, -0.5, 0], [0, 0.5, 0]])
-
-    # Use spine path as-is (no resampling) - keep natural point count
-    
-    # --- Sample depth using bilinear interpolation ---
     sampled_depths = np.array([
         bilinear_sample(depth_map, x, y) 
         for x, y in spine_path_xy
@@ -368,25 +531,11 @@ def extract_spine_path_3d(
     
     logger.info(f"Sampled depths along spine: min={sampled_depths.min():.4f}, max={sampled_depths.max():.4f}, "
                 f"mask depth range: [{min_depth:.4f}, {max_depth:.4f}]")
-    
-    # --- Compute z_extent: at min_depth -> 0, at max_depth -> depth_range ---
-    # z_extent is in 0 to depth_range (typically 0 to ~1)
     z_extent = sampled_depths - min_depth
     
-    # --- Convert X,Y from image space to Blender normalized coordinates ---
-    # Image coords: X=0..W (right), Y=0..H (down)
-    # Blender coords: X centered on center_x, Y flipped and centered on center_y
-    
     x_normalized = (spine_path_xy[:, 0] - center_x) / image_width
-    # Flip Y: image Y down -> Blender Y up
     y_normalized = -(spine_path_xy[:, 1] - center_y) / image_height
-    
-    # z_extent is in depth units (0 to depth_range, typically 0-1)
-    # Scale it to be proportional to the normalized coordinates
-    # We want max z_extent to produce visible thickness relative to the object size
-    # Use a similar scale as X/Y (normalized to image dimensions)
-    # The depth_range represents the full "thickness" of the object
-    z_normalized = z_extent * 0.5  # Scale factor for visible thickness
+    z_normalized = z_extent * 0.5  
     
     logger.info(f"Spine path 3D: x range [{x_normalized.min():.4f}, {x_normalized.max():.4f}], "
                 f"y range [{y_normalized.min():.4f}, {y_normalized.max():.4f}], "
@@ -419,17 +568,9 @@ def create_inflated_mesh_from_spine(
         find_axis_crossing_indices,
         split_contour_at_crossings,
     )
-    
-    # Use front_contour as-is (already normalized in execute method)
     front_norm = front_contour
-    
-    # Find where front contour crosses X=0 (top and bottom poles)
     front_top_cross, front_bottom_cross = find_axis_crossing_indices(front_norm)
-    
-    # Split front contour at crossings
     front_half1, front_half2 = split_contour_at_crossings(front_norm, front_top_cross, front_bottom_cross)
-    
-    # Determine which half is left (X < 0) and which is right (X > 0)
     def get_dominant_x_sign(half):
         mid_idx = len(half) // 2
         if mid_idx < len(half):
@@ -440,36 +581,22 @@ def create_inflated_mesh_from_spine(
         front_left, front_right = front_half1, front_half2
     else:
         front_left, front_right = front_half2, front_half1
-    
-    # Use spine path as-is (no resampling)
     spine = spine_path_3d
-    
-    # Build the mesh
     bm = bmesh.new()
-    
-    # Use spine endpoints as the poles
-    spine_tip = spine[0]   # First point
-    spine_tail = spine[-1]  # Last point
-    
-    # Create pole vertices at spine endpoints (Z=0 at poles)
+    spine_tip = spine[0]   
+    spine_tail = spine[-1]  
     top_vert = bm.verts.new((spine_tip[0], spine_tip[1], 0))
     bottom_vert = bm.verts.new((spine_tail[0], spine_tail[1], 0))
-    
-    # Front left vertices (use all points, Z = 0)
     front_left_verts = []
     for i in range(len(front_left)):
         x, y = front_left[i]
         v = bm.verts.new((x, y, 0))
         front_left_verts.append(v)
-    
-    # Front right vertices (use all points, Z = 0)
     front_right_verts = []
     for i in range(len(front_right)):
         x, y = front_right[i]
         v = bm.verts.new((x, y, 0))
         front_right_verts.append(v)
-    
-    # Spine back vertices (Z < 0, all points)
     spine_back_verts = []
     for i in range(len(spine)):
         spine_x = spine[i, 0]
@@ -477,8 +604,6 @@ def create_inflated_mesh_from_spine(
         z_ext = spine[i, 2]
         v = bm.verts.new((spine_x, spine_y, -z_ext))
         spine_back_verts.append(v)
-    
-    # Spine front vertices (Z > 0, all points)
     spine_front_verts = []
     for i in range(len(spine)):
         spine_x = spine[i, 0]
@@ -488,46 +613,33 @@ def create_inflated_mesh_from_spine(
         spine_front_verts.append(v)
     
     bm.verts.ensure_lookup_table()
-    
-    # Create 4 quadrant faces
-    # Q1: front_left + spine_back
     q1_verts = [top_vert] + front_left_verts + [bottom_vert] + list(reversed(spine_back_verts))
     if len(q1_verts) >= 3:
         try:
             bm.faces.new(q1_verts)
         except ValueError as e:
             logger.warning(f"Could not create Q1 face: {e}")
-    
-    # Q2: spine_front + front_left (reversed)
     q2_verts = [top_vert] + spine_front_verts + [bottom_vert] + list(reversed(front_left_verts))
     if len(q2_verts) >= 3:
         try:
             bm.faces.new(q2_verts)
         except ValueError as e:
             logger.warning(f"Could not create Q2 face: {e}")
-    
-    # Q3: front_right + spine_front (reversed)
     q3_verts = [top_vert] + front_right_verts + [bottom_vert] + list(reversed(spine_front_verts))
     if len(q3_verts) >= 3:
         try:
             bm.faces.new(q3_verts)
         except ValueError as e:
             logger.warning(f"Could not create Q3 face: {e}")
-    
-    # Q4: spine_back + front_right (reversed)
     q4_verts = [top_vert] + spine_back_verts + [bottom_vert] + list(reversed(front_right_verts))
     if len(q4_verts) >= 3:
         try:
             bm.faces.new(q4_verts)
         except ValueError as e:
             logger.warning(f"Could not create Q4 face: {e}")
-    
-    # Create mesh data
     mesh = bpy.data.meshes.new(name)
     bm.to_mesh(mesh)
     bm.free()
-    
-    # Create object
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
     
@@ -549,23 +661,16 @@ def create_spine_contour_from_depth(
     NOTE: This is the legacy function that projects the spine to a vertical line.
     For curved 3D spines, use extract_spine_path_3d() + create_inflated_mesh_from_spine().
     """
-    # Resize depth map to match mask if needed
     if depth_map.shape != mask.shape:
         depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
         depth_pil = depth_pil.resize((mask.shape[1], mask.shape[0]), PILImage.BILINEAR)
         depth_map = np.array(depth_pil).astype(np.float32) / 255.0
-    
-    # --- Geodesic Spine Extraction ---
     try:
-        # 1. Compute Medialness Speed Map
         speed_map = compute_medialness_speed(mask, depth_map)
-        
-        # 2. Extract the Geodesic Ridge (list of x,y coordinates)
         spine_path_xy = extract_geodesic_path(mask, speed_map)
         
     except (ImportError, Exception) as e:
         logger.warning(f"Geodesic extraction failed ({e}), falling back to simple center.")
-        # Fallback: create a dummy vertical line down the middle
         y_indices = np.where(np.any(mask, axis=1))[0]
         if len(y_indices) > 0:
             spine_path_xy = np.column_stack([
@@ -577,62 +682,34 @@ def create_spine_contour_from_depth(
 
     if len(spine_path_xy) < 2:
          return np.column_stack([np.zeros(num_points), np.linspace(-0.5, 0.5, num_points)])
-
-    # --- Sample Data along the Spine ---
-    # We now have the TRUE ridge. We sample depth along this ridge.
-    
-    # Map coordinates to integers for sampling
     sample_x = np.clip(spine_path_xy[:, 0], 0, mask.shape[1]-1).astype(int)
     sample_y = np.clip(spine_path_xy[:, 1], 0, mask.shape[0]-1).astype(int)
     
     sampled_depths = depth_map[sample_y, sample_x]
     
-    # --- Projection and Normalization ---
-    # The mesh generator expects [Z, Y] where Y is the vertical coordinate.
-    # We project our geodesic spine points onto the Y-axis.
-    
     y_min, y_max = np.min(sample_y), np.max(sample_y)
     mask_height = max(1.0, y_max - y_min)
     mask_center_y = (y_max + y_min) / 2.0
-    
-    # Normalize Y to Blender coords [-0.5, 0.5] (Up is positive)
-    # Image Y is down, so we flip signs.
     y_normalized = -(sample_y - mask_center_y) / mask_height
-    
-    # Sort data by Y to ensure the contour is monotonic for the mesh generator
-    # (Note: This "straightens" curved spines into a vertical profile, 
-    # which is required if the target mesh is a straight extrusion)
     sort_idx = np.argsort(y_normalized)
     y_sorted = y_normalized[sort_idx]
     depth_sorted = sampled_depths[sort_idx]
-    
-    # Remove duplicates in Y for interpolation
     unique_y, unique_indices = np.unique(y_sorted, return_index=True)
     unique_depths = depth_sorted[unique_indices]
     
     if len(unique_y) < 2:
          return np.column_stack([np.zeros(num_points), np.linspace(-0.5, 0.5, num_points)])
-
-    # Interpolate to requested num_points
     y_target = np.linspace(unique_y[0], unique_y[-1], num_points)
     depth_interp = np.interp(y_target, unique_y, unique_depths)
-    
-    # Normalize depth (Local Contrast)
     d_min = depth_interp.min()
     d_max = depth_interp.max()
     if d_max > d_min:
         width_factor = (depth_interp - d_min) / (d_max - d_min)
     else:
         width_factor = np.full_like(depth_interp, 0.5)
-        
-    # --- Construct Output Contour ---
     contour_points = []
-    
-    # Right side (+Z)
     for i in range(num_points):
         contour_points.append([width_factor[i] * 0.5, y_target[i]])
-        
-    # Left side (-Z)
     for i in range(num_points - 1, -1, -1):
         contour_points.append([-width_factor[i] * 0.5, y_target[i]])
         
@@ -683,39 +760,27 @@ class CreateDepthProfileMeshOperator(Operator):
             get_current_masks, get_active_image, get_current_depth_map
         )
         from procedural_human.segmentation.mask_to_curve import find_contours
-        
-        # Get camera
         camera = context.scene.camera
         if camera is None:
             self.report({'WARNING'}, "No camera found in scene. Please set a camera as active.")
             return {'CANCELLED'}
-        
-        # Get mask
         masks = get_current_masks()
         if not masks:
             self.report({'WARNING'}, "No segmentation masks available. Run segmentation first.")
             return {'CANCELLED'}
-        
-        # Use first enabled mask or first mask
         settings = context.scene.segmentation_mask_settings
         mask_index = 0
         if len(settings.masks) > 0:
             enabled_indices = [item.mask_index for item in settings.masks if item.enabled and item.mask_index >= 0]
             if enabled_indices:
                 mask_index = enabled_indices[0]
-        
         if mask_index >= len(masks):
             mask_index = 0
-        
         mask = masks[mask_index]
-        
-        # Get depth map
         depth_map = get_current_depth_map()
         if depth_map is None:
             self.report({'WARNING'}, "No depth map available. Run depth estimation first.")
             return {'CANCELLED'}
-        
-        # Get image dimensions
         image = get_active_image(context)
         if image:
             image_width, image_height = image.size
@@ -723,60 +788,30 @@ class CreateDepthProfileMeshOperator(Operator):
             image_height, image_width = mask.shape[:2]
         
         try:
-            # Create front contour from mask
             contours = find_contours(mask)
             if not contours:
                 self.report({'WARNING'}, "Could not extract contour from mask")
                 return {'CANCELLED'}
-            
-            # Use largest contour
             front_contour = max(contours, key=len)
-            
-            # Simplify front contour if requested
             if self.simplify_amount > 0:
                 front_contour = simplify_contour(front_contour, self.simplify_amount)
-            
-            # Calculate Visual Center using Distance Transform for better alignment
-            # This ensures the "spine" aligns with the thickest part of the object
             try:
                 dist = distance_transform_edt(mask)
                 max_idx = np.argmax(dist)
                 max_y, max_x = np.unravel_index(max_idx, dist.shape)
                 center_x, center_y = float(max_x), float(max_y)
-                # logger.info(f"Using visual center at ({center_x}, {center_y})")
             except ImportError:
-                # Fallback to centroid
                 M = cv2.moments(mask.astype(np.uint8)) if 'cv2' in locals() else None
                 if M and M["m00"] != 0:
                     center_x = M["m10"] / M["m00"]
                     center_y = M["m01"] / M["m00"]
                 else:
-                    # Bounding box center
                     y_indices, x_indices = np.where(mask)
                     center_x = (np.min(x_indices) + np.max(x_indices)) / 2
                     center_y = (np.min(y_indices) + np.max(y_indices)) / 2
-            
-            # Normalize front contour to image coordinates centered on visual center
             front_contour_norm = front_contour.astype(np.float32).copy()
-            
-            # Normalize to 0-1 then center around visual center
-            # Image coords: X=0..W, Y=0..H (down)
-            # Blender coords: X=-0.5..0.5, Y=-0.5..0.5 (up)
-            
-            # Shift points so that (center_x, center_y) becomes (0,0)
             front_contour_norm[:, 0] = (front_contour_norm[:, 0] - center_x) / image_width
-            
-            # Flip Y and center
-            # Image Y is down, Blender Y is up.
-            # (y - center_y) / height -> if y > center (lower in image), result > 0.
-            # We want y > center (lower image) -> y < 0 (lower blender).
-            # So -(y - center_y) / height
             front_contour_norm[:, 1] = -(front_contour_norm[:, 1] - center_y) / image_height
-            
-            # Determine Z-depth and Positioning
-            # Calculate mean depth value in the mask to handle layering (0=far, 1=close)
-            # Mask depth values
-            # Resize depth map to match mask if needed before indexing
             if depth_map.shape != mask.shape:
                 depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
                 depth_pil = depth_pil.resize((mask.shape[1], mask.shape[0]), PILImage.BILINEAR)
@@ -789,87 +824,64 @@ class CreateDepthProfileMeshOperator(Operator):
                 mean_depth_val = np.mean(mask_depths)
             else:
                 mean_depth_val = 0.5
-                
-            # Define depth range for layering
-            # Close objects (val ~1) should be closer to camera
-            # Far objects (val ~0) should be further
             base_distance = 5.0
-            depth_layering_range = 2.0  # Objects spread over 2 meters depth
-            
-            # Higher depth value = Closer = Smaller distance
-            # distance = base - (val - 0.5) * range
+            depth_layering_range = 2.0  
             object_distance = base_distance - (mean_depth_val - 0.5) * depth_layering_range
-            
-            # Unproject visual center to 3D view plane
-            # We assume the "center" of our mesh (0,0,0) should align with the ray through (center_x, center_y)
-            
-            # Camera parameters (approximated if not available)
-            # Sensor width in mm, focal length in mm
             sensor_width = camera.data.sensor_width
             focal_length = camera.data.lens
-            
-            # Normalized coordinates of center (-0.5 to 0.5)
-            # Account for aspect ratio if render settings available, otherwise assume square pixels
             render = context.scene.render
             aspect_ratio = render.resolution_x / render.resolution_y
             
             norm_cx = (center_x / image_width) - 0.5
-            norm_cy = 0.5 - (center_y / image_height)  # Blender Y is up
-            
-            # Calculate view plane offsets at object_distance
-            # tan(theta/2) = (sensor/2) / focal
-            # view_width = 2 * distance * tan(theta/2) = distance * sensor / focal
+            norm_cy = 0.5 - (center_y / image_height)  
             view_plane_width = object_distance * sensor_width / focal_length
             view_plane_height = view_plane_width / aspect_ratio
             
             offset_x = norm_cx * view_plane_width
             offset_y = norm_cy * view_plane_height
+
+
+            logger.info("Starting Control Cage generation...")
+            skeleton = skeletonize_cv2(mask)
+            set_current_medialness_map(skeleton)
+            if np.count_nonzero(skeleton) == 0:
+                logger.warning("Skeletonize failed (empty), falling back to simple spine.")
+                skeleton_branches = []
+            else:
+                skeleton_branches = simplify_skeleton(skeleton, epsilon=2.0)
             
-            # Extract 3D spine path with curved medial axis and depth-based Z inflation
-            # Uses natural point count from geodesic extraction (no resampling)
-            spine_path_3d = extract_spine_path_3d(
-                mask,
+            if skeleton_branches:
+                main_branch = max(skeleton_branches, key=len)
+                set_current_spine_path(main_branch)
+            else:
+                set_current_spine_path(None)
+
+            if len(mask_depths) > 0:
+                 min_depth = mask_depths.min()
+            else:
+                 min_depth = 0.0
+            
+            obj = create_control_cage(
+                front_contour_norm,
+                skeleton_branches,
                 depth_map,
                 image_width,
                 image_height,
                 center_x,
                 center_y,
-            )
-            
-            # Simplify spine path if requested
-            if self.simplify_amount > 0:
-                spine_path_3d = simplify_polyline(spine_path_3d, self.simplify_amount)
-            
-            # Apply depth scale to Z extent
-            spine_path_3d[:, 2] *= self.depth_scale
-            
-            # Create the mesh using the new inflated mesh function
-            obj = create_inflated_mesh_from_spine(
-                front_contour_norm,
-                spine_path_3d,
+                min_depth,
+                depth_scale=self.depth_scale,
                 name=f"DepthMesh_{mask_index}",
             )
-            
-            # Scale the mesh to match view plane size
-            # front_contour_norm is normalized to image dimensions (roughly -0.5 to 0.5)
-            # We need to scale it up to physical dimensions at that distance
             obj.scale.x = view_plane_width
-            obj.scale.y = view_plane_height  # Assuming normalized Y was also scaled by image height ratio?
-            # Wait, front_contour_norm was divided by image_width/height separately.
-            # So X units are fractions of width, Y units are fractions of height.
-            # So scaling X by view_width and Y by view_height is correct.
-            obj.scale.z = view_plane_width # Scale thickness proportionally to width? 
-            # Or assume depth_scale handled it. Let's keep Z scale same as X for consistency.
+            obj.scale.y = view_plane_height
+            obj.scale.z = view_plane_width 
             
-            logger.info(f"Created depth profile mesh: {obj.name} at dist {object_distance:.2f}")
-            
-            # Apply Bezier handles
+            logger.info(f"Created control cage: {obj.name} at dist {object_distance:.2f}")
             try:
                 apply_bezier_handles(obj)
             except Exception as e:
                 logger.warning(f"Could not apply Bezier handles: {e}")
-            
-            # Apply Charrot-Gregory patch modifier
             try:
                 apply_charrot_gregory_patch_modifier(
                     obj,
@@ -878,38 +890,17 @@ class CreateDepthProfileMeshOperator(Operator):
                 )
             except Exception as e:
                 logger.warning(f"Could not apply Charrot-Gregory patch: {e}")
-            
-            # Transform mesh to align with camera
-            # Get camera matrix
             camera_matrix = camera.matrix_world
             camera_location = camera_matrix.translation
             camera_rotation = camera_matrix.to_euler()
-            
-            # Calculate world position
-            # Start at camera
-            # Move forward (-Z local) by object_distance
-            # Move right (+X local) by offset_x
-            # Move up (+Y local) by offset_y
-            
-            # Get camera local axes
             cam_rot_mat = camera_rotation.to_matrix()
-            cam_right = cam_rot_mat.col[0] # X
-            cam_up = cam_rot_mat.col[1]    # Y
-            cam_back = cam_rot_mat.col[2]  # Z
+            cam_right = cam_rot_mat.col[0] 
+            cam_up = cam_rot_mat.col[1]    
+            cam_back = cam_rot_mat.col[2]  
             
             target_location = camera_location - cam_back * object_distance + cam_right * offset_x + cam_up * offset_y
-            
-            # Set mesh location
             obj.location = target_location
-            
-            # Rotate to face camera (billboard)
-            # Mesh "Front" is +Z? No, our contours are in XY plane.
-            # create_dual_loop_mesh creates in XY.
-            # We want Mesh XY plane to be parallel to Camera XY plane.
-            # So Mesh Rotation = Camera Rotation.
             obj.rotation_euler = camera_rotation
-            
-            # Select the new object
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(True)
             context.view_layer.objects.active = obj

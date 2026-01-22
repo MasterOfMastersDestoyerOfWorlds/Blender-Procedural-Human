@@ -71,30 +71,21 @@ class RadialAttachment:
         )
         if attr_name:
             attachment_label = f"Attachment_{attr_name.lstrip('_').title()}"
-
-        # Create frame to contain attachment nodes
         frame = node_group.nodes.new("NodeFrame")
         frame.label = attachment_label
         frame.label_size = 30
-
-        # Create Angle Profile closure (shapes thickness vs angle within wrap arc)
         angle_closure = create_float_curve_closure(
             node_group.nodes,
             node_group.links,
             label=f"{attachment_label} Angle Profile",
             location=(-500, y_offset),
         )
-
-        # Create Height Profile closure (shapes height at height_position)
         height_closure = create_float_curve_closure(
             node_group.nodes,
             node_group.links,
             label=f"{attachment_label} Height Profile",
             location=(-500, angle_closure.min_y() - 100),
         )
-
-        # Create the nail node group with new parameters
-        # Convert max_thickness from mm to world units (meters)
         max_thickness_world = self.max_thickness_mm * 0.001
 
         nail_group = create_fingernail_node_group(
@@ -114,20 +105,14 @@ class RadialAttachment:
             angle_closure.out_node.location[0] + angle_closure.out_node.width + 100,
             height_closure.out_node.location[1],
         )
-
-        # Parent all nodes to the frame
         for node in (
             [attachment_instance] + angle_closure.nodes() + height_closure.nodes()
         ):
             node.parent = frame
-
-        # Link geometry from segment
         node_group.links.new(
             segment_result["instance"].outputs["Geometry"],
             attachment_instance.inputs["Geometry"],
         )
-
-        # Link closures to attachment inputs
         node_group.links.new(
             angle_closure.output_socket,
             attachment_instance.inputs["Angle Float Curve"],
@@ -136,8 +121,6 @@ class RadialAttachment:
             height_closure.output_socket,
             attachment_instance.inputs["Height Float Curve"],
         )
-
-        # Set input values
         attachment_instance.inputs["Nail Width Ratio"].default_value = self.size_ratio
         attachment_instance.inputs["Attachment Position"].default_value = (
             self.attachment_position
@@ -147,8 +130,6 @@ class RadialAttachment:
             self.height_position
         )
         attachment_instance.inputs["Max Thickness"].default_value = max_thickness_world
-
-        # Update context y offset
         context.current_y_offset = height_closure.min_y() - 300
 
         return {

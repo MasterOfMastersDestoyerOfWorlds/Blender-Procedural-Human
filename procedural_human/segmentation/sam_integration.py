@@ -9,36 +9,22 @@ from __future__ import annotations  # PEP 563: Postponed evaluation of annotatio
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
-# Patch transformers version check before importing
-# The 5.0.0.dev0 version has outdated deps check requiring huggingface_hub<1.0
-# but actually needs >=1.2 at runtime
 def _patch_transformers_deps():
     import sys
     import types
-    
-    # Create a fake dependency_versions_check module with all expected exports
     if 'transformers.dependency_versions_check' not in sys.modules:
         fake_module = types.ModuleType('transformers.dependency_versions_check')
-        # Add the function that deepspeed.py imports
         fake_module.dep_version_check = lambda *args, **kwargs: None
         sys.modules['transformers.dependency_versions_check'] = fake_module
 
 from typing import Optional, List, Tuple, TYPE_CHECKING
 
 from procedural_human.logger import logger
-
-# Heavy imports are lazy-loaded to speed up addon startup
-# torch, transformers, numpy, PIL are only imported when SAM features are used
 if TYPE_CHECKING:
     import numpy as np
     from PIL import Image
     import torch
     from transformers import Sam3Processor, Sam3Model
-
-# Get path relative to this file
-# __file__ is in procedural_human/segmentation/sam_integration.py
-# So go up two levels to get to procedural_human/
 _ADDON_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _MODEL_PATH = os.path.join(_ADDON_ROOT, "image_seg")
 
@@ -58,12 +44,8 @@ class SAM3Manager:
     _initialized: bool = False
     _torch = None  # Lazily imported torch module
     _np = None  # Lazily imported numpy module
-    
-    # Pre-imported classes (set on main thread to avoid regex issues in background threads)
     _Sam3Model = None
     _Sam3Processor = None
-    
-    # Loading state tracking
     _is_loading: bool = False
     _loading_progress: str = ""
     _loading_error: Optional[str] = None
@@ -84,8 +66,6 @@ class SAM3Manager:
             import numpy as np
             cls._np = np
         return cls._np
-    
-    # Path to bundled model files
     MODEL_PATH = _MODEL_PATH
     
     def __new__(cls):
@@ -134,8 +114,6 @@ class SAM3Manager:
         self.__class__._is_loading = True
         self.__class__._loading_error = None
         self.__class__._loading_progress = "Starting..."
-        
-        # Show progress indicator in Blender's status bar
         import bpy
         wm = bpy.context.window_manager
         wm.progress_begin(0, 100)
@@ -153,14 +131,11 @@ class SAM3Manager:
                 pass
         
         try:
-            # Step 1: Import dependencies (10%)
             set_status("Loading SAM3: Importing dependencies...")
             wm.progress_update(10)
             _patch_transformers_deps()
             import torch
             from transformers import Sam3Processor, Sam3Model
-            
-            # Step 2: Determine device (20%)
             wm.progress_update(20)
             if torch.cuda.is_available():
                 self._device = "cuda"
@@ -171,19 +146,13 @@ class SAM3Manager:
                 set_status("Loading SAM3: Using CPU (no CUDA)...")
             
             logger.info(f"SAM3 running on: {self._device}")
-            
-            # Step 3: Load model (this is the slow part - 30% to 80%)
             set_status("Loading SAM3: Loading model weights (this may take a moment)...")
             wm.progress_update(30)
             self.__class__._model = Sam3Model.from_pretrained(self.MODEL_PATH).to(self._device)
-            
-            # Step 4: Load processor (90%)
             set_status("Loading SAM3: Loading processor...")
             wm.progress_update(90)
             self.__class__._processor = Sam3Processor.from_pretrained(self.MODEL_PATH)
             self.__class__._model.eval()
-            
-            # Done (100%)
             wm.progress_update(100)
             self._initialized = True
             set_status("SAM3 model loaded successfully!")
@@ -203,7 +172,6 @@ class SAM3Manager:
         finally:
             self.__class__._is_loading = False
             wm.progress_end()
-            # Clear status text after a short delay using a timer
             def clear_status():
                 self.__class__._loading_progress = ""
                 try:
@@ -242,22 +210,13 @@ class SAM3Manager:
         cls._is_loading = True
         cls._loading_error = None
         cls._loading_progress = "Pre-importing modules..."
-        
-        # Pre-import modules on main thread to avoid regex compilation in background thread
-        # This is critical - Python's regex module can crash in threads with Blender's Python
         try:
             _patch_transformers_deps()
-            
-            # Set environment variables before any transformers imports
             os.environ["TOKENIZERS_PARALLELISM"] = "false"
             os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
             os.environ["TRANSFORMERS_VERBOSITY"] = "error"
-            
-            # Import transformers modules (triggers regex compilation on main thread)
             import torch
             from transformers import Sam3Processor, Sam3Model
-            
-            # Store references for the background thread to use
             cls._Sam3Model = Sam3Model
             cls._Sam3Processor = Sam3Processor
             cls._torch = torch
@@ -299,12 +258,9 @@ class SAM3Manager:
         logger.info("Loading SAM3 model (background thread)...")
         
         try:
-            # Use pre-imported classes (imports done on main thread in start_loading_async)
             Sam3Model = cls._Sam3Model
             Sam3Processor = cls._Sam3Processor
             torch = cls._torch
-            
-            # Determine device
             cls._loading_progress = "Detecting device..."
             if torch.cuda.is_available():
                 device = "cuda"
@@ -313,12 +269,8 @@ class SAM3Manager:
                 device = "cpu"
             
             logger.info(f"SAM3 running on: {device}")
-            
-            # Load model (slow part - file I/O and tensor operations are thread-safe)
             cls._loading_progress = "Loading model weights..."
             cls._model = Sam3Model.from_pretrained(cls.MODEL_PATH).to(device)
-            
-            # Load processor
             cls._loading_progress = "Loading processor..."
             cls._processor = Sam3Processor.from_pretrained(cls.MODEL_PATH)
             cls._model.eval()
@@ -356,19 +308,13 @@ class SAM3Manager:
         self.ensure_loaded()
         
         logger.info(f"Segmenting by prompt: '{text_prompt}'")
-        
-        # Prepare inputs
         inputs = self._processor(
             images=image, 
             text=text_prompt, 
             return_tensors="pt"
         ).to(self._device)
-
-        # Run inference
         with self._get_torch().no_grad():
             outputs = self._model(**inputs)
-        
-        # Post-process results
         results = self._processor.post_process_instance_segmentation(
             outputs,
             threshold=threshold,
@@ -415,43 +361,27 @@ class SAM3Manager:
         logger.info(f"Segmenting by {len(points)} points")
         
         torch = self._get_torch()
-        
-        # Process image first (without points - new API)
         inputs = self._processor(
             images=image,
             return_tensors="pt"
         ).to(self._device)
-        
-        # Create point and label tensors separately
-        # Shape: (batch_size, num_points, 2) for points
-        # Shape: (batch_size, num_points) for labels
         input_points = torch.tensor([points], dtype=torch.float32, device=self._device)
         input_labels = torch.tensor([labels], dtype=torch.int64, device=self._device)
-        
-        # Run inference with points passed directly to model
         with self._get_torch().no_grad():
             outputs = self._model(
                 **inputs,
                 input_points=input_points,
                 input_labels=input_labels,
             )
-        
-        # Post-process results using mask output
-        # SAM3 returns pred_masks of shape (batch, num_masks, H, W)
         masks = []
         if hasattr(outputs, 'pred_masks') and outputs.pred_masks is not None:
             pred_masks = outputs.pred_masks
-            # Get scores if available
             scores = outputs.iou_scores if hasattr(outputs, 'iou_scores') else None
-            
-            # Select best mask based on IoU score
             if scores is not None and len(scores.shape) > 1:
                 best_idx = scores[0].argmax().item()
                 mask = pred_masks[0, best_idx]
             else:
                 mask = pred_masks[0, 0]
-            
-            # Resize mask to original image size and threshold
             mask_resized = torch.nn.functional.interpolate(
                 mask.unsqueeze(0).unsqueeze(0).float(),
                 size=(image.height, image.width),
@@ -490,38 +420,25 @@ class SAM3Manager:
         logger.info(f"Segmenting by box: {box}")
         
         torch = self._get_torch()
-        
-        # Process image first (without boxes - new API)
         inputs = self._processor(
             images=image,
             return_tensors="pt"
         ).to(self._device)
-        
-        # Create box tensor separately
-        # Shape: (batch_size, num_boxes, 4) - format is (x_min, y_min, x_max, y_max)
         input_boxes = torch.tensor([[list(box)]], dtype=torch.float32, device=self._device)
-        
-        # Run inference with boxes passed directly to model
         with torch.no_grad():
             outputs = self._model(
                 **inputs,
                 input_boxes=input_boxes,
             )
-        
-        # Post-process results using mask output
         masks = []
         if hasattr(outputs, 'pred_masks') and outputs.pred_masks is not None:
             pred_masks = outputs.pred_masks
             scores = outputs.iou_scores if hasattr(outputs, 'iou_scores') else None
-            
-            # Select best mask based on IoU score
             if scores is not None and len(scores.shape) > 1:
                 best_idx = scores[0].argmax().item()
                 mask = pred_masks[0, best_idx]
             else:
                 mask = pred_masks[0, 0]
-            
-            # Resize mask to original image size and threshold
             mask_resized = torch.nn.functional.interpolate(
                 mask.unsqueeze(0).unsqueeze(0).float(),
                 size=(image.height, image.width),

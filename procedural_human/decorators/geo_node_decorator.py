@@ -14,10 +14,8 @@ class geo_node_group:
     registry: Dict[str, Callable] = {}
 
     def __new__(cls, func: Callable):
-        # Register the function under its name
         cls.registry[func.__name__] = func
         logger.info(f"[Geo Node Registry] Registered node group: {func.__name__}")
-        # Return the original function so it behaves exactly as before
         return func
 
     @classmethod

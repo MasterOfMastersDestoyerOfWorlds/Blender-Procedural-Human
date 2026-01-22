@@ -27,66 +27,31 @@ def compute_hessian_ridge_map(depth_map: np.ndarray, mask: np.ndarray, sigma: fl
     """
     Computes Principal Curvature Magnitude and Direction, explicitly suppressing silhouettes.
     """
-    # 1. Invert Depth (Standard Heightmap: Near is High)
     depth_inverted = 1.0 - depth_map
-    
-    # 2. Gaussian Smooth
     depth_smooth = gaussian_filter(depth_inverted, sigma=sigma, mode='nearest')
-    
-    # 3. Calculate Gradients (Slope)
     dz_dy, dz_dx = np.gradient(depth_smooth)
-    
-    # --- EXPLICIT SILHOUETTE SUPPRESSION ---
-    # Ridges have high curvature but low slope. Silhouettes have high slope.
-    # We create a hard mask to exclude areas where the gradient is too steep (occlusion boundaries).
     grad_mag = np.sqrt(dz_dx**2 + dz_dy**2)
-    
-    # Normalize gradient magnitude relative to the scene
     avg_grad = np.mean(grad_mag[mask > 0]) if mask is not None else np.mean(grad_mag)
-    # If gradient is X times higher than average, it's a cliff, not a ridge.
     is_surface = grad_mag < (avg_grad * silhouette_thresh * 5.0)
-    
-    # 4. Calculate Hessian (Curvature)
     d2z_dy2, d2z_dxdy = np.gradient(dz_dy)
     d2z_dydx, d2z_dx2 = np.gradient(dz_dx)
-    
-    # 5. Eigenvalue Analysis for Ridge Strength & Direction
     Hxx = d2z_dx2
     Hxy = d2z_dxdy
     Hyy = d2z_dy2
-    
-    # Calculate Eigenvalues and Eigenvectors
-    # lambda1 is the dominant curvature (across the ridge)
-    # theta is the angle of the eigenvector for lambda1
-    
-    # Standard 2x2 Eigenvalue formula
     root = np.sqrt((Hxx - Hyy)**2 + 4 * Hxy**2)
     lambda1 = (Hxx + Hyy + root) / 2.0
     lambda2 = (Hxx + Hyy - root) / 2.0
-    
-    # We care about the maximum absolute curvature
     abs_k1 = np.abs(lambda1)
     abs_k2 = np.abs(lambda2)
     
     dominant_k = np.where(abs_k1 > abs_k2, lambda1, lambda2)
     feature_strength = np.abs(dominant_k)
-    
-    # Calculate orientation of the dominant curvature
-    # This angle points "across" the ridge (direction of max curvature)
-    # We perform NMS along this direction.
-    # Formula: 0.5 * atan2(2Hxy, Hxx - Hyy)
     ridge_theta = 0.5 * np.arctan2(2 * Hxy, Hxx - Hyy)
-    
-    # 6. Apply Filters
     if mask is not None:
         from scipy.ndimage import binary_erosion
         eroded_mask = binary_erosion(mask, iterations=2)
         feature_strength *= eroded_mask
-        
-    # Apply Silhouette Mask (Hard cut)
     feature_strength *= is_surface
-    
-    # Normalize
     f_max = np.max(feature_strength)
     if f_max > 0:
         feature_strength /= f_max
@@ -101,33 +66,10 @@ def non_max_suppression_ridges(img: np.ndarray, theta: np.ndarray) -> np.ndarray
     """
     M, N = img.shape
     Z = np.zeros((M,N), dtype=np.float32)
-    
-    # Convert angle to degrees and shift to [0, 180]
     angle = np.degrees(theta)
     angle[angle < 0] += 180
-    
-    # Vectorized NMS using 8-neighbor approximation
-    # 0 degrees: Horizontal (East-West)
-    # 45 degrees: NorthEast-SouthWest
-    # 90 degrees: Vertical (North-South)
-    # 135 degrees: NorthWest-SouthEast
-    
-    # We pad the image to avoid boundary checks in the loop
     padded = np.pad(img, 1, mode='constant')
-    
-    # Slice views for neighbors
-    # Center
     center = padded[1:-1, 1:-1]
-    
-    # Neighbors (using (row, col) indexing)
-    # (r, c+1) -> East
-    # (r, c-1) -> West
-    # (r-1, c) -> North
-    # (r+1, c) -> South
-    # (r-1, c+1) -> NorthEast
-    # (r+1, c-1) -> SouthWest
-    # (r-1, c-1) -> NorthWest
-    # (r+1, c+1) -> SouthEast
     
     v_e = padded[1:-1, 2:]
     v_w = padded[1:-1, :-2]
@@ -137,40 +79,20 @@ def non_max_suppression_ridges(img: np.ndarray, theta: np.ndarray) -> np.ndarray
     v_sw = padded[2:, :-2]
     v_nw = padded[:-2, :-2]
     v_se = padded[2:, 2:]
-    
-    # Quantize angles to 4 directions
-    # 0 deg (Horizontal) -> Check Left/Right neighbors
     mask_0 = np.logical_or(angle < 22.5, angle >= 157.5)
-    # 45 deg -> Check NE/SW
     mask_45 = np.logical_and(angle >= 22.5, angle < 67.5)
-    # 90 deg -> Check N/S
     mask_90 = np.logical_and(angle >= 67.5, angle < 112.5)
-    # 135 deg -> Check NW/SE
     mask_135 = np.logical_and(angle >= 112.5, angle < 157.5)
-    
-    # Perform suppression
-    # Keep pixel ONLY if it is greater than BOTH neighbors in the gradient direction
-    
-    # Direction 0
     q = np.zeros_like(center)
     r = np.zeros_like(center)
     q[mask_0] = v_e[mask_0]
     r[mask_0] = v_w[mask_0]
-    
-    # Direction 45
     q[mask_45] = v_ne[mask_45]
     r[mask_45] = v_sw[mask_45]
-    
-    # Direction 90
     q[mask_90] = v_n[mask_90]
     r[mask_90] = v_s[mask_90]
-    
-    # Direction 135
     q[mask_135] = v_nw[mask_135]
     r[mask_135] = v_se[mask_135]
-    
-    # The actual NMS Logic
-    # We use >= on one side and > on the other to handle plateaus thinly
     keep_mask = (center >= q) & (center > r)
     Z[keep_mask] = center[keep_mask]
     
@@ -187,18 +109,12 @@ def hysteresis_thresholding(img: np.ndarray, low_thresh: float, high_thresh: flo
     output[strong_i, strong_j] = 1 # Strong
     output[weak_i, weak_j] = 2     # Weak
     
-    # Iterative connection (flood fill from strong)
-    # A simplified iterative approach using morphology or convolution loop
-    # Since we are in python, let's do a simple stack-based approach for speed
-    
     stack = list(zip(strong_i, strong_j))
     rows, cols = img.shape
     
     while stack:
         r, c = stack.pop()
         output[r, c] = 1 # Mark as definitely part of ridge
-        
-        # Check 8 neighbors
         for nr in range(r-1, r+2):
             for nc in range(c-1, c+2):
                 if 0 <= nr < rows and 0 <= nc < cols:
@@ -213,13 +129,10 @@ def extract_surface_topology(ridge_map: np.ndarray, theta_map: np.ndarray, mask:
     """
     Pipeline: NMS -> Hysteresis -> Binary Skeleton
     """
-    # 1. Non-Maximum Suppression (Returns thin float lines)
     thinned_ridges = non_max_suppression_ridges(ridge_map, theta_map)
     
     if mask is not None:
         thinned_ridges *= mask
-        
-    # 2. Hysteresis Thresholding (Returns binary skeleton)
     skeleton = hysteresis_thresholding(thinned_ridges, low_t, high_t)
     
     return skeleton
@@ -228,26 +141,14 @@ def zhang_suen_thinning(binary_image: np.ndarray) -> np.ndarray:
     """
     Perform Zhang-Suen thinning algorithm for skeletonization.
     """
-    # Ensure binary 0/1
     img = binary_image.astype(np.uint8)
     if img.max() > 1:
         img = (img > 0).astype(np.uint8)
-        
-    # Standard thinning implementation
-    # Using OpenCV if available, or manual implementation
     try:
-        # OpenCV ximgproc thinning is faster but requires opencv-contrib-python
         return cv2.ximgproc.thinning(img * 255, thinningType=cv2.ximgproc.THINNING_ZHANGSUEN) > 0
     except (AttributeError, ImportError):
         pass
-        
-    # Manual implementation as fallback
     skeleton = img.copy()
-    
-    # Kernel for neighbor processing
-    # P9 P2 P3
-    # P8 P1 P4
-    # P7 P6 P5
     
     def iteration(im, iter_num):
         marker = np.zeros_like(im)
@@ -256,8 +157,6 @@ def zhang_suen_thinning(binary_image: np.ndarray) -> np.ndarray:
             for c in range(1, cols-1):
                 if im[r, c] == 0:
                     continue
-                
-                # Get 8-neighbors
                 p2 = im[r-1, c]
                 p3 = im[r-1, c+1]
                 p4 = im[r, c+1]
@@ -268,14 +167,9 @@ def zhang_suen_thinning(binary_image: np.ndarray) -> np.ndarray:
                 p9 = im[r-1, c-1]
                 
                 neighbors = [p2, p3, p4, p5, p6, p7, p8, p9]
-                
-                # Condition A: Number of non-zero neighbors B(P1) is between 2 and 6
                 B = sum(neighbors)
                 if B < 2 or B > 6:
                     continue
-                
-                # Condition B: Number of 0->1 transitions A(P1) is 1
-                # Sequence: p2, p3, p4, p5, p6, p7, p8, p9, p2
                 transitions = 0
                 seq = neighbors + [p2]
                 for k in range(8):
@@ -283,8 +177,6 @@ def zhang_suen_thinning(binary_image: np.ndarray) -> np.ndarray:
                         transitions += 1
                 if transitions != 1:
                     continue
-                
-                # Condition C & D
                 if iter_num == 0:
                     if (p2 * p4 * p6) == 0 and (p4 * p6 * p8) == 0:
                         marker[r, c] = 1
@@ -308,19 +200,13 @@ def skeletonize_ridge_map(ridge_map: np.ndarray, mask: np.ndarray, threshold: fl
     Threshold and skeletonize the ridge strength map.
     Returns: binary skeleton image
     """
-    # 1. Thresholding
     binary_ridge = ridge_map > threshold
-    
-    # Apply mask
     if mask is not None:
         binary_ridge = binary_ridge & mask
-    
-    # 2. Thinning / Skeletonization
     try:
         from skimage.morphology import skeletonize
         skeleton = skeletonize(binary_ridge)
     except ImportError:
-        # Fallback to custom Zhang-Suen implementation
         skeleton = zhang_suen_thinning(binary_ridge)
         
     return skeleton
@@ -338,22 +224,15 @@ def vectorize_skeleton(skeleton: np.ndarray, mask: np.ndarray, simplify_amount: 
     Returns:
         List of Nx2 arrays (curves)
     """
-    # Find all skeleton pixels
     points = np.column_stack(np.where(skeleton > 0))
     
     if len(points) == 0:
         return []
-    
-    # Build graph from skeleton pixels
-    # Map pixel coords to index
     pmap = {tuple(p): i for i, p in enumerate(points)}
     adj = {i: [] for i in range(len(points))}
     
     rows, cols = skeleton.shape
-    
-    # Connect neighbors
     for i, (r, c) in enumerate(points):
-        # Check 8-neighbors
         for dr in [-1, 0, 1]:
             for dc in [-1, 0, 1]:
                 if dr == 0 and dc == 0:
@@ -365,47 +244,27 @@ def vectorize_skeleton(skeleton: np.ndarray, mask: np.ndarray, simplify_amount: 
                         if neighbor_idx is not None and neighbor_idx > i: # Avoid duplicates
                             adj[i].append(neighbor_idx)
                             adj[neighbor_idx].append(i)
-    
-    # Find endpoints and junctions
-    # Degree 1 = Endpoint
-    # Degree 2 = Path node
-    # Degree > 2 = Junction
     degrees = {i: len(neighbors) for i, neighbors in adj.items()}
     
     junctions = [i for i, d in degrees.items() if d > 2]
     endpoints = [i for i, d in degrees.items() if d == 1]
-    
-    # Start tracing from junctions and endpoints
     visited_edges = set() # Set of frozenset({u, v})
     curves = []
-    
-    # Nodes to start tracing from (junctions first, then endpoints)
     start_nodes = junctions + endpoints
     
-    # If a closed loop exists without endpoints/junctions, we need to handle it too
-    # But for now let's assume ridges end somewhere
-    
     for start_node in start_nodes:
-        # Trace all unvisited edges connected to this node
         for neighbor in adj[start_node]:
             edge = frozenset({start_node, neighbor})
             if edge in visited_edges:
                 continue
-            
-            # Start a new curve
             path = [start_node, neighbor]
             visited_edges.add(edge)
-            
-            # Continue traversing
             curr = neighbor
             prev = start_node
             
             while True:
-                # If current node is a junction or endpoint, stop
                 if degrees[curr] != 2:
                     break
-                    
-                # Find next neighbor (that isn't prev)
                 next_node = None
                 for n in adj[curr]:
                     if n != prev:
@@ -423,23 +282,12 @@ def vectorize_skeleton(skeleton: np.ndarray, mask: np.ndarray, simplify_amount: 
                 visited_edges.add(edge)
                 prev = curr
                 curr = next_node
-            
-            # Convert indices back to coordinates
-            # path is list of indices
             curve_coords = points[path] # Nx2 array of (row, col)
-            
-            # Store as (x, y) = (col, row)
             curve_xy = np.column_stack([curve_coords[:, 1], curve_coords[:, 0]])
-            
-            # Simplify
             if simplify_amount > 0:
                 curve_xy = simplify_polyline(curve_xy, simplify_amount)
                 
             curves.append(curve_xy)
-            
-    # Handle isolated loops (if any remain unvisited)
-    # Simple sweep over all points
-    # (Omitted for brevity, assuming ridges connect to boundaries or fade out)
     
     return curves
 
@@ -449,8 +297,6 @@ def create_ridge_mesh(curves: list, depth_map: np.ndarray, image_width: int, ima
     Create mesh from ridge curves.
     """
     bm = bmesh.new()
-    
-    # Store handle layers
     layer_handle_start_x = bm.edges.layers.float.new("handle_start_x")
     layer_handle_start_y = bm.edges.layers.float.new("handle_start_y")
     layer_handle_start_z = bm.edges.layers.float.new("handle_start_z")
@@ -461,39 +307,17 @@ def create_ridge_mesh(curves: list, depth_map: np.ndarray, image_width: int, ima
     for curve in curves:
         if len(curve) < 2:
             continue
-            
-        # Create vertices for this curve
         verts = []
         for x_img, y_img in curve:
-            # Sample depth
             d = bilinear_sample(depth_map, x_img, y_img)
-            
-            # Normalize coordinates to 3D space
-            # Image X right -> Blender X right
             x_norm = (x_img - center_x) / image_width
-            
-            # Image Y down -> Blender Y up
             y_norm = -(y_img - center_y) / image_height
-            
-            # Depth to Z (thickness)
-            # Similar scaling as in depth_profile_mesh
             z_norm = (d - min_depth) * 0.5 * depth_scale
-            
-            # Create vertex (offset by z_norm)
-            # Wait, do we want to create a surface or just lines?
-            # The prompt says "output a debug view... for the curves that it is going to create"
-            # And "put data on the generated mesh that conforms to mesh_curves_gizmo"
-            # This implies we create edges representing the ridges.
-            # Let's create edges on the surface.
             
             v = bm.verts.new((x_norm, y_norm, z_norm))
             verts.append(v)
-            
-        # Connect vertices with edges
         for i in range(len(verts) - 1):
             e = bm.edges.new((verts[i], verts[i+1]))
-            
-            # Initialize handles to zero (will be auto-calculated later)
             e[layer_handle_start_x] = 0
             e[layer_handle_start_y] = 0
             e[layer_handle_start_z] = 0
@@ -566,8 +390,6 @@ class CreateHessianRidgeMeshOperator(Operator):
         depth_map = get_current_depth_map()
         if depth_map is None:
             return {'CANCELLED'}
-        
-        # Resize depth logic (same as before)
         if depth_map.shape != masks[0].shape:
             from PIL import Image as PILImage
             depth_pil = PILImage.fromarray((depth_map * 255).astype(np.uint8))
@@ -580,9 +402,6 @@ class CreateHessianRidgeMeshOperator(Operator):
         for mask_index in enabled_indices:
             if mask_index >= len(masks): continue
             mask = masks[mask_index]
-            
-            # 1. Hessian Analysis (Compute Magnitude AND Direction)
-            # Moved inside loop to use correct mask for statistics and masking
             logger.info(f"Computing Surface Ridges for mask {mask_index} (sigma={self.sigma})...")
             full_ridge_map, full_theta_map = compute_hessian_ridge_map(
                 depth_map, 
@@ -590,13 +409,8 @@ class CreateHessianRidgeMeshOperator(Operator):
                 sigma=self.sigma,
                 silhouette_thresh=self.silhouette_cut
             )
-            
-            # Apply Mask (compute_hessian_ridge_map already masks output, but being safe)
             masked_ridge = full_ridge_map * mask
             masked_theta = full_theta_map
-            
-            # 2. Extract Topology via NMS + Hysteresis
-            # This replaces the old skeletonize_ridge_map
             skeleton = extract_surface_topology(
                 masked_ridge, 
                 masked_theta, 
@@ -604,14 +418,10 @@ class CreateHessianRidgeMeshOperator(Operator):
                 low_t=self.low_threshold, 
                 high_t=self.high_threshold
             )
-            
-            # 3. Vectorize (Standard)
             curves = vectorize_skeleton(skeleton, mask, simplify_amount=self.simplify_amount)
             all_curves.extend(curves)
             
             if not curves: continue
-                
-            # 4. Mesh Creation (Same as before)
             y_indices, x_indices = np.where(mask)
             if len(y_indices) > 0:
                 center_x = (np.min(x_indices) + np.max(x_indices)) / 2
@@ -628,8 +438,6 @@ class CreateHessianRidgeMeshOperator(Operator):
                 depth_scale=self.depth_scale, min_depth=min_depth,
                 name=f"RidgeMesh_{mask_index}"
             )
-            
-            # Camera Alignment
             camera = context.scene.camera
             if camera:
                 mean_depth_val = np.mean(mask_depths) if len(mask_depths) > 0 else 0.5
@@ -652,8 +460,6 @@ class CreateHessianRidgeMeshOperator(Operator):
                 obj.scale.x = view_plane_width
                 obj.scale.y = view_plane_height
                 obj.scale.z = view_plane_width
-                
-                # Transform mesh to align with camera (Robust 3x3 matrix method)
                 camera_matrix = camera.matrix_world
                 camera_location = camera_matrix.translation
                 camera_rotation = camera_matrix.to_euler()

@@ -1,5 +1,3 @@
-# Blender Extension Manifest
-# See: https://docs.blender.org/manual/en/latest/extensions/index.html
 
 schema_version = "1.0.0"
 
@@ -9,26 +7,14 @@ name = "Procedural Human"
 tagline = "Procedural human models with Geometry Nodes and SAM3"
 maintainer = "Procedural Human Team"
 type = "add-on"
-
-# Blender version requirements
 blender_version_min = "4.2.0"
-
-# License 
 license = ["SPDX:MIT"]
-
-# Supported platforms
 platforms = ["windows-x64", "linux-x64"]
-
-# Python wheel dependencies
-# These are bundled with the extension and automatically installed by Blender
-
-# Permissions required by this addon (table sections must come after all top-level keys)
 [permissions]
 network = "Required for image search"
 files = "Required for file operations"
 
 [build]
-# Paths to exclude from the built extension
 paths_exclude_pattern = [
     "__pycache__/",
     "*.pyc",

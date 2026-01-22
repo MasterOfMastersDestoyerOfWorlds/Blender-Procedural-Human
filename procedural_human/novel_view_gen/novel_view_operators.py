@@ -15,11 +15,6 @@ from bpy.props import FloatProperty, IntProperty, BoolProperty, StringProperty
 from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.logger import logger
 
-
-# ============================================================================
-# Collection Management
-# ============================================================================
-
 HUNYUAN_COLLECTION_NAME = "Hunyuan_Meshes"
 DEBUG_COLLECTION_NAME = "Segmentation_Debug"
 
@@ -51,14 +46,9 @@ def get_or_create_hunyuan_collection() -> bpy.types.Collection:
     Returns:
         The Hunyuan_Meshes collection
     """
-    # Check if collection exists
     if HUNYUAN_COLLECTION_NAME in bpy.data.collections:
         return bpy.data.collections[HUNYUAN_COLLECTION_NAME]
-    
-    # Create new collection
     collection = bpy.data.collections.new(HUNYUAN_COLLECTION_NAME)
-    
-    # Link to scene collection
     bpy.context.scene.collection.children.link(collection)
     
     logger.info(f"[Hunyuan3D] Created collection: {HUNYUAN_COLLECTION_NAME}")
@@ -73,8 +63,6 @@ def get_next_mesh_name() -> str:
         Name like "Hunyuan_Mask_001", "Hunyuan_Mask_002", etc.
     """
     collection = get_or_create_hunyuan_collection()
-    
-    # Find highest existing number
     max_num = 0
     for obj in collection.objects:
         if obj.name.startswith("Hunyuan_Mask_"):
@@ -96,16 +84,10 @@ def link_object_to_hunyuan_collection(obj: bpy.types.Object, name: str = None):
         name: Optional new name for the object
     """
     collection = get_or_create_hunyuan_collection()
-    
-    # Rename if specified
     if name:
         obj.name = name
-    
-    # Unlink from all current collections
     for coll in obj.users_collection:
         coll.objects.unlink(obj)
-    
-    # Link to Hunyuan collection
     collection.objects.link(obj)
 
 
@@ -117,11 +99,8 @@ def link_object_to_collection(obj: bpy.types.Object, collection: bpy.types.Colle
         obj: Blender object to link
         collection: Target collection
     """
-    # Unlink from all current collections
     for coll in obj.users_collection:
         coll.objects.unlink(obj)
-    
-    # Link to target collection
     collection.objects.link(obj)
 
 
@@ -145,32 +124,22 @@ def create_debug_plane(pil_image, name: str, location=None) -> bpy.types.Object:
     
     if location is None:
         location = (0, 0, 0)
-    
-    # Get or create debug collection
     debug_collection = get_or_create_collection(DEBUG_COLLECTION_NAME)
-    
-    # Save PIL image to temp file
     temp_dir = Path(tempfile.gettempdir()) / "segmentation_debug"
     temp_dir.mkdir(exist_ok=True)
     temp_path = temp_dir / f"{name}.png"
     pil_image.save(str(temp_path))
-    
-    # Load image into Blender
     blender_image = bpy.data.images.load(str(temp_path))
     blender_image.name = f"{name}_Texture"
     
     try:
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        # Go up 3 levels: operators -> segmentation -> procedural_human
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
         module_path = os.path.join(base_dir, "procedural_human", "novel_view_gen", "Hunyuan3D-2", "hy3dgen", "texgen", "utils", "debug_plane.py")
         
         spec = importlib.util.spec_from_file_location("debug_plane_utils", module_path)
         utils = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(utils)
-        
-        # Create plane using utility
-        # align_to_camera=False because we position them in a row
         plane = utils.create_debug_plane(
             bpy.context, 
             name, 
@@ -180,7 +149,6 @@ def create_debug_plane(pil_image, name: str, location=None) -> bpy.types.Object:
         )
         
         if plane:
-            # Move to debug collection
             link_object_to_collection(plane, debug_collection)
             logger.info(f"[Debug] Created debug plane: {name} at {location}")
             return plane
@@ -188,11 +156,6 @@ def create_debug_plane(pil_image, name: str, location=None) -> bpy.types.Object:
     except Exception as e:
         logger.error(f"Failed to create debug plane using utility: {e}")
         return None
-
-
-# ============================================================================
-# Global storage for contour data
-# ============================================================================
 
 _front_contour = None  # Original mask contour (front view)
 _side_contour = None   # Novel view contour (side view from 90 degrees)
@@ -252,7 +215,6 @@ def compute_convex_hull(contour: np.ndarray) -> np.ndarray:
         
     except ImportError:
         logger.warning("scipy not available, using simple bounding box")
-        # Fallback: return bounding box corners
         min_x, min_y = contour.min(axis=0)
         max_x, max_y = contour.max(axis=0)
         return np.array([
@@ -274,37 +236,21 @@ def extract_silhouette_contour(image) -> np.ndarray:
         Nx2 array of contour points
     """
     from procedural_human.segmentation.mask_to_curve import find_contours, simplify_contour
-    
-    # Convert PIL image to numpy mask
     img_array = np.array(image)
-    
-    # Threshold to binary
     if len(img_array.shape) == 3:
-        # RGB/RGBA - convert to grayscale
         mask = img_array.mean(axis=2) > 128
     else:
         mask = img_array > 128
     
     mask = mask.astype(np.uint8)
-    
-    # Find contours
     contours = find_contours(mask)
     
     if not contours:
         return np.array([])
-    
-    # Return the largest contour
     largest = max(contours, key=len)
-    
-    # Simplify
     simplified = simplify_contour(largest, epsilon=0.005)
     
     return simplified
-
-
-# ============================================================================
-# Async Generation State
-# ============================================================================
 
 _generation_state = {
     "running": False,
@@ -451,24 +397,17 @@ class GenerateNovelViewOperator(Operator):
         global _generation_state
         
         if event.type == 'TIMER':
-            # Check for cancellation
             if _generation_state["cancelled"]:
                 self.cancel(context)
                 self.report({'WARNING'}, "Generation cancelled")
                 return {'CANCELLED'}
-            
-            # Check if thread finished
             if self._thread is not None and not self._thread.is_alive():
-                # Thread completed - handle result
                 return self._handle_thread_result(context)
-            
-            # Redraw panels to show progress
             for area in context.screen.areas:
                 if area.type == 'IMAGE_EDITOR':
                     area.tag_redraw()
         
         elif event.type == 'ESC':
-            # User pressed escape - cancel
             _generation_state["cancelled"] = True
             self.cancel(context)
             self.report({'WARNING'}, "Generation cancelled by user")
@@ -485,40 +424,28 @@ class GenerateNovelViewOperator(Operator):
         current_idx = _generation_state["current_mask"]
         mask_data = _generation_state["mask_data"]
         mesh_obj = None  # Track if we got a mesh
-        
-        # Always create debug plane first (even if generation fails)
         if _generation_state["debug_mask"] and current_idx < len(mask_data):
             debug_image = mask_data[current_idx].get("debug_image")
             if debug_image is not None:
-                # Position debug plane at a default location (will update if mesh exists)
                 debug_loc = (current_idx * 3.0, 0, 0)  # Space out by mask index
                 debug_name = f"Debug_Mask_{current_idx + 1:03d}"
                 create_debug_plane(debug_image, debug_name, debug_loc)
                 logger.info(f"[Hunyuan3D] Created debug plane: {debug_name}")
-        
-        # Check for error
         if _generation_state["error"]:
             error = _generation_state["error"]
             logger.error(f"[Hunyuan3D] Mask {current_idx} failed: {error}")
-            # Continue to next mask
             _generation_state["error"] = None
             _generation_state["glb_bytes"] = None
             return self._process_next_mask(context)
-        
-        # Check for GLB data
         glb_bytes = _generation_state["glb_bytes"]
         if glb_bytes is None:
             logger.warning("[Hunyuan3D] No GLB data received")
             return self._process_next_mask(context)
-        
-        # Import mesh (must be done in main thread)
         _generation_state["current_step"] = "importing"
         
         try:
             temp_path = save_glb_to_temp(glb_bytes)
             mesh_obj = import_glb_to_blender(temp_path)
-            
-            # Clean up temp file
             try:
                 temp_path.unlink()
             except:
@@ -527,15 +454,11 @@ class GenerateNovelViewOperator(Operator):
             if mesh_obj is None:
                 logger.error("[Hunyuan3D] Failed to import GLB")
                 return self._process_next_mask(context)
-            
-            # Rename and move to Hunyuan collection
             mesh_name = get_next_mesh_name()
             link_object_to_hunyuan_collection(mesh_obj, mesh_name)
             _generation_state["generated_meshes"].append(mesh_obj)
             
             logger.info(f"[Hunyuan3D] Imported mesh: {mesh_name}")
-            
-            # Render side silhouette
             _generation_state["current_step"] = "rendering"
             
             silhouette = render_mesh_silhouette(
@@ -548,8 +471,6 @@ class GenerateNovelViewOperator(Operator):
                 side_contour = extract_silhouette_contour(silhouette)
                 if len(side_contour) >= 3:
                     _generation_state["all_side_contours"].append(side_contour)
-            
-            # Store front contour
             if current_idx < len(mask_data):
                 front_contour = mask_data[current_idx].get("front_contour")
                 if front_contour is not None:
@@ -557,11 +478,7 @@ class GenerateNovelViewOperator(Operator):
                     
         except Exception as e:
             logger.error(f"[Hunyuan3D] Import/render failed: {e}")
-        
-        # Clear GLB bytes
         _generation_state["glb_bytes"] = None
-        
-        # Process next mask
         return self._process_next_mask(context)
     
     def _process_next_mask(self, context):
@@ -571,10 +488,7 @@ class GenerateNovelViewOperator(Operator):
         _generation_state["current_mask"] += 1
         
         if _generation_state["current_mask"] >= _generation_state["total_masks"]:
-            # All done
             return self._finish_generation(context)
-        
-        # Start next mask
         return self._start_mask_generation(context)
     
     def _start_mask_generation(self, context):
@@ -593,8 +507,6 @@ class GenerateNovelViewOperator(Operator):
         _generation_state["current_step"] = "generating"
         _generation_state["glb_bytes"] = None
         _generation_state["error"] = None
-        
-        # Start background thread
         self._thread = threading.Thread(
             target=_generate_mesh_thread,
             args=(masked_image, self.num_steps, self.guidance_scale),
@@ -618,8 +530,6 @@ class GenerateNovelViewOperator(Operator):
             self.report({'ERROR'}, "Failed to generate any 3D meshes")
             _reset_generation_state()
             return {'CANCELLED'}
-        
-        # Store contours (use first mask's contours)
         if all_front_contours and all_side_contours:
             front_contour = all_front_contours[0]
             side_contour = all_side_contours[0]
@@ -630,14 +540,10 @@ class GenerateNovelViewOperator(Operator):
                 side_hull = None
             
             set_contours(front_contour, side_contour, side_hull)
-            
-            # Store in scene for UI feedback
             context.scene["novel_view_front_points"] = len(front_contour)
             context.scene["novel_view_side_points"] = len(side_contour)
             if side_hull is not None:
                 context.scene["novel_view_hull_points"] = len(side_hull)
-        
-        # Store generated mesh count
         context.scene["hunyuan_mesh_count"] = len(generated_meshes)
         
         self.report({'INFO'}, f"Generated {len(generated_meshes)} meshes in '{HUNYUAN_COLLECTION_NAME}' collection")
@@ -675,8 +581,6 @@ class GenerateNovelViewOperator(Operator):
         if image is None:
             self.report({'WARNING'}, "No image loaded in Image Editor")
             return {'CANCELLED'}
-        
-        # Check if we have original pixels to avoid using the overlaid image
         original_pixels = get_original_image_pixels()
         
         from procedural_human.novel_view_gen.server_manager import is_server_running
@@ -685,26 +589,18 @@ class GenerateNovelViewOperator(Operator):
             self.report({'WARNING'}, "Hunyuan3D server is not running. "
                        "Set HUNYUAN3D_PATH environment variable and restart Blender.")
             return {'CANCELLED'}
-        
-        # Prepare mask data (done in main thread before async)
         try:
             from PIL import Image as PILImage
             from procedural_human.segmentation.mask_to_curve import find_contours, simplify_contour
             from procedural_human.novel_view_gen.api_client import crop_to_mask_bounds
-            
-            # Construct PIL image from original pixels if available (to get clean image without overlay)
             if original_pixels is not None:
-                # Use stored original pixels
                 width, height = image.size
                 pixels = np.array(original_pixels)
                 pixels = pixels.reshape((height, width, 4))
-                # Flip to top-left for PIL
                 pixels = np.flipud(pixels)
-                # Convert to 8-bit RGB
                 pixels = (pixels[:, :, :3] * 255).astype(np.uint8)
                 pil_image = PILImage.fromarray(pixels, mode='RGB')
             else:
-                # Fallback to current image (might have overlay)
                 pil_image = blender_image_to_pil(image)
             
             img_array = np.array(pil_image)
@@ -716,34 +612,19 @@ class GenerateNovelViewOperator(Operator):
                     continue
                 
                 mask = masks[mask_idx]
-                
-                # Masks from SAM are top-left (matching PIL/img_array)
-                # We need a bottom-left mask for contour extraction (Blender coords)
                 mask_bottom_left = np.flipud(mask)
-                
-                # Resize mask if needed (ensure it matches image size)
                 if mask.shape != (img_array.shape[0], img_array.shape[1]):
                     mask_pil = PILImage.fromarray(mask.astype(np.uint8) * 255)
                     mask_pil = mask_pil.resize((img_array.shape[1], img_array.shape[0]), PILImage.NEAREST)
                     mask = np.array(mask_pil) > 127
                     mask_bottom_left = np.flipud(mask)
-                
-                # Apply mask to image: keep masked pixels, neutral gray background
-                # Both img_array and mask are top-left, so they align correctly
                 masked_img = np.ones_like(img_array) * 127  # Neutral gray (127)
                 for c in range(3):
                     masked_img[:, :, c] = np.where(mask, img_array[:, :, c], 127)
                 
                 masked_pil = PILImage.fromarray(masked_img.astype(np.uint8))
-                
-                # Crop to mask bounding box (no padding, min size enforced)
                 cropped_pil, bounds = crop_to_mask_bounds(masked_pil, mask)
-                
-                # Store cropped image for debug plane (if enabled)
-                # Store it BEFORE generating mesh so we can see what was sent
                 debug_image = cropped_pil.copy() if self.debug_mask else None
-                
-                # Extract front contour using bottom-left mask (for Blender 3D space)
                 front_contours = find_contours(mask_bottom_left.astype(np.uint8))
                 front_contour = None
                 if front_contours:
@@ -760,22 +641,16 @@ class GenerateNovelViewOperator(Operator):
             if not mask_data:
                 self.report({'WARNING'}, "Could not prepare any masks for generation")
                 return {'CANCELLED'}
-            
-            # Initialize state
             _reset_generation_state()
             _generation_state["running"] = True
             _generation_state["total_masks"] = len(mask_data)
             _generation_state["mask_data"] = mask_data
             _generation_state["debug_mask"] = self.debug_mask
-            
-            # Start timer
             wm = context.window_manager
             self._timer = wm.event_timer_add(0.1, window=context.window)
             wm.modal_handler_add(self)
             
             self.report({'INFO'}, f"Starting generation of {len(mask_data)} meshes...")
-            
-            # Start first mask
             self._start_mask_generation(context)
             
             return {'RUNNING_MODAL'}
@@ -801,8 +676,6 @@ class GenerateNovelViewOperator(Operator):
     
     def draw(self, context):
         layout = self.layout
-        
-        # Show how many masks are selected
         from procedural_human.segmentation.operators.segmentation_operators import get_enabled_mask_indices
         enabled_indices = get_enabled_mask_indices(context)
         layout.label(text=f"Will generate {len(enabled_indices)} mesh(es)")
@@ -847,8 +720,6 @@ class ClearNovelViewContoursOperator(Operator):
     
     def execute(self, context):
         clear_contours()
-        
-        # Clear scene properties
         if "novel_view_front_points" in context.scene:
             del context.scene["novel_view_front_points"]
         if "novel_view_side_points" in context.scene:
@@ -858,9 +729,6 @@ class ClearNovelViewContoursOperator(Operator):
         
         self.report({'INFO'}, "Novel view contours cleared")
         return {'FINISHED'}
-
-
-# Global state for async server check
 _server_check_result: dict = {"done": False, "running": False, "url": ""}
 
 
@@ -897,7 +765,6 @@ class CheckHunyuanServerOperator(Operator):
         
         if event.type == 'TIMER':
             if _server_check_result.get("done", False):
-                # Check complete, report result
                 self.cancel(context)
                 
                 if _server_check_result.get("running", False):
@@ -906,8 +773,6 @@ class CheckHunyuanServerOperator(Operator):
                 else:
                     self.report({'WARNING'}, "Hunyuan3D server is not running. "
                                "Set HUNYUAN3D_PATH and restart Blender.")
-                
-                # Force panel redraw
                 for area in context.screen.areas:
                     area.tag_redraw()
                 
@@ -917,14 +782,10 @@ class CheckHunyuanServerOperator(Operator):
     
     def execute(self, context):
         global _server_check_result
-        
-        # Reset state and start background thread
         _server_check_result = {"done": False, "running": False, "url": ""}
         
         thread = threading.Thread(target=_check_server_thread, daemon=True)
         thread.start()
-        
-        # Start timer to poll for completion
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.1, window=context.window)
         wm.modal_handler_add(self)

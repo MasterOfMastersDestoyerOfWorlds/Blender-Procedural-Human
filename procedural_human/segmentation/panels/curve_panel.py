@@ -22,8 +22,6 @@ class CurveInsertionPanel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        
-        # Show selected curves count
         selected_curves = [obj for obj in context.selected_objects if obj.type == 'CURVE']
         
         box = layout.box()
@@ -36,8 +34,6 @@ class CurveInsertionPanel(Panel):
                 text="Select Segmentation Curves",
                 icon='RESTRICT_SELECT_OFF'
             )
-        
-        # Insert as new object
         layout.separator()
         box = layout.box()
         box.label(text="Create New Object", icon='ADD')
@@ -52,8 +48,6 @@ class CurveInsertionPanel(Panel):
         
         col.scale_y = 0.7
         col.label(text="Uses LoftSpheriod node group")
-        
-        # Insert on existing object
         layout.separator()
         box = layout.box()
         box.label(text="Add to Existing Object", icon='LINKED')
@@ -68,8 +62,6 @@ class CurveInsertionPanel(Panel):
         
         col.scale_y = 0.7
         col.label(text="With 90° rotation offset")
-        
-        # Open workspace
         layout.separator()
         box = layout.box()
         box.label(text="Workspace", icon='WORKSPACE')
@@ -94,12 +86,8 @@ class CurveInsertionOptionsPanel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        
-        # Target object selection
         box = layout.box()
         box.label(text="Target Object", icon='OBJECT_DATA')
-        
-        # List mesh objects as potential targets
         mesh_objects = [obj for obj in bpy.data.objects if obj.type == 'MESH']
         
         if mesh_objects:
@@ -109,8 +97,6 @@ class CurveInsertionOptionsPanel(Panel):
                 row.label(text=obj.name, icon=icon)
         else:
             box.label(text="  No mesh objects in scene")
-        
-        # Rotation settings
         layout.separator()
         box = layout.box()
         box.label(text="Default Rotation", icon='ORIENTATION_GIMBAL')
@@ -136,8 +122,6 @@ class SegmentationCurvesListPanel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        
-        # Find all segmentation curves
         seg_curves = [
             obj for obj in bpy.data.objects 
             if obj.type == 'CURVE' and obj.name.startswith("Segment")
@@ -147,8 +131,6 @@ class SegmentationCurvesListPanel(Panel):
             box = layout.box()
             for curve in seg_curves[:10]:  # Show first 10
                 row = box.row()
-                
-                # Selection toggle
                 icon = 'CHECKBOX_HLT' if curve.select_get() else 'CHECKBOX_DEHLT'
                 op = row.operator(
                     "object.select_pattern",
@@ -160,8 +142,6 @@ class SegmentationCurvesListPanel(Panel):
                 op.extend = True
                 
                 row.label(text=curve.name)
-                
-                # Delete button
                 op = row.operator(
                     "object.delete",
                     text="",

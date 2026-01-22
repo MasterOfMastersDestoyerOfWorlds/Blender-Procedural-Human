@@ -28,24 +28,17 @@ def find_contours(mask: np.ndarray) -> List[np.ndarray]:
     except ImportError:
         logger.error("OpenCV not installed. Please run: pip install opencv-python")
         return []
-    
-    # Ensure mask is uint8
     if mask.dtype == bool:
         mask_uint8 = mask.astype(np.uint8) * 255
     else:
         mask_uint8 = mask.astype(np.uint8)
-    
-    # Find contours
     contours, hierarchy = cv2.findContours(
         mask_uint8, 
         cv2.RETR_EXTERNAL,  # Only external contours
         cv2.CHAIN_APPROX_SIMPLE  # Compress horizontal/vertical segments
     )
-    
-    # Convert to list of (N, 2) arrays
     result = []
     for contour in contours:
-        # OpenCV returns (N, 1, 2), reshape to (N, 2)
         points = contour.reshape(-1, 2)
         if len(points) >= 3:  # Need at least 3 points for a valid curve
             result.append(points)
@@ -72,12 +65,8 @@ def simplify_contour(
     except ImportError:
         logger.warning("OpenCV not available for contour simplification")
         return contour
-    
-    # Calculate epsilon based on arc length
     arc_length = cv2.arcLength(contour.reshape(-1, 1, 2).astype(np.float32), closed=True)
     actual_epsilon = epsilon * arc_length
-    
-    # Approximate the contour
     approx = cv2.approxPolyDP(
         contour.reshape(-1, 1, 2).astype(np.float32), 
         actual_epsilon, 
@@ -111,43 +100,28 @@ def contour_to_curve(
     Returns:
         The created Blender curve object
     """
-    # Normalize coordinates to [-0.5, 0.5] range
     normalized = contour.astype(np.float32).copy()
     normalized[:, 0] = normalized[:, 0] / image_width - 0.5
     normalized[:, 1] = normalized[:, 1] / image_height - 0.5
     
     if flip_y:
         normalized[:, 1] = -normalized[:, 1]
-    
-    # Apply scale
     normalized *= scale
-    
-    # Center if requested
     if center:
         centroid = normalized.mean(axis=0)
         normalized -= centroid
-    
-    # Create curve data
     curve_data = bpy.data.curves.new(name=name, type='CURVE')
     curve_data.dimensions = '2D'
     curve_data.resolution_u = 12
-    
-    # Create a new spline
     spline = curve_data.splines.new(type='BEZIER')
     spline.bezier_points.add(len(normalized) - 1)  # -1 because one point already exists
     spline.use_cyclic_u = True  # Close the curve
-    
-    # Set point positions
     for i, point in enumerate(normalized):
         bp = spline.bezier_points[i]
         bp.co = Vector((point[0], point[1], 0.0))
         bp.handle_left_type = 'AUTO'
         bp.handle_right_type = 'AUTO'
-    
-    # Create the curve object
     curve_obj = bpy.data.objects.new(name, curve_data)
-    
-    # Link to the active collection
     bpy.context.collection.objects.link(curve_obj)
     
     return curve_obj
@@ -190,23 +164,16 @@ def mask_to_curves(
         image_height = mask.shape[0]
     
     logger.info(f"Converting mask ({image_width}x{image_height}) to curves...")
-    
-    # Find contours
     contours = find_contours(mask)
     logger.info(f"Found {len(contours)} contours")
     
     curves = []
     for i, contour in enumerate(contours):
-        # Simplify if requested
         if simplify:
             contour = simplify_contour(contour, simplify_epsilon)
-        
-        # Skip if too few points
         if len(contour) < min_points:
             logger.debug(f"Skipping contour {i} with only {len(contour)} points")
             continue
-        
-        # Create curve object
         curve_name = f"{name_prefix}_{i:03d}"
         curve_obj = contour_to_curve(
             contour,

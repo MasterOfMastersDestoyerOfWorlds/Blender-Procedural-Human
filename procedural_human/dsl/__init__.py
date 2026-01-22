@@ -8,7 +8,6 @@ The operators and panels are registered via the decorator system when this modul
 is discovered during addon initialization.
 
 Usage:
-    # In a DSL file (e.g., procedural_human/dsl/finger.py):
 
     class Finger:
         def __init__(self, segment_lengths=[], radius_taper=0.85, curl_axis='Y'):
@@ -23,9 +22,6 @@ Usage:
 
     Index = Finger([39.78, 22.38, 15.82])
 """
-
-
-# Lazy imports - these are only loaded when accessed
 def __getattr__(name):
     """Lazy import of DSL components."""
     if name in (
@@ -83,7 +79,6 @@ def __getattr__(name):
 
 
 __all__ = [
-    # Primitives
     "DualRadial",
     "QuadRadial",
     "IKLimits",
@@ -97,23 +92,19 @@ __all__ = [
     "Extend",
     "Join",
     "AttachRaycast",
-    # Naming
     "NamingEnvironment",
     "NamingContext",
     "build_naming_environment",
-    # Executor
     "DSLExecutor",
     "DSLExecutionResult",
     "DSLInstance",
     "execute_dsl_file",
     "get_dsl_instances",
     "get_dsl_definitions",
-    # Generator
     "DSLGenerator",
     "GeneratedObject",
     "generate_from_dsl_file",
     "regenerate_dsl_object",
-    # Watcher
     "DSLFileWatcher",
     "start_watching",
     "stop_watching",

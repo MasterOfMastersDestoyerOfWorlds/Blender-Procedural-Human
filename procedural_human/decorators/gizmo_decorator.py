@@ -20,7 +20,6 @@ class procedural_gizmo_group(DiscoverableClassDecorator):
     Usage:
         @procedural_gizmo_group
         class MyGizmoGroup(GizmoGroup):
-            # bl_idname, bl_label, bl_space_type, bl_region_type auto-set
             
             def setup(self, context):
                 pass
@@ -39,26 +38,17 @@ class procedural_gizmo_group(DiscoverableClassDecorator):
             setattr(cls, key, value)
         
         class_name = cls.__name__
-        
-        # Auto-generate bl_idname if not provided
         if not hasattr(cls, "bl_idname"):
-            # Convert CamelCase to UPPER_CASE with GGT prefix
             snake_case = DiscoverableClassDecorator.to_snake_case(class_name)
             cls.bl_idname = f"MESH_GGT_{snake_case}"
-        
-        # Auto-generate bl_label if not provided
         if not hasattr(cls, "bl_label"):
             name_without_suffix = re.sub(r"(GizmoGroup|WidgetGroup|Gizmo)$", "", class_name)
             cls.bl_label = DiscoverableClassDecorator.to_title_with_spaces(name_without_suffix)
-        
-        # Set defaults for space and region type
         if not hasattr(cls, "bl_space_type"):
             cls.bl_space_type = 'VIEW_3D'
         
         if not hasattr(cls, "bl_region_type"):
             cls.bl_region_type = 'WINDOW'
-        
-        # Set default options for 3D gizmos
         if not hasattr(cls, "bl_options"):
             cls.bl_options = {'3D', 'PERSISTENT'}
         
@@ -75,7 +65,6 @@ class procedural_gizmo_group(DiscoverableClassDecorator):
         
         for gizmo_cls in procedural_gizmo_group.registry.values():
             try:
-                # Unregister first if already registered (hot-reload support)
                 try:
                     bpy.utils.unregister_class(gizmo_cls)
                 except RuntimeError:
@@ -96,15 +85,12 @@ class procedural_gizmo_group(DiscoverableClassDecorator):
         """
         Unregister all decorated GizmoGroup classes in reverse order.
         """
-        # Remove any draw handlers
         for handler_key, handler in list(cls._draw_handlers.items()):
             try:
                 bpy.types.SpaceView3D.draw_handler_remove(handler, 'WINDOW')
             except Exception:
                 pass
         cls._draw_handlers.clear()
-        
-        # Unregister gizmo groups
         for gizmo_cls in reversed(list(procedural_gizmo_group.registry.values())):
             try:
                 bpy.utils.unregister_class(gizmo_cls)
@@ -128,7 +114,6 @@ class procedural_gizmo_group(DiscoverableClassDecorator):
         Returns:
             The handler reference
         """
-        # Remove existing handler with same name
         if name in cls._draw_handlers:
             try:
                 bpy.types.SpaceView3D.draw_handler_remove(cls._draw_handlers[name], 'WINDOW')
