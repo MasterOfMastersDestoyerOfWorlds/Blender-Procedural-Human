@@ -28,25 +28,25 @@ def create_calisto_brdf_group():
     group = bpy.data.node_groups.new(group_name, "ShaderNodeTree")
     interface = group.interface
     
-    interface.new_socket(name="Base Color", in_out="INPUT", socket_type="NodeSocketColor").default_value = (0.8, 0.6, 0.5, 1.0)
-    interface.new_socket(name="Roughness", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.4
+    interface.new_socket(name="Base Color", in_out="INPUT", socket_type="NodeSocketColor").default_value = (0.851, 0.733, 0.714, 1.0)
+    interface.new_socket(name="Roughness", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.6
     interface.new_socket(name="Normal", in_out="INPUT", socket_type="NodeSocketVector")
     
-    interface.new_socket(name="Subsurface Radius", in_out="INPUT", socket_type="NodeSocketVector").default_value = (0.4, 0.15, 0.1)
-    interface.new_socket(name="Subsurface Scale", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.01
+    interface.new_socket(name="Subsurface Radius", in_out="INPUT", socket_type="NodeSocketVector").default_value = (1.0, 0.35, 0.2)
+    interface.new_socket(name="Subsurface Scale", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.6
     
     interface.new_socket(name="Diffuse Fresnel Intensity", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.4
-    interface.new_socket(name="Diffuse Fresnel Tint", in_out="INPUT", socket_type="NodeSocketColor").default_value = (1.0, 0.94, 0.94, 1.0)
+    interface.new_socket(name="Diffuse Fresnel Tint", in_out="INPUT", socket_type="NodeSocketColor").default_value = (1.0, 0.702, 0.659, 1.0)
     
-    interface.new_socket(name="Thickness", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.0
-    interface.new_socket(name="Transmission Weight", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.3
+    interface.new_socket(name="Thickness", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 1.0
+    interface.new_socket(name="Transmission Weight", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.5
     interface.new_socket(name="Transmission Tint", in_out="INPUT", socket_type="NodeSocketColor").default_value = (1.0, 0.2, 0.1, 1.0)
     
-    interface.new_socket(name="Retroreflection Intensity", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.15
-    interface.new_socket(name="Retroreflection Roughness", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.8
+    interface.new_socket(name="Retroreflection Intensity", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.5
+    interface.new_socket(name="Retroreflection Roughness", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.2
     
-    interface.new_socket(name="Coat Roughness Scale", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.5
-    interface.new_socket(name="Coat Intensity", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.3
+    interface.new_socket(name="Coat Roughness Scale", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 0.3
+    interface.new_socket(name="Coat Intensity", in_out="INPUT", socket_type="NodeSocketFloat").default_value = 5.0
     
     interface.new_socket(name="BSDF", in_out="OUTPUT", socket_type="NodeSocketShader")
     
@@ -54,7 +54,7 @@ def create_calisto_brdf_group():
     input_node = nodes.new("NodeGroupInput")
     output_node = nodes.new("NodeGroupOutput")
     
-    base_color = input_node.outputs["Base Color"]
+    base_color = input_node.outputs["Base Color"] 
     roughness = input_node.outputs["Roughness"] 
     normal = input_node.outputs["Normal"]
     
