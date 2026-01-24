@@ -1,19 +1,4 @@
 import numpy as np
-_current_spine_path = None  # Store spine path for debug visualization (Nx2 image coords)
-
-def get_current_spine_path():
-    """Get the currently stored spine path (Nx2 array of image coordinates)."""
-    return _current_spine_path
-
-
-def set_current_spine_path(spine_path):
-    """Store the spine path for debug visualization.
-    
-    Args:
-        spine_path: Nx2 numpy array of (x, y) coordinates in image space
-    """
-    global _current_spine_path
-    _current_spine_path = spine_path
 
 def apply_spine_overlay(image, spine_path, color=(1.0, 0.0, 1.0), line_width=3):
     """
