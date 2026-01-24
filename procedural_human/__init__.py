@@ -218,6 +218,7 @@ from procedural_human.decorators.module_discovery import (
 )
 from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.decorators.geo_node_decorator import geo_node_group
+from procedural_human.decorators.shader_node_decorator import shader_node_group
 from procedural_human import menus
 from procedural_human import preferences
 _log_timing("imports_total", (_time_module.perf_counter() - _t0) * 1000)
@@ -282,6 +283,10 @@ def register():
     _t0 = _time_module.perf_counter()
     geo_node_group.discover_and_register_all_decorators()
     _log_timing("register:geo_nodes", (_time_module.perf_counter() - _t0) * 1000)
+
+    _t0 = _time_module.perf_counter()
+    shader_node_group.discover_and_register_all_decorators()
+    _log_timing("register:shader_nodes", (_time_module.perf_counter() - _t0) * 1000)
     
     _t0 = _time_module.perf_counter()
     procedural_workspace.discover_and_register_all_decorators()
@@ -300,6 +305,7 @@ def register():
     _log_timing("register:gizmo_module", (_time_module.perf_counter() - _t0) * 1000)
 
     logger.info(f"Node group registry: {geo_node_group.registry}")
+    logger.info(f"Shader group registry: {shader_node_group.registry}")
     
     def create_registered_node_groups():
         logger.info("Initializing registered node groups...")
@@ -311,7 +317,18 @@ def register():
         logger.info("Node group initialization complete.")
         return None
 
-    bpy.app.timers.register(create_registered_node_groups, first_interval=0.1)
+    def create_registered_shader_groups():
+        logger.info("Initializing registered shader groups...")
+        for func in shader_node_group.registry.values():
+            try:
+                func()
+            except Exception as e:
+                logger.info(f"Error creating shader group {func.__name__}: {e}")
+        logger.info("Shader group initialization complete.")
+        return None
+
+    bpy.app.timers.register(create_registered_node_groups, first_interval=0.1) 
+    bpy.app.timers.register(create_registered_shader_groups, first_interval=0.2)
 
     menus.register()
 
@@ -408,6 +425,10 @@ def unregister():
     _t0 = _time_module.perf_counter()
     geo_node_group.unregister_all_decorators()
     _log_timing("unregister:geo_nodes", (_time_module.perf_counter() - _t0) * 1000)
+
+    _t0 = _time_module.perf_counter()
+    shader_node_group.unregister_all_decorators()
+    _log_timing("unregister:shader_nodes", (_time_module.perf_counter() - _t0) * 1000)
     
     _t0 = _time_module.perf_counter()
     procedural_workspace.unregister_all_decorators()

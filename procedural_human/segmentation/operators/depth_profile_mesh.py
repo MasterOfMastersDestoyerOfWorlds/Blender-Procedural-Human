@@ -16,7 +16,7 @@ from procedural_human.segmentation.operators.segmentation_operators import (
 )
 import cv2
 from PIL import Image as PILImage
-from procedural_human.segmentation.overlays.spine_overlay import set_current_spine_path
+from procedural_human.segmentation.segmentation_state import set_current_spine_path
 from scipy.ndimage import distance_transform_edt
 import skfmm 
 from scipy.ndimage import gaussian_filter 
