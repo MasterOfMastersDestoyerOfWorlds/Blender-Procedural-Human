@@ -797,6 +797,125 @@ class SetSegmentationViewModeOperator(Operator):
         context.scene["segmentation_view_mode"] = self.mode
         refresh_mask_overlay(context)
         return {'FINISHED'}
+
+
+@procedural_operator
+class CreateDepthLoftObjectOperator(Operator):
+    """Create a 3D object from the current depth map and mask using the Segmentation Depth Loft geometry node group"""
+    
+    bl_idname = "segmentation.create_depth_loft_object"
+    bl_label = "Create Depth Loft Object"
+    bl_description = "Create a mesh object with embedded depth and mask images using the Segmentation Depth Loft node group"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        depth_map = get_current_depth_map()
+        if depth_map is None:
+            self.report({'WARNING'}, "No depth map available. Run 'Estimate Depth' first.")
+            return {'CANCELLED'}
+        
+        masks = get_current_masks()
+        if not masks:
+            self.report({'WARNING'}, "No segmentation masks available. Run segmentation first.")
+            return {'CANCELLED'}
+        
+        enabled_indices = get_enabled_mask_indices(context)
+        if not enabled_indices:
+            self.report({'WARNING'}, "No masks selected. Enable at least one mask.")
+            return {'CANCELLED'}
+        
+        try:
+            from procedural_human.geo_node_groups.segmentation_depth_loft import create_segmentation_depth_loft_group
+            node_group = create_segmentation_depth_loft_group()
+            
+            height, width = depth_map.shape[:2]
+            
+            # Create combined mask from enabled masks
+            combined_mask = np.zeros((height, width), dtype=np.float32)
+            for idx in enabled_indices:
+                if idx < len(masks):
+                    mask = masks[idx]
+                    if mask.shape[0] != height or mask.shape[1] != width:
+                        mask_pil = PILImage.fromarray(mask.astype(np.uint8) * 255)
+                        mask_pil = mask_pil.resize((width, height), PILImage.NEAREST)
+                        mask = np.array(mask_pil).astype(np.float32) / 255.0
+                    else:
+                        mask = mask.astype(np.float32)
+                    combined_mask = np.maximum(combined_mask, mask)
+            
+            # Flip vertically for Blender coordinate system
+            mask_flipped = np.flipud(combined_mask)
+            depth_flipped = np.flipud(depth_map)
+            
+            # Create mask image with RGBA pixels
+            mask_pixels = np.zeros(width * height * 4, dtype=np.float32)
+            mask_flat = mask_flipped.flatten()
+            mask_pixels[0::4] = mask_flat  # R
+            mask_pixels[1::4] = mask_flat  # G
+            mask_pixels[2::4] = mask_flat  # B
+            mask_pixels[3::4] = mask_flat  # A (use mask as alpha too)
+            
+            mask_img_name = "DepthLoft_Mask"
+            mask_img = bpy.data.images.get(mask_img_name)
+            if mask_img:
+                bpy.data.images.remove(mask_img)
+            mask_img = bpy.data.images.new(mask_img_name, width=width, height=height, alpha=True)
+            mask_img.pixels[:] = mask_pixels.tolist()
+            mask_img.pack()
+            mask_img.asset_mark()
+            mask_img.asset_data.description = "Segmentation mask for Depth Loft"
+            
+            # Create depth image with RGBA pixels
+            depth_pixels = np.zeros(width * height * 4, dtype=np.float32)
+            depth_flat = depth_flipped.flatten()
+            depth_pixels[0::4] = depth_flat  # R
+            depth_pixels[1::4] = depth_flat  # G
+            depth_pixels[2::4] = depth_flat  # B
+            depth_pixels[3::4] = 1.0  # A
+            
+            depth_img_name = "DepthLoft_Depth"
+            depth_img = bpy.data.images.get(depth_img_name)
+            if depth_img:
+                bpy.data.images.remove(depth_img)
+            depth_img = bpy.data.images.new(depth_img_name, width=width, height=height, alpha=True)
+            depth_img.pixels[:] = depth_pixels.tolist()
+            depth_img.pack()
+            depth_img.asset_mark()
+            depth_img.asset_data.description = "Depth map for Depth Loft"
+            
+            # Create mesh object
+            mesh = bpy.data.meshes.new("DepthLoftMesh")
+            mesh.from_pydata([(0, 0, 0)], [], [])
+            obj = bpy.data.objects.new("DepthLoft", mesh)
+            context.collection.objects.link(obj)
+            
+            # Add geometry nodes modifier
+            modifier = obj.modifiers.new(name="DepthLoft", type='NODES')
+            modifier.node_group = node_group
+            
+            # Set images via modifier socket interface
+            for item in node_group.interface.items_tree:
+                if item.name == "SegmentationMask":
+                    modifier[item.identifier] = mask_img
+                elif item.name == "DepthMask":
+                    modifier[item.identifier] = depth_img
+            
+            # Select the new object
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+            
+            self.report({'INFO'}, f"Created DepthLoft object with embedded images ({width}x{height})")
+            return {'FINISHED'}
+            
+        except Exception as e:
+            logger.error(f"Failed to create depth loft object: {e}")
+            import traceback
+            traceback.print_exc()
+            self.report({'ERROR'}, f"Failed to create depth loft object: {e}")
+            return {'CANCELLED'}
+
+
 _mask_classes = [
     SegmentationMaskItem,
     SEGMENTATION_UL_masks,

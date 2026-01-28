@@ -197,6 +197,7 @@ class SegmentationControlsPanel(Panel):
         col = box.column(align=True)
         col.operator("segmentation.create_depth_profile_mesh", text="Create Depth Profile Mesh", icon='MESH_ICOSPHERE')
         col.operator("segmentation.create_hessian_ridge_mesh", text="Create Ridge Mesh", icon='IPO_EASE_IN_OUT')
+        col.operator("segmentation.create_depth_loft_object", text="Create Depth Loft Object", icon='MESH_UVSPHERE')
         try:
             from procedural_human.segmentation.operators.segmentation_operators import get_current_depth_map
             depth_map = get_current_depth_map()
