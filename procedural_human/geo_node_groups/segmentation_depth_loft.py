@@ -1,5 +1,8 @@
+import math
+
 import bpy
 from mathutils import Vector
+
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 
@@ -285,7 +288,43 @@ def create_segmentation_depth_loft_group():
     merge_by_distance.inputs[2].default_value = "All"
     links.new(join_geometry.outputs[0], merge_by_distance.inputs[0])
     links.new(group_input.outputs[5], merge_by_distance.inputs[3])  # MergeDistance
-    links.new(merge_by_distance.outputs[0], group_output.inputs[0])
+
+    # --- Geometry to Instance ---
+    geometry_to_instance = nodes.new("GeometryNodeGeometryToInstance")
+    geometry_to_instance.name = "Geometry to Instance"
+    links.new(merge_by_distance.outputs[0], geometry_to_instance.inputs[0])
+
+    # --- Rotate Instances (X 90 degrees, local space, pivot 0,0,0) ---
+    rotate_instances = nodes.new("GeometryNodeRotateInstances")
+    rotate_instances.name = "Rotate Instances"
+    rotate_instances.inputs[1].default_value = True  # Selection
+    rotate_instances.inputs[2].default_value = [math.radians(90), 0.0, 0.0]  # Rotation (X=90 deg)
+    rotate_instances.inputs[3].default_value = [0.0, 0.0, 0.0]  # Pivot Point
+    rotate_instances.inputs[4].default_value = True  # Local Space
+    links.new(geometry_to_instance.outputs[0], rotate_instances.inputs[0])
+
+    # --- Image aspect ratio scaling ---
+    image_info = nodes.new("GeometryNodeImageInfo")
+    image_info.name = "Image Info"
+    image_info.inputs[1].default_value = 0  # Frame
+    links.new(group_input.outputs[2], image_info.inputs[0])  # SegmentationMask
+
+    math_aspect_ratio = nodes.new("ShaderNodeMath")
+    math_aspect_ratio.name = "Math.005"
+    math_aspect_ratio.operation = "DIVIDE"
+    links.new(image_info.outputs[0], math_aspect_ratio.inputs[0])  # Width
+    links.new(image_info.outputs[1], math_aspect_ratio.inputs[1])  # Height
+
+    scale_elements_aspect = nodes.new("GeometryNodeScaleElements")
+    scale_elements_aspect.name = "Scale Elements.001"
+    scale_elements_aspect.domain = "FACE"
+    scale_elements_aspect.inputs[1].default_value = True  # Selection
+    scale_elements_aspect.inputs[3].default_value = [0.0, 0.0, 0.0]  # Center
+    scale_elements_aspect.inputs[4].default_value = "Single Axis"
+    scale_elements_aspect.inputs[5].default_value = [1.0, 0.0, 0.0]  # Axis (X)
+    links.new(rotate_instances.outputs[0], scale_elements_aspect.inputs[0])
+    links.new(math_aspect_ratio.outputs[0], scale_elements_aspect.inputs[2])  # Scale
+    links.new(scale_elements_aspect.outputs[0], group_output.inputs[0])
 
     auto_layout_nodes(group)
     return group

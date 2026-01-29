@@ -5,6 +5,7 @@ SAM3 Segmentation operators for the segmentation workflow.
 import bpy
 import numpy as np
 from bpy.types import Operator, PropertyGroup, UIList
+from mathutils import Quaternion
 from bpy.props import (
     StringProperty, FloatProperty, BoolProperty, IntProperty,
     FloatVectorProperty, CollectionProperty, PointerProperty
@@ -904,6 +905,17 @@ class CreateDepthLoftObjectOperator(Operator):
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(True)
             context.view_layer.objects.active = obj
+            
+            # Set 3D viewport to Front Orthographic
+            for area in context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for space in area.spaces:
+                        if space.type == 'VIEW_3D':
+                            space.region_3d.view_perspective = 'ORTHO'
+                            # Front view rotation quaternion (looking down -Y axis)
+                            space.region_3d.view_rotation = Quaternion((0.7071, 0.7071, 0.0, 0.0))
+                            break
+                    break
             
             self.report({'INFO'}, f"Created DepthLoft object with embedded images ({width}x{height})")
             return {'FINISHED'}
