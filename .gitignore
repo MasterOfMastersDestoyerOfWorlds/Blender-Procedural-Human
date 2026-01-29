@@ -52,7 +52,7 @@ htmlcov/
 *.tmp
 *.temp
 .temp/
-.cursor/*
+.cursor/debug.log
 
 *.safetensors
 *.pt

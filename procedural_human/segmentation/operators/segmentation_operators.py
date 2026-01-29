@@ -907,7 +907,7 @@ class CreateDepthLoftObjectOperator(Operator):
             context.view_layer.objects.active = obj
             
             # Set 3D viewport to Front Orthographic
-            for area in context.screen.areas:
+            for area in context.screen.areas: 
                 if area.type == 'VIEW_3D':
                     for space in area.spaces:
                         if space.type == 'VIEW_3D':

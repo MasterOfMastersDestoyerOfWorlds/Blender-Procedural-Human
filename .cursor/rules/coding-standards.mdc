@@ -1,0 +1,252 @@
+---
+description: Codebase coding standards - layout, methods, comments, decorators
+alwaysApply: true
+---
+
+# Coding Standards
+
+## Class Types
+
+This codebase has distinct class types, each with different patterns:
+
+### 1. Data Classes
+Classes centered around "I have this data, what can I do with it?"
+- How can I access this data in different ways?
+- How can I display it to the user?
+- How can I tell if the user is interacting with it?
+
+Examples: `FloatCurveClosure`, `SegmentationState`, classes in `geo_node_groups/`
+
+Methods should be short, focused on data access and small manipulations.
+
+### 2. Manager / Discovery Classes
+Classes that discover and coordinate many instances of a type. Expect one instance managing many.
+- Uses decorators or module scanning to find classes of a certain type
+- Knows what options it has to work with because of registration
+
+Examples: `DiscoverableClassDecorator`, `procedural_operator`, decorator processors in `decorators/`
+
+### 3. Abstract Base Classes
+Common operations shared by a family of classes. Only create after you see the pattern emerge from 2+ concrete classes with duplicated code.
+
+Examples: `DiscoverableClassDecorator` (shared by all decorator types)
+
+### 4. Engine / Algorithmic Classes
+Rare. For algorithms that need multiple data pieces. Functions should be sized to the task — long is fine if the function does exactly what it says and has minimal inputs/outputs.
+
+Examples: `KnotEngine`, `MaskToCurve` — 80+ lines is appropriate for functions that do exactly what the name says
+
+### 5. UI / Panel Classes
+Layout directions for composing data classes. Mostly references to other objects to draw, minimal state of its own.
+
+Examples: `SegmentationPanel`, `CurvePanel`, classes in `panels/`
+
+### 6. Decorated Classes
+Many instances of the same pattern, using decorators for self-registration.
+
+Examples: `@procedural_operator`, `@geo_node`, `@procedural_panel` — all Blender operators, panels, geometry nodes
+
+## Package Organization
+
+Organize code by domain/feature, not by technical layer:
+
+```
+procedural_human/
+├── decorators/       # Self-registration decorators
+├── definitons/       # Body part definitions (finger, torso, etc.)
+├── dsl/              # Domain-specific language and primitives
+│   └── primitives/   # DSL primitive types
+├── geo_node_groups/  # Geometry node implementations
+│   └── node_helpers.py  # Utility functions for creating/wiring geometry nodes programmatically
+├── gizmo/            # Custom gizmos and their operators
+├── segmentation/     # Image segmentation domain
+│   ├── operators/    # Blender operators for this domain
+│   ├── overlays/     # Visual overlays
+│   └── panels/       # UI panels
+└── utils/            # Shared utilities (static/module-level functions)
+```
+
+### node_helpers.py Pattern
+
+The `geo_node_groups/node_helpers.py` module provides utility functions for programmatically creating and wiring Blender geometry nodes. Key patterns:
+
+- **link_or_set()** — polymorphic: links sockets together or sets default values
+- **math_op() / vec_math_op()** — factory functions that create nodes and return output sockets
+- **create_node()** — general node creation with input configuration
+
+These helpers make geometry node tree construction readable and concise by hiding boilerplate.
+
+## When to Split Classes
+
+- **One class per file** — each major class in its own file
+- **Split by responsibility** — `SegmentationState` handles state, `SegmentationOperators` handles Blender ops
+- **Group related operators** — each Blender operator is its own class with `@procedural_operator`
+- **Separate engines** — algorithm-heavy code goes in dedicated modules
+- **Keep related types together** — related dataclasses can share a file if small
+
+## Method Length and Splitting
+
+**Data classes:** Short methods focused on access and small manipulations.
+
+**Algorithmic/Engine functions:** Methods sized to the task. A function that does exactly what its name says with minimal return type can be 80+ lines. The splitting point is about inputs and outputs, not arbitrary line counts.
+
+**When to extract a helper function:**
+- When you notice you're doing the same operation repeatedly across larger functions
+- NOT preemptively — prefer one long function that does what it says over a rats nest of small functions you don't need
+
+```python
+# Good: short data class method
+def get_other(self, vp: Knot) -> Knot | None:
+    if vp == self.first:
+        return self.last
+    if vp == self.last:
+        return self.first
+    return None
+
+# Good: long algorithmic function that does what it says
+def find_knots(points: list[Point], threshold: float) -> list[Knot]:
+    # 80+ lines is fine if it does exactly what the name says
+    # with minimal inputs and a clear return type
+    ...
+
+# Good: factory function for complex setup
+def create_float_curve_closure(nodes, links, label, location) -> FloatCurveClosure:
+    # Setup logic here
+    ...
+```
+
+## Comments and Docstrings
+
+**Most functions should have zero inline comments.**
+
+**When to use docstrings:**
+- Public API functions that others will call
+- Non-obvious parameters or return values
+- Complex setup functions
+
+**Docstring format** — use Sphinx-style `:param` and `:returns:`:
+
+```python
+def link_or_set(group, socket_in, value):
+    """Link a socket to another socket, or set a default value.
+    
+    If value is a socket, creates a link. Otherwise, sets the default value.
+    
+    :param group: The node group to create links in.
+    :param socket_in: The input socket to link to or set value for.
+    :param value: Either a NodeSocket to link, or a primitive value to set as default.
+    """
+
+def math_op(group, op, a, b=None):
+    """Create a math operation node.
+    
+    :param group: The node group to add the node to.
+    :param op: The math operation (e.g., "ADD", "MULTIPLY", "POWER").
+    :param a: First operand (socket or value).
+    :param b: Optional second operand. Required for binary operations.
+    :returns: The output socket of the math node.
+    """
+```
+
+**When to use inline comments:**
+- Non-obvious mathematical formulas (>5 operations, or obscure source)
+- Bit shifting operations
+- Mapping data from unstructured sources
+- Algorithm references (link to Wikipedia, paper, etc.)
+
+```python
+# Good: docstring explains what it does
+def get_length(self) -> float:
+    """Get the length of the path between all points in the shell."""
+    ...
+
+# Good: algorithm reference
+# https://en.wikipedia.org/wiki/Curve_orientation#Orientation_of_a_simple_polygon
+def determine_winding_order(self) -> WindingOrder:
+    ...
+
+# Good: non-obvious formula
+# Cantor pairing function - unique ID from two integers
+id = a * a + a + b if a >= b else b + a + b * b
+```
+
+**When NOT to comment:**
+- Self-explanatory methods like `get_other()`, `contains()`, `is_singleton()`
+- Obvious property access
+- Common patterns like modulo wrapping, list operations
+
+```python
+# ❌ BAD - modulo wrapping is common, no comment needed
+# "+n": Moves (-n..) up to (0..)
+return (i + n) % n
+
+# ❌ BAD - obvious from code
+# Returns the first element
+return items[0]
+```
+
+## Decorators
+
+**Custom decorators for registration:**
+
+```python
+# Operators use @procedural_operator for discovery
+@procedural_operator
+class PROCEDURAL_OT_AddCurve(bpy.types.Operator):
+    """Add a new curve to the scene"""
+    ...
+
+# Geometry nodes use @geo_node
+@geo_node
+class CoonPatch:
+    ...
+
+# Panels use @procedural_panel
+@procedural_panel
+class SegmentationPanel(bpy.types.Panel):
+    ...
+```
+
+**When to create decorators:**
+- When you have many classes of the same type that blender needs to register(operators, panels, geometry nodes, etc.)
+- We want all of our registration to happen in the top level __init__.py without needing to update chains of dependencies when adding a new file 
+- When adding a new class would require updating multiple files to register it — use a decorator instead so the new class is self-registering
+- Keep decorators minimal — auto-derive attributes from class name when possible
+
+## Exception Handling
+
+- Create domain-specific exceptions when needed
+- Exceptions can hold context objects for debugging
+- **Almost never catch exceptions** — a caught exception is a bug we're ignoring
+- Only catch for debugging purposes (to inspect data that caused the exception)
+- Let exceptions propagate; don't swallow them silently
+
+## Field Visibility
+
+- Use public attributes for data classes and tight domain objects
+- Use `_private` prefix only when encapsulation provides value
+- Class-level attributes for shared constants and counters
+
+## Type Hints
+
+- Use type hints for function signatures and class attributes
+- Use `| None` for optional types (Python 3.10+)
+- Import types from `typing` module when needed
+
+```python
+def find_segment(self, point: Point) -> Segment | None:
+    ...
+
+class FloatCurveClosure:
+    def __init__(self, in_node, out_node, curve_node, output_socket):
+        self.in_node: bpy.types.NodeClosureInput = in_node
+        self.out_node: bpy.types.NodeClosureOutput = out_node
+        ...
+```
+
+## Import Rules
+
+- Imports ALWAYS belong at the top of the file
+- Group imports: stdlib, third-party, local (separated by blank lines)
+- **Never use inline imports** — if there's a circular import, create a new shared file that both modules import from
+- Never use fully-qualified names to work around import issues — fix the import structure

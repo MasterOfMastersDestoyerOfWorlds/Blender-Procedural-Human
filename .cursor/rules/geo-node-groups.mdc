@@ -1,0 +1,106 @@
+---
+description: Best practices for creating Blender geometry node groups programmatically
+globs: procedural_human/geo_node_groups/**/*.py
+alwaysApply: false
+---
+
+# Geometry Node Group Best Practices
+
+## Use the `@geo_node_group` Decorator
+
+All geometry node group creation functions should use the decorator for auto-registration:
+
+```python
+from procedural_human.decorators.geo_node_decorator import geo_node_group
+
+@geo_node_group
+def create_my_node_group():
+    group_name = "MyNodeGroup"
+    if group_name in bpy.data.node_groups:
+        return bpy.data.node_groups[group_name]
+    # ... create the group
+```
+
+## Use Helper Functions from `node_helpers.py`
+
+Do NOT define inline helper functions like `create_math()` or `create_vec_math()`. Import and use the shared helpers:
+
+```python
+from procedural_human.geo_node_groups.node_helpers import *
+
+# ✅ Good - use shared helpers
+result = math_op(group, "ADD", a, b)
+vec = vec_math_op(group, "SCALE", position, 2.0)
+node = create_node(group, "GeometryNodeStoreNamedAttribute", {"Name": "attr", "Domain": "POINT"})
+link_or_set(group, node.inputs["Value"], some_socket_or_value)
+
+# ❌ Bad - don't define local helpers that duplicate node_helpers.py
+def create_math(op, inp1, inp2=None):
+    node = nodes.new("ShaderNodeMath")
+    ...
+```
+
+Key helpers: `link_or_set`, `math_op`, `vec_math_op`, `create_node`, `get_attr`, `int_op`, `switch_*`, `clamp01`, `smoother_step`
+
+## Do NOT Hardcode Node Locations
+
+Let `auto_layout_nodes` handle positioning. Hardcoded locations are redundant:
+
+```python
+# ❌ Bad - hardcoded locations
+node.location = (531.546142578125, 0.0)
+
+# ✅ Good - just create nodes and call auto_layout at the end
+auto_layout_nodes(group)
+return group
+```
+
+## Extract Reusable Sub-Groups
+
+For complex operations used in multiple places, create singleton sub-groups:
+
+```python
+def get_bezier_eval_group():
+    """Creates or retrieves a singleton Node Group for Bezier evaluation."""
+    group_name = "Math_BezierEval"
+    if group_name in bpy.data.node_groups:
+        return bpy.data.node_groups[group_name]
+    # ... create the group
+
+def bezier_eval_node(group, P0, P1, P2, P3, t):
+    """Instantiates the Bezier eval group in the parent group."""
+    bg = get_bezier_eval_group()
+    n = group.nodes.new("GeometryNodeGroup")
+    n.node_tree = bg
+    link_or_set(group, n.inputs["P0"], P0)
+    # ...
+    return n.outputs["Result"]
+```
+
+## Naming Conventions
+
+- Math/utility sub-groups: Use `Math_` prefix (e.g., `Math_BezierEval`, `Math_EdgeControlPoints`)
+- Feature groups: Use descriptive PascalCase (e.g., `CoonsPatchGenerator`, `StoreAttributesOnPoints`)
+
+## Docstrings for Public Functions
+
+Use Sphinx-style docstrings for group creation and instantiation functions:
+
+```python
+def get_bezier_eval_group():
+    """Creates or retrieves a singleton Node Group that evaluates a cubic Bezier curve.
+    
+    :returns: The node group for evaluating cubic Bezier curves.
+    """
+```
+
+## Current File Status
+
+**Follows best practices:** `cache_bezier.py`, `node_helpers.py`, `closures.py`, `charrot_gregory_patch.py`
+
+**Needs refactoring:** 
+- `coon_patch.py` - defines local helpers instead of using node_helpers
+- `recreate_mesh_curve.py` - hardcoded locations, doesn't use node_helpers
+- `segmentation_depth_loft.py` - doesn't use node_helpers
+- `store_attr_on_points.py` - hardcoded locations, doesn't use node_helpers
+- `loft_spheroid.py` - very long, hardcoded locations, should be split
