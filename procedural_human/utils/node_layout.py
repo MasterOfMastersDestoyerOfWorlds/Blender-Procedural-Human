@@ -5,7 +5,7 @@ Positions nodes in a geometry node group based on their dependencies,
 with input nodes on the left and output nodes on the right.
 """
 
-from typing import Dict, List, Set, Any, Tuple
+from typing import Dict, List, Set, Any
 from collections import defaultdict
 
 
@@ -36,35 +36,39 @@ def auto_layout_nodes(
 
     if not nodes:
         return
+
     depends_on: Dict[str, Set[str]] = defaultdict(set)
-    feeds_into: Dict[str, Set[str]] = defaultdict(set)
 
     for link in links:
         from_node = link.from_node.name
         to_node = link.to_node.name
         depends_on[to_node].add(from_node)
-        feeds_into[from_node].add(to_node)
-    node_depth: Dict[str, int] = {}
+
+    # Compute longest path depth using iterative relaxation
+    # This ensures nodes are placed after ALL their dependencies
+    node_depth: Dict[str, int] = {n.name: 0 for n in nodes}
+
+    # Identify sources (nodes with no dependencies)
     sources = [n.name for n in nodes if not depends_on[n.name]]
     if not sources:
         sources = [n.name for n in nodes if n.bl_idname == "NodeGroupInput"]
-    queue = [(name, 0) for name in sources]
-    visited = set()
 
-    while queue:
-        node_name, depth = queue.pop(0)
+    # Use Bellman-Ford style relaxation to find longest paths
+    # Iterate until no more updates (handles all path lengths correctly)
+    changed = True
+    iterations = 0
+    max_iterations = len(nodes) + 1  # Prevent infinite loops
 
-        if node_name in visited:
-            node_depth[node_name] = max(node_depth.get(node_name, 0), depth)
-            continue
-
-        visited.add(node_name)
-        node_depth[node_name] = depth
-        for next_node in feeds_into[node_name]:
-            queue.append((next_node, depth + 1))
-    for node in nodes:
-        if node.name not in node_depth:
-            node_depth[node.name] = 0
+    while changed and iterations < max_iterations:
+        changed = False
+        iterations += 1
+        for node_name in node_depth:
+            for dep_name in depends_on[node_name]:
+                # This node must be at least one level after each dependency
+                new_depth = node_depth[dep_name] + 1
+                if new_depth > node_depth[node_name]:
+                    node_depth[node_name] = new_depth
+                    changed = True
     max_depth = max(node_depth.values()) if node_depth else 0
     for node in nodes:
         if node.bl_idname == "NodeGroupOutput":
@@ -114,35 +118,27 @@ def get_node_depth_info(node_group: Any) -> Dict[str, int]:
     links = list(node_group.links)
 
     depends_on: Dict[str, Set[str]] = defaultdict(set)
-    feeds_into: Dict[str, Set[str]] = defaultdict(set)
 
     for link in links:
         from_node = link.from_node.name
         to_node = link.to_node.name
         depends_on[to_node].add(from_node)
-        feeds_into[from_node].add(to_node)
 
-    node_depth: Dict[str, int] = {}
-    sources = [n.name for n in nodes if not depends_on[n.name]]
+    # Compute longest path depth using iterative relaxation
+    node_depth: Dict[str, int] = {n.name: 0 for n in nodes}
 
-    if not sources:
-        sources = [n.name for n in nodes if n.bl_idname == "NodeGroupInput"]
+    changed = True
+    iterations = 0
+    max_iterations = len(nodes) + 1
 
-    queue = [(name, 0) for name in sources]
-    visited = set()
-
-    while queue:
-        node_name, depth = queue.pop(0)
-        if node_name in visited:
-            node_depth[node_name] = max(node_depth.get(node_name, 0), depth)
-            continue
-        visited.add(node_name)
-        node_depth[node_name] = depth
-        for next_node in feeds_into[node_name]:
-            queue.append((next_node, depth + 1))
-
-    for node in nodes:
-        if node.name not in node_depth:
-            node_depth[node.name] = 0
+    while changed and iterations < max_iterations:
+        changed = False
+        iterations += 1
+        for node_name in node_depth:
+            for dep_name in depends_on[node_name]:
+                new_depth = node_depth[dep_name] + 1
+                if new_depth > node_depth[node_name]:
+                    node_depth[node_name] = new_depth
+                    changed = True
 
     return node_depth
