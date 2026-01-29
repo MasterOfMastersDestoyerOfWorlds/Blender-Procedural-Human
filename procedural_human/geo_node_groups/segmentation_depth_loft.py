@@ -1,10 +1,12 @@
 import math
 
 import bpy
-from mathutils import Vector
 
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.decorators.geo_node_decorator import geo_node_group
+from procedural_human.geo_node_groups.node_helpers import (
+    math_op, vec_math_op, create_node, link_or_set
+)
 
 
 @geo_node_group
@@ -18,313 +20,242 @@ def create_segmentation_depth_loft_group():
     # --- Interface ---
     group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    
+
     socket = group.interface.new_socket(name="Resolution", in_out="INPUT", socket_type="NodeSocketInt")
     socket.default_value = 1000
     socket.min_value = 2
     socket.max_value = 1000
-    
+
     socket = group.interface.new_socket(name="SegmentationMask", in_out="INPUT", socket_type="NodeSocketImage")
     socket.default_value = None
-    
+
     socket = group.interface.new_socket(name="DepthMask", in_out="INPUT", socket_type="NodeSocketImage")
     socket.default_value = None
-    
+
     socket = group.interface.new_socket(name="OutlineMergeDistance", in_out="INPUT", socket_type="NodeSocketFloat")
     socket.default_value = 0.004
     socket.min_value = 0.0
-    
+
     socket = group.interface.new_socket(name="MergeDistance", in_out="INPUT", socket_type="NodeSocketFloat")
     socket.default_value = 0.001
     socket.min_value = 0.0
 
-    # --- Nodes ---
     nodes = group.nodes
     links = group.links
-    
-    group_input = nodes.new("NodeGroupInput")
-    group_input.name = "Group Input"
 
+    group_input = nodes.new("NodeGroupInput")
     group_output = nodes.new("NodeGroupOutput")
-    group_output.name = "Group Output"
     group_output.is_active_output = True
 
     # --- Mask sampling ---
+    position = nodes.new("GeometryNodeInputPosition")
+    uv_offset = vec_math_op(group, "ADD", position.outputs[0], (0.5, 0.5, 0.0))
+
     image_texture = nodes.new("GeometryNodeImageTexture")
-    image_texture.name = "Image Texture"
     image_texture.interpolation = "Linear"
     image_texture.extension = "REPEAT"
     image_texture.inputs[2].default_value = 0
     links.new(group_input.outputs[2], image_texture.inputs[0])  # SegmentationMask
-
-    position = nodes.new("GeometryNodeInputPosition")
-    position.name = "Position"
-
-    vector_math = nodes.new("ShaderNodeVectorMath")
-    vector_math.name = "Vector Math"
-    vector_math.operation = "ADD"
-    vector_math.inputs[1].default_value = [0.5, 0.5, 0.0]
-    links.new(position.outputs[0], vector_math.inputs[0])
-    links.new(vector_math.outputs[0], image_texture.inputs[1])
+    links.new(uv_offset, image_texture.inputs[1])
 
     separate_color = nodes.new("FunctionNodeSeparateColor")
-    separate_color.name = "Separate Color"
     separate_color.mode = "RGB"
     links.new(image_texture.outputs[0], separate_color.inputs[0])
 
     # --- Grid creation ---
-    grid = nodes.new("GeometryNodeMeshGrid")
-    grid.name = "Grid"
-    grid.inputs[0].default_value = 1.0  # Size X
-    grid.inputs[1].default_value = 1.0  # Size Y
-
-    reroute = nodes.new("NodeReroute")
-    reroute.name = "Reroute"
-    reroute.socket_idname = "NodeSocketInt"
-    links.new(group_input.outputs[1], reroute.inputs[0])  # Resolution
-    links.new(reroute.outputs[0], grid.inputs[2])
-    links.new(reroute.outputs[0], grid.inputs[3])
+    grid = create_node(group, "GeometryNodeMeshGrid", {
+        "Size X": 1.0,
+        "Size Y": 1.0,
+        "Vertices X": group_input.outputs[1],  # Resolution
+        "Vertices Y": group_input.outputs[1]
+    })
 
     # --- Delete points outside mask ---
-    math_less_than = nodes.new("ShaderNodeMath")
-    math_less_than.name = "Math"
-    math_less_than.operation = "LESS_THAN"
-    math_less_than.inputs[1].default_value = 0.1
-    links.new(separate_color.outputs[3], math_less_than.inputs[0])  # Alpha
+    alpha_check = math_op(group, "LESS_THAN", separate_color.outputs[3], 0.1)
 
-    delete_geometry = nodes.new("GeometryNodeDeleteGeometry")
-    delete_geometry.name = "Delete Geometry"
-    delete_geometry.mode = "ALL"
-    delete_geometry.domain = "POINT"
-    links.new(grid.outputs[0], delete_geometry.inputs[0])
-    links.new(math_less_than.outputs[0], delete_geometry.inputs[1])
+    delete_outside = create_node(group, "GeometryNodeDeleteGeometry", {
+        "Geometry": grid.outputs[0],
+        "Selection": alpha_check
+    })
+    delete_outside.mode = "ALL"
+    delete_outside.domain = "POINT"
 
     # --- Delete interior edges ---
     edge_neighbors = nodes.new("GeometryNodeInputMeshEdgeNeighbors")
-    edge_neighbors.name = "Edge Neighbors"
 
-    compare = nodes.new("FunctionNodeCompare")
-    compare.name = "Compare"
-    compare.operation = "NOT_EQUAL"
-    compare.data_type = "INT"
-    compare.mode = "ELEMENT"
-    compare.inputs[3].default_value = 1  # B (int)
-    links.new(edge_neighbors.outputs[0], compare.inputs[2])
+    compare_edge = create_node(group, "FunctionNodeCompare", {
+        "Operation": "NOT_EQUAL",
+        "Data Type": "INT"
+    })
+    compare_edge.mode = "ELEMENT"
+    compare_edge.inputs[3].default_value = 1
+    links.new(edge_neighbors.outputs[0], compare_edge.inputs[2])
 
-    delete_geometry_001 = nodes.new("GeometryNodeDeleteGeometry")
-    delete_geometry_001.name = "Delete Geometry.001"
-    delete_geometry_001.mode = "ALL"
-    delete_geometry_001.domain = "EDGE"
-    links.new(delete_geometry.outputs[0], delete_geometry_001.inputs[0])
-    links.new(compare.outputs[0], delete_geometry_001.inputs[1])
+    delete_interior = create_node(group, "GeometryNodeDeleteGeometry", {
+        "Geometry": delete_outside.outputs[0],
+        "Selection": compare_edge.outputs[0]
+    })
+    delete_interior.mode = "ALL"
+    delete_interior.domain = "EDGE"
 
     # --- Mesh to curve and fill ---
     mesh_to_curve = nodes.new("GeometryNodeMeshToCurve")
-    mesh_to_curve.name = "Mesh to Curve"
     mesh_to_curve.mode = "EDGES"
     mesh_to_curve.inputs[1].default_value = True
-    links.new(delete_geometry_001.outputs[0], mesh_to_curve.inputs[0])
+    links.new(delete_interior.outputs[0], mesh_to_curve.inputs[0])
 
     fill_curve = nodes.new("GeometryNodeFillCurve")
-    fill_curve.name = "Fill Curve"
-    fill_curve.inputs[1].default_value = 0  # Group ID
+    fill_curve.inputs[1].default_value = 0
     fill_curve.inputs[2].default_value = "Triangles"
     links.new(mesh_to_curve.outputs[0], fill_curve.inputs[0])
 
     # --- Merge by distance (outline) ---
-    merge_by_distance_001 = nodes.new("GeometryNodeMergeByDistance")
-    merge_by_distance_001.name = "Merge by Distance.001"
-    merge_by_distance_001.inputs[1].default_value = True
-    merge_by_distance_001.inputs[2].default_value = "All"
-    links.new(fill_curve.outputs[0], merge_by_distance_001.inputs[0])
-    links.new(group_input.outputs[4], merge_by_distance_001.inputs[3])  # OutlineMergeDistance
+    merge_outline = create_node(group, "GeometryNodeMergeByDistance", {
+        "Geometry": fill_curve.outputs[0],
+        "Distance": group_input.outputs[4]  # OutlineMergeDistance
+    })
+    merge_outline.inputs[1].default_value = True
+    merge_outline.inputs[2].default_value = "All"
 
     # --- Depth sampling ---
-    image_texture_001 = nodes.new("GeometryNodeImageTexture")
-    image_texture_001.name = "Image Texture.001"
-    image_texture_001.interpolation = "Linear"
-    image_texture_001.extension = "REPEAT"
-    image_texture_001.inputs[2].default_value = 0
-    links.new(group_input.outputs[3], image_texture_001.inputs[0])  # DepthMask
+    position_depth = nodes.new("GeometryNodeInputPosition")
+    uv_offset_depth = vec_math_op(group, "ADD", position_depth.outputs[0], (0.5, 0.5, 0.0))
 
-    position_001 = nodes.new("GeometryNodeInputPosition")
-    position_001.name = "Position.001"
+    image_texture_depth = nodes.new("GeometryNodeImageTexture")
+    image_texture_depth.interpolation = "Linear"
+    image_texture_depth.extension = "REPEAT"
+    image_texture_depth.inputs[2].default_value = 0
+    links.new(group_input.outputs[3], image_texture_depth.inputs[0])  # DepthMask
+    links.new(uv_offset_depth, image_texture_depth.inputs[1])
 
-    vector_math_001 = nodes.new("ShaderNodeVectorMath")
-    vector_math_001.name = "Vector Math.001"
-    vector_math_001.operation = "ADD"
-    vector_math_001.inputs[1].default_value = [0.5, 0.5, 0.0]
-    links.new(position_001.outputs[0], vector_math_001.inputs[0])
-    links.new(vector_math_001.outputs[0], image_texture_001.inputs[1])
-
-    separate_color_001 = nodes.new("FunctionNodeSeparateColor")
-    separate_color_001.name = "Separate Color.001"
-    separate_color_001.mode = "RGB"
-    links.new(image_texture_001.outputs[0], separate_color_001.inputs[0])
+    separate_color_depth = nodes.new("FunctionNodeSeparateColor")
+    separate_color_depth.mode = "RGB"
+    links.new(image_texture_depth.outputs[0], separate_color_depth.inputs[0])
 
     # --- Average RGB for depth ---
-    math_002 = nodes.new("ShaderNodeMath")
-    math_002.name = "Math.002"
-    math_002.operation = "ADD"
-    links.new(separate_color_001.outputs[0], math_002.inputs[0])
-    links.new(separate_color_001.outputs[1], math_002.inputs[1])
+    rgb_sum = math_op(group, "ADD",
+        math_op(group, "ADD", separate_color_depth.outputs[0], separate_color_depth.outputs[1]),
+        separate_color_depth.outputs[2]
+    )
+    depth_avg = math_op(group, "DIVIDE", rgb_sum, 3.0)
+    depth_scaled = math_op(group, "MULTIPLY", depth_avg, 0.5)
 
-    math_003 = nodes.new("ShaderNodeMath")
-    math_003.name = "Math.003"
-    math_003.operation = "ADD"
-    links.new(separate_color_001.outputs[2], math_003.inputs[0])
-    links.new(math_002.outputs[0], math_003.inputs[1])
-
-    math_004 = nodes.new("ShaderNodeMath")
-    math_004.name = "Math.004"
-    math_004.operation = "DIVIDE"
-    math_004.inputs[1].default_value = 3.0
-    links.new(math_003.outputs[0], math_004.inputs[0])
-
-    # --- Depth multiplier ---
-    math_001 = nodes.new("ShaderNodeMath")
-    math_001.name = "Math.001"
-    math_001.operation = "MULTIPLY"
-    math_001.inputs[1].default_value = 0.5
-    links.new(math_004.outputs[0], math_001.inputs[0])
-
-    combine_x_y_z = nodes.new("ShaderNodeCombineXYZ")
-    combine_x_y_z.name = "Combine XYZ"
-    combine_x_y_z.inputs[0].default_value = 0.0
-    combine_x_y_z.inputs[1].default_value = 0.0
-    links.new(math_001.outputs[0], combine_x_y_z.inputs[2])
+    # --- Create Z offset vector ---
+    combine_z = nodes.new("ShaderNodeCombineXYZ")
+    combine_z.inputs[0].default_value = 0.0
+    combine_z.inputs[1].default_value = 0.0
+    links.new(depth_scaled, combine_z.inputs[2])
 
     # --- Set position (front mesh) ---
-    set_position = nodes.new("GeometryNodeSetPosition")
-    set_position.name = "Set Position"
-    set_position.inputs[1].default_value = True
-    set_position.inputs[2].default_value = [0.0, 0.0, 0.0]
-    links.new(merge_by_distance_001.outputs[0], set_position.inputs[0])
-    links.new(combine_x_y_z.outputs[0], set_position.inputs[3])
+    set_pos_front = create_node(group, "GeometryNodeSetPosition", {
+        "Geometry": merge_outline.outputs[0],
+        "Offset": combine_z.outputs[0]
+    })
+    set_pos_front.inputs[1].default_value = True
 
     # --- Duplicate front for attribute statistic ---
-    duplicate_elements = nodes.new("GeometryNodeDuplicateElements")
-    duplicate_elements.name = "Duplicate Elements"
-    duplicate_elements.domain = "FACE"
-    duplicate_elements.inputs[1].default_value = True
-    duplicate_elements.inputs[2].default_value = 1
-    links.new(set_position.outputs[0], duplicate_elements.inputs[0])
+    duplicate = create_node(group, "GeometryNodeDuplicateElements", {
+        "Geometry": set_pos_front.outputs[0],
+        "Amount": 1
+    })
+    duplicate.domain = "FACE"
+    duplicate.inputs[1].default_value = True
 
     # --- Find max Z ---
     position_stat = nodes.new("GeometryNodeInputPosition")
-    position_stat.name = "Position.Stat"
-    position_stat.label = "Position for Stats"
+    separate_stat = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(position_stat.outputs[0], separate_stat.inputs[0])
 
-    separate_x_y_z_stat = nodes.new("ShaderNodeSeparateXYZ")
-    separate_x_y_z_stat.name = "Separate XYZ Stat"
-    separate_x_y_z_stat.label = "Get Z for Max"
-    links.new(position_stat.outputs[0], separate_x_y_z_stat.inputs[0])
+    attr_stat = create_node(group, "GeometryNodeAttributeStatistic", {
+        "Geometry": duplicate.outputs[0],
+        "Attribute": separate_stat.outputs[2]  # Z
+    })
+    attr_stat.data_type = "FLOAT"
+    attr_stat.domain = "POINT"
+    attr_stat.inputs[1].default_value = True
 
-    attribute_statistic = nodes.new("GeometryNodeAttributeStatistic")
-    attribute_statistic.name = "Attribute Statistic"
-    attribute_statistic.label = "Find Max Z"
-    attribute_statistic.data_type = "FLOAT"
-    attribute_statistic.domain = "POINT"
-    attribute_statistic.inputs[1].default_value = True
-    links.new(duplicate_elements.outputs[0], attribute_statistic.inputs[0])
-    links.new(separate_x_y_z_stat.outputs[2], attribute_statistic.inputs[2])
-
-    # --- Extrude mesh (0 distance for back half) ---
+    # --- Extrude mesh ---
     vector_zero = nodes.new("FunctionNodeInputVector")
-    vector_zero.name = "Vector"
-    vector_zero.vector = Vector((0.0, 0.0, 0.0))
+    vector_zero.vector = (0.0, 0.0, 0.0)
 
-    extrude_mesh = nodes.new("GeometryNodeExtrudeMesh")
-    extrude_mesh.name = "Extrude Mesh"
-    extrude_mesh.mode = "FACES"
-    extrude_mesh.inputs[1].default_value = True
-    extrude_mesh.inputs[3].default_value = 1.0  # Offset Scale
-    extrude_mesh.inputs[4].default_value = False  # Individual
-    links.new(set_position.outputs[0], extrude_mesh.inputs[0])
-    links.new(vector_zero.outputs[0], extrude_mesh.inputs[2])
+    extrude = create_node(group, "GeometryNodeExtrudeMesh", {
+        "Mesh": set_pos_front.outputs[0],
+        "Offset": vector_zero.outputs[0],
+        "Offset Scale": 1.0
+    })
+    extrude.mode = "FACES"
+    extrude.inputs[1].default_value = True
+    extrude.inputs[4].default_value = False
 
     # --- Scale elements (invert Z on extruded faces) ---
-    scale_elements = nodes.new("GeometryNodeScaleElements")
-    scale_elements.name = "Scale Elements"
-    scale_elements.domain = "FACE"
-    scale_elements.inputs[2].default_value = -1.0  # Scale
-    scale_elements.inputs[4].default_value = "Single Axis"
-    scale_elements.inputs[5].default_value = [0.0, 0.0, 1.0]  # Axis
-    links.new(extrude_mesh.outputs[0], scale_elements.inputs[0])
-    links.new(extrude_mesh.outputs[1], scale_elements.inputs[1])  # Top selection
-    links.new(vector_zero.outputs[0], scale_elements.inputs[3])  # Center
+    scale_invert = create_node(group, "GeometryNodeScaleElements", {
+        "Geometry": extrude.outputs[0],
+        "Selection": extrude.outputs[1],
+        "Scale": -1.0,
+        "Center": vector_zero.outputs[0]
+    })
+    scale_invert.domain = "FACE"
+    scale_invert.inputs[4].default_value = "Single Axis"
+    scale_invert.inputs[5].default_value = [0.0, 0.0, 1.0]
 
     # --- Offset back half by 2*maxZ ---
-    vector_math_002 = nodes.new("ShaderNodeVectorMath")
-    vector_math_002.name = "Vector Math.002"
-    vector_math_002.operation = "SCALE"
-    vector_math_002.inputs[3].default_value = 2.0
-    links.new(attribute_statistic.outputs[4], vector_math_002.inputs[0])  # Max Z
+    max_z_scaled = vec_math_op(group, "SCALE", attr_stat.outputs[4], 2.0)
 
-    combine_x_y_z_002 = nodes.new("ShaderNodeCombineXYZ")
-    combine_x_y_z_002.name = "Combine XYZ.002"
-    combine_x_y_z_002.inputs[0].default_value = 0.0
-    combine_x_y_z_002.inputs[1].default_value = 0.0
-    links.new(vector_math_002.outputs[0], combine_x_y_z_002.inputs[2])
+    combine_offset = nodes.new("ShaderNodeCombineXYZ")
+    combine_offset.inputs[0].default_value = 0.0
+    combine_offset.inputs[1].default_value = 0.0
+    links.new(max_z_scaled, combine_offset.inputs[2])
 
-    # --- Set position for back half offset ---
-    set_position_001 = nodes.new("GeometryNodeSetPosition")
-    set_position_001.name = "Set Position.001"
-    set_position_001.inputs[2].default_value = [0.0, 0.0, 0.0]
-    links.new(scale_elements.outputs[0], set_position_001.inputs[0])
-    links.new(extrude_mesh.outputs[1], set_position_001.inputs[1])  # Top selection
-    links.new(combine_x_y_z_002.outputs[0], set_position_001.inputs[3])
+    set_pos_back = create_node(group, "GeometryNodeSetPosition", {
+        "Geometry": scale_invert.outputs[0],
+        "Selection": extrude.outputs[1],
+        "Offset": combine_offset.outputs[0]
+    })
 
     # --- Join front and back ---
-    join_geometry = nodes.new("GeometryNodeJoinGeometry")
-    join_geometry.name = "Join Geometry"
-    links.new(duplicate_elements.outputs[0], join_geometry.inputs[0])
-    links.new(set_position_001.outputs[0], join_geometry.inputs[0])
+    join_geo = nodes.new("GeometryNodeJoinGeometry")
+    links.new(duplicate.outputs[0], join_geo.inputs[0])
+    links.new(set_pos_back.outputs[0], join_geo.inputs[0])
 
     # --- Final merge by distance ---
-    merge_by_distance = nodes.new("GeometryNodeMergeByDistance")
-    merge_by_distance.name = "Merge by Distance"
-    merge_by_distance.inputs[1].default_value = True
-    merge_by_distance.inputs[2].default_value = "All"
-    links.new(join_geometry.outputs[0], merge_by_distance.inputs[0])
-    links.new(group_input.outputs[5], merge_by_distance.inputs[3])  # MergeDistance
+    merge_final = create_node(group, "GeometryNodeMergeByDistance", {
+        "Geometry": join_geo.outputs[0],
+        "Distance": group_input.outputs[5]  # MergeDistance
+    })
+    merge_final.inputs[1].default_value = True
+    merge_final.inputs[2].default_value = "All"
 
     # --- Geometry to Instance ---
-    geometry_to_instance = nodes.new("GeometryNodeGeometryToInstance")
-    geometry_to_instance.name = "Geometry to Instance"
-    links.new(merge_by_distance.outputs[0], geometry_to_instance.inputs[0])
+    geo_to_instance = nodes.new("GeometryNodeGeometryToInstance")
+    links.new(merge_final.outputs[0], geo_to_instance.inputs[0])
 
-    # --- Rotate Instances (X 90 degrees, local space, pivot 0,0,0) ---
-    rotate_instances = nodes.new("GeometryNodeRotateInstances")
-    rotate_instances.name = "Rotate Instances"
-    rotate_instances.inputs[1].default_value = True  # Selection
-    rotate_instances.inputs[2].default_value = [math.radians(90), 0.0, 0.0]  # Rotation (X=90 deg)
-    rotate_instances.inputs[3].default_value = [0.0, 0.0, 0.0]  # Pivot Point
-    rotate_instances.inputs[4].default_value = True  # Local Space
-    links.new(geometry_to_instance.outputs[0], rotate_instances.inputs[0])
+    # --- Rotate Instances (X 90 degrees) ---
+    rotate = create_node(group, "GeometryNodeRotateInstances", {
+        "Instances": geo_to_instance.outputs[0],
+        "Rotation": [math.radians(90), 0.0, 0.0],
+        "Pivot Point": [0.0, 0.0, 0.0]
+    })
+    rotate.inputs[1].default_value = True
+    rotate.inputs[4].default_value = True
 
     # --- Image aspect ratio scaling ---
     image_info = nodes.new("GeometryNodeImageInfo")
-    image_info.name = "Image Info"
-    image_info.inputs[1].default_value = 0  # Frame
+    image_info.inputs[1].default_value = 0
     links.new(group_input.outputs[2], image_info.inputs[0])  # SegmentationMask
 
-    math_aspect_ratio = nodes.new("ShaderNodeMath")
-    math_aspect_ratio.name = "Math.005"
-    math_aspect_ratio.operation = "DIVIDE"
-    links.new(image_info.outputs[0], math_aspect_ratio.inputs[0])  # Width
-    links.new(image_info.outputs[1], math_aspect_ratio.inputs[1])  # Height
+    aspect_ratio = math_op(group, "DIVIDE", image_info.outputs[0], image_info.outputs[1])
 
-    scale_elements_aspect = nodes.new("GeometryNodeScaleElements")
-    scale_elements_aspect.name = "Scale Elements.001"
-    scale_elements_aspect.domain = "FACE"
-    scale_elements_aspect.inputs[1].default_value = True  # Selection
-    scale_elements_aspect.inputs[3].default_value = [0.0, 0.0, 0.0]  # Center
-    scale_elements_aspect.inputs[4].default_value = "Single Axis"
-    scale_elements_aspect.inputs[5].default_value = [1.0, 0.0, 0.0]  # Axis (X)
-    links.new(rotate_instances.outputs[0], scale_elements_aspect.inputs[0])
-    links.new(math_aspect_ratio.outputs[0], scale_elements_aspect.inputs[2])  # Scale
-    links.new(scale_elements_aspect.outputs[0], group_output.inputs[0])
+    scale_aspect = create_node(group, "GeometryNodeScaleElements", {
+        "Geometry": rotate.outputs[0],
+        "Scale": aspect_ratio
+    })
+    scale_aspect.domain = "FACE"
+    scale_aspect.inputs[1].default_value = True
+    scale_aspect.inputs[3].default_value = [0.0, 0.0, 0.0]
+    scale_aspect.inputs[4].default_value = "Single Axis"
+    scale_aspect.inputs[5].default_value = [1.0, 0.0, 0.0]
+
+    links.new(scale_aspect.outputs[0], group_output.inputs[0])
 
     auto_layout_nodes(group)
     return group
