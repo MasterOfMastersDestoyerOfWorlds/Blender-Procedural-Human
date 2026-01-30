@@ -17,9 +17,13 @@ After modifying geometry node groups or operators, always verify they load corre
 
 ## Common Socket Issues (Blender 4.x)
 
-GeometryNodeCaptureAttribute uses indexed sockets:
-- `inputs[0]` - Value to capture (not "Value")
-- `outputs[0]` - Captured attribute (not "Attribute")
+GeometryNodeCaptureAttribute socket indices:
+- `inputs[0]` or `inputs["Geometry"]` - Geometry input
+- `inputs[1]` - Value to capture (dynamic type, NOT named "Value")
+- `outputs[0]` or `outputs["Geometry"]` - Geometry output
+- `outputs[1]` - Captured attribute (dynamic type, NOT named "Attribute")
+
+WARNING: Using `inputs[0]` for the value will overwrite the Geometry connection!
 
 ## Validation Workflow
 

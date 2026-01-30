@@ -69,8 +69,8 @@ def create_worn_edges_group():
     capture_attr = nodes.new("GeometryNodeCaptureAttribute")
     capture_attr.domain = 'POINT'  # Interpolate edge data to points
     links.new(input_node.outputs["Geometry"], capture_attr.inputs["Geometry"])
-    # Blender 4.x: Use indexed socket access for Capture Attribute value
-    links.new(edge_angle.outputs["Unsigned Angle"], capture_attr.inputs[0])
+    # Blender 4.x: Value socket is at index 1 (index 0 is Geometry)
+    links.new(edge_angle.outputs["Unsigned Angle"], capture_attr.inputs[1])
     
     # 2. Subdivide mesh to add resolution for displacement
     subdiv = create_node(group, "GeometryNodeSubdivideMesh", {
@@ -96,8 +96,8 @@ def create_worn_edges_group():
     map_range = nodes.new("ShaderNodeMapRange")
     map_range.interpolation_type = 'LINEAR'
     map_range.inputs["From Min"].default_value = 0.0
-    # Blender 4.x: Use indexed socket access for Capture Attribute output
-    links.new(capture_attr.outputs[0], map_range.inputs["Value"])
+    # Blender 4.x: Captured value is at outputs[1] (outputs[0] is Geometry)
+    links.new(capture_attr.outputs[1], map_range.inputs["Value"])
     links.new(input_node.outputs["Edge Threshold"], map_range.inputs["From Max"])
     
     # 5. Combine noise with edge mask
