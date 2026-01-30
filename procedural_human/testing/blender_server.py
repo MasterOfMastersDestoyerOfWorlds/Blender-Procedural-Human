@@ -282,6 +282,295 @@ def handle_exec_python(params: Dict[str, Any]) -> Dict[str, Any]:
             "error": str(e),
             "traceback": traceback.format_exc()
         }
+
+
+def handle_render_viewport(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Render the scene and save to file."""
+    from procedural_human.config import get_codebase_path
+    import os
+    from datetime import datetime
+    
+    codebase = get_codebase_path()
+    tmp_dir = str(codebase / "tmp") if codebase else ""
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    default_path = os.path.join(tmp_dir, f"render_{timestamp}.png")
+    output_path = params.get("output_path", default_path)
+    resolution = params.get("resolution", [800, 600])
+    
+    try:
+        scene = bpy.context.scene
+        scene.render.resolution_x = resolution[0]
+        scene.render.resolution_y = resolution[1]
+        scene.render.filepath = output_path
+        scene.render.image_settings.file_format = 'PNG'
+        
+        bpy.ops.render.render(write_still=True)
+        
+        return {
+            "success": True,
+            "path": output_path,
+            "resolution": resolution
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+def handle_capture_viewport(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Capture 3D viewport screenshot using OpenGL render."""
+    from procedural_human.config import get_codebase_path
+    import os
+    from datetime import datetime
+    
+    codebase = get_codebase_path()
+    tmp_dir = str(codebase / "tmp") if codebase else ""
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    default_path = os.path.join(tmp_dir, f"viewport_{timestamp}.png")
+    output_path = params.get("output_path", default_path)
+    
+    try:
+        scene = bpy.context.scene
+        scene.render.filepath = output_path
+        scene.render.image_settings.file_format = 'PNG'
+        
+        bpy.ops.render.opengl(write_still=True)
+        
+        return {
+            "success": True,
+            "path": output_path
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+def handle_get_mesh_metrics(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Get geometric metrics for the active mesh object."""
+    obj_name = params.get("object_name")
+    
+    try:
+        if obj_name:
+            obj = bpy.data.objects.get(obj_name)
+            if not obj:
+                return {"success": False, "error": f"Object '{obj_name}' not found"}
+        else:
+            obj = bpy.context.active_object
+            if not obj:
+                return {"success": False, "error": "No active object"}
+        
+        if obj.type != 'MESH':
+            return {"success": False, "error": f"Object is not a mesh: {obj.type}"}
+        
+        mesh = obj.data
+        
+        # Count faces by number of sides
+        face_sides = {}
+        for poly in mesh.polygons:
+            sides = len(poly.vertices)
+            face_sides[sides] = face_sides.get(sides, 0) + 1
+        
+        # Calculate bounding box dimensions
+        bbox = [list(v[:]) for v in obj.bound_box]
+        
+        return {
+            "success": True,
+            "object_name": obj.name,
+            "vertex_count": len(mesh.vertices),
+            "edge_count": len(mesh.edges),
+            "face_count": len(mesh.polygons),
+            "face_sides_histogram": face_sides,
+            "bounding_box": bbox,
+            "dimensions": list(obj.dimensions),
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+def handle_apply_node_group(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Create an object with a geometry node group applied."""
+    group_name = params.get("group_name")
+    inputs = params.get("inputs", {})
+    object_name = params.get("object_name", "NodeGroupTest")
+    
+    if not group_name:
+        return {"success": False, "error": "group_name is required"}
+    
+    try:
+        # Create a simple mesh (plane or cube) as base
+        bpy.ops.mesh.primitive_plane_add(size=1)
+        obj = bpy.context.active_object
+        obj.name = object_name
+        
+        # Add geometry nodes modifier
+        mod = obj.modifiers.new(name="GeometryNodes", type='NODES')
+        
+        # Get or create the node group
+        if group_name in bpy.data.node_groups:
+            node_group = bpy.data.node_groups[group_name]
+        else:
+            # Try to create it by calling the creation function
+            # Import the geo_node_groups module to trigger registration
+            from procedural_human import geo_node_groups
+            
+            # Check registry for creation function
+            from procedural_human.decorators.geo_node_decorator import geo_node_group as decorator
+            
+            # Look for matching creation function
+            create_func_name = f"create_{group_name.lower()}_group"
+            for func_name, func in decorator.registry.items():
+                if func_name.lower() == create_func_name.lower():
+                    node_group = func()
+                    break
+            else:
+                # Try direct group name match
+                if group_name in bpy.data.node_groups:
+                    node_group = bpy.data.node_groups[group_name]
+                else:
+                    return {"success": False, "error": f"Node group '{group_name}' not found"}
+        
+        mod.node_group = node_group
+        
+        # Set input values
+        for input_name, value in inputs.items():
+            if input_name in mod:
+                mod[input_name] = value
+        
+        return {
+            "success": True,
+            "object_name": obj.name,
+            "node_group": node_group.name,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+def handle_setup_basalt_test(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Setup a basalt columns test scene with camera and lighting."""
+    size_x = params.get("size_x", 10.0)
+    size_y = params.get("size_y", 10.0)
+    resolution = params.get("resolution", 20)
+    render_after = params.get("render", True)
+    
+    try:
+        # Clear existing objects (optional)
+        if params.get("clear_scene", False):
+            bpy.ops.object.select_all(action='SELECT')
+            bpy.ops.object.delete()
+        
+        # Create basalt columns
+        result = handle_apply_node_group({
+            "group_name": "BasaltColumns",
+            "object_name": "BasaltTest",
+            "inputs": {
+                "Size X": size_x,
+                "Size Y": size_y,
+                "Resolution": resolution,
+            }
+        })
+        
+        if not result.get("success"):
+            return result
+        
+        obj = bpy.data.objects.get(result["object_name"])
+        
+        # Position camera
+        cam_data = bpy.data.cameras.new("TestCamera")
+        cam = bpy.data.objects.new("TestCamera", cam_data)
+        bpy.context.collection.objects.link(cam)
+        
+        # Isometric-ish view
+        cam.location = (size_x * 1.5, -size_y * 1.5, size_x * 1.2)
+        cam.rotation_euler = (1.1, 0, 0.8)
+        bpy.context.scene.camera = cam
+        
+        # Add sun light
+        light_data = bpy.data.lights.new("TestSun", type='SUN')
+        light_data.energy = 3
+        light = bpy.data.objects.new("TestSun", light_data)
+        bpy.context.collection.objects.link(light)
+        light.rotation_euler = (0.8, 0.2, 0.5)
+        
+        # Render if requested
+        render_path = None
+        if render_after:
+            render_result = handle_render_viewport({
+                "resolution": params.get("render_resolution", [800, 600])
+            })
+            if render_result.get("success"):
+                render_path = render_result["path"]
+        
+        return {
+            "success": True,
+            "object_name": result["object_name"],
+            "camera": cam.name,
+            "render_path": render_path,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+def handle_validate_geometry(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate that evaluated geometry has actual data (vertices, edges, faces).
+    
+    Uses the depsgraph to get the EVALUATED geometry after modifiers/geometry nodes,
+    not just the base mesh data.
+    """
+    obj_name = params.get("object_name")
+    
+    try:
+        obj = bpy.data.objects.get(obj_name) if obj_name else bpy.context.active_object
+        if not obj:
+            return {"success": False, "error": "No object found"}
+        
+        if obj.type != 'MESH':
+            return {"success": False, "error": f"Object is not a mesh: {obj.type}"}
+        
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        eval_obj = obj.evaluated_get(depsgraph)
+        data = eval_obj.data
+        
+        vertex_count = len(data.vertices) if hasattr(data, 'vertices') else 0
+        edge_count = len(data.edges) if hasattr(data, 'edges') else 0
+        face_count = len(data.polygons) if hasattr(data, 'polygons') else 0
+        
+        has_geometry = vertex_count > 0 or edge_count > 0 or face_count > 0
+        
+        return {
+            "success": has_geometry,
+            "object_name": obj.name,
+            "vertex_count": vertex_count,
+            "edge_count": edge_count,
+            "face_count": face_count,
+            "error": None if has_geometry else "Geometry has no vertices, edges, or faces"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 COMMAND_HANDLERS: Dict[str, Callable] = {
     "run_test": handle_run_test,
     "setup_test": handle_setup_test,
@@ -291,6 +580,12 @@ COMMAND_HANDLERS: Dict[str, Callable] = {
     "get_point_data": handle_get_point_data,
     "check_corner": handle_check_corner,
     "exec_python": handle_exec_python,
+    "render_viewport": handle_render_viewport,
+    "capture_viewport": handle_capture_viewport,
+    "get_mesh_metrics": handle_get_mesh_metrics,
+    "validate_geometry": handle_validate_geometry,
+    "apply_node_group": handle_apply_node_group,
+    "setup_basalt_test": handle_setup_basalt_test,
     "ping": lambda p: {"success": True, "message": "pong"},
     "list_commands": lambda p: {"success": True, "commands": list(COMMAND_HANDLERS.keys())},
 }

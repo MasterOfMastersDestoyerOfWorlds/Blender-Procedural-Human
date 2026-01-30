@@ -1,0 +1,29 @@
+---
+description: Validate Blender addon code by checking terminal for errors
+globs: procedural_human/**/*.py
+alwaysApply: false
+---
+
+# Blender Addon Validation
+
+After modifying geometry node groups or operators, always verify they load correctly:
+
+1. Check the Blender terminal for errors after addon reload
+2. Look for patterns like:
+   - `Error creating node group`
+   - `KeyError` or `key "..." not found`
+   - `AttributeError` 
+   - `TypeError`
+
+## Common Socket Issues (Blender 4.x)
+
+GeometryNodeCaptureAttribute uses indexed sockets:
+- `inputs[0]` - Value to capture (not "Value")
+- `outputs[0]` - Captured attribute (not "Attribute")
+
+## Validation Workflow
+
+1. Reload addon in Blender
+2. Check terminal window for errors
+3. If MCP server is running, use `ping_blender` to verify connection
+4. Test node group creation by applying to an object

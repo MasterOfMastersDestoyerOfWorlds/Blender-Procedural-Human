@@ -138,6 +138,61 @@ async def tool_ping() -> Dict[str, Any]:
         "success": False,
         "error": "Cannot connect to Blender server. Make sure Blender is running with the addon loaded."
     }
+
+
+async def tool_render_viewport(output_path: str = None, resolution: list = None) -> Dict[str, Any]:
+    """Render the scene to an image file."""
+    params = {}
+    if output_path:
+        params["output_path"] = output_path
+    if resolution:
+        params["resolution"] = resolution
+    return await _client.send_command("render_viewport", params)
+
+
+async def tool_capture_viewport(output_path: str = None) -> Dict[str, Any]:
+    """Capture a quick viewport screenshot using OpenGL render."""
+    params = {}
+    if output_path:
+        params["output_path"] = output_path
+    return await _client.send_command("capture_viewport", params)
+
+
+async def tool_get_mesh_metrics(object_name: str = None) -> Dict[str, Any]:
+    """Get geometric metrics for a mesh object (vertex/edge/face counts, bounding box, face sides histogram)."""
+    params = {}
+    if object_name:
+        params["object_name"] = object_name
+    return await _client.send_command("get_mesh_metrics", params)
+
+
+async def tool_validate_geometry(object_name: str = None) -> Dict[str, Any]:
+    """Validate that evaluated geometry has actual data. Returns success=false if 0 verts/edges/faces."""
+    params = {}
+    if object_name:
+        params["object_name"] = object_name
+    return await _client.send_command("validate_geometry", params)
+
+
+async def tool_apply_node_group(group_name: str, object_name: str = "NodeGroupTest", inputs: dict = None) -> Dict[str, Any]:
+    """Create an object with a geometry node group applied."""
+    return await _client.send_command("apply_node_group", {
+        "group_name": group_name,
+        "object_name": object_name,
+        "inputs": inputs or {}
+    })
+
+
+async def tool_setup_basalt_test(size_x: float = 10.0, size_y: float = 10.0, resolution: int = 20, render: bool = True) -> Dict[str, Any]:
+    """Setup a basalt columns test scene with camera, lighting, and optional render."""
+    return await _client.send_command("setup_basalt_test", {
+        "size_x": size_x,
+        "size_y": size_y,
+        "resolution": resolution,
+        "render": render
+    })
+
+
 TOOLS = [
     {
         "name": "run_coon_patch_test",
@@ -237,6 +292,79 @@ TOOLS = [
         "description": "Check if Blender server is running and responding.",
         "inputSchema": {"type": "object", "properties": {}},
         "handler": tool_ping
+    },
+    {
+        "name": "render_viewport",
+        "description": "Render the scene to an image file. Returns the path to the rendered image.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string", "description": "Output file path (optional, auto-generated if not provided)"},
+                "resolution": {"type": "array", "items": {"type": "integer"}, "description": "[width, height] in pixels", "default": [800, 600]}
+            }
+        },
+        "handler": tool_render_viewport
+    },
+    {
+        "name": "capture_viewport",
+        "description": "Capture a quick viewport screenshot using OpenGL render. Faster than full render.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string", "description": "Output file path (optional)"}
+            }
+        },
+        "handler": tool_capture_viewport
+    },
+    {
+        "name": "get_mesh_metrics",
+        "description": "Get geometric metrics for a mesh object including vertex/edge/face counts, bounding box, and face sides histogram (useful for checking hexagon count in basalt columns).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "object_name": {"type": "string", "description": "Name of object to analyze (uses active object if not specified)"}
+            }
+        },
+        "handler": tool_get_mesh_metrics
+    },
+    {
+        "name": "validate_geometry",
+        "description": "Validate that EVALUATED geometry (after modifiers/geometry nodes) has actual data. Returns success=false if vertex/edge/face counts are all 0. Use this after apply_node_group to verify the node group produces output.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "object_name": {"type": "string", "description": "Name of object to validate (uses active object if not specified)"}
+            }
+        },
+        "handler": tool_validate_geometry
+    },
+    {
+        "name": "apply_node_group",
+        "description": "Create an object with a geometry node group applied. Useful for testing node groups.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "group_name": {"type": "string", "description": "Name of the geometry node group (e.g., 'BasaltColumns', 'WornEdges')"},
+                "object_name": {"type": "string", "description": "Name for the created object", "default": "NodeGroupTest"},
+                "inputs": {"type": "object", "description": "Input values for the node group"}
+            },
+            "required": ["group_name"]
+        },
+        "handler": tool_apply_node_group
+    },
+    {
+        "name": "setup_basalt_test",
+        "description": "Setup a complete basalt columns test scene with camera, lighting, and optional render. Returns render path for visual inspection.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "size_x": {"type": "number", "description": "Width of the basalt field", "default": 10.0},
+                "size_y": {"type": "number", "description": "Depth of the basalt field", "default": 10.0},
+                "resolution": {"type": "integer", "description": "Grid resolution (more = smaller columns)", "default": 20},
+                "render": {"type": "boolean", "description": "Whether to render after setup", "default": True}
+            }
+        },
+        "handler": tool_setup_basalt_test
     },
 ]
 
