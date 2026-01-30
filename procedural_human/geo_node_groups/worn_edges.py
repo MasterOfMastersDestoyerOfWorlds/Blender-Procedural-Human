@@ -147,10 +147,11 @@ def create_worn_edges_group():
     boolean = nodes.new("GeometryNodeMeshBoolean")
     boolean.operation = 'INTERSECT'
     boolean.solver = 'EXACT'
-    boolean.inputs["Self Intersection"].default_value = False
-    boolean.inputs["Hole Tolerant"].default_value = False
-    # Blender 4.x: inputs[0] = Mesh 1, inputs[1] = Mesh 2
-    links.new(set_pos_2.outputs["Geometry"], boolean.inputs[0])
+    # Blender 4.x: inputs[1] is a multi-input socket for Mesh 2
+    # Both meshes connect to inputs[1] for INTERSECT operation
+    boolean.inputs[2].default_value = False  # Self Intersection
+    boolean.inputs[3].default_value = False  # Hole Tolerant
+    links.new(set_pos_2.outputs["Geometry"], boolean.inputs[1])
     links.new(input_node.outputs["Geometry"], boolean.inputs[1])
     
     # Output
