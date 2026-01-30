@@ -1,16 +1,22 @@
 import bpy
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.decorators.geo_node_decorator import geo_node_group
-from procedural_human.geo_node_groups.node_helpers import *
+from procedural_human.geo_node_groups.node_helpers import (
+    get_or_rebuild_node_group, math_op, vec_math_op, get_attr, link_or_set, create_node,
+    int_op, compare_int_less, compare_float_less, bool_and, int_to_float, switch_node,
+    switch_int, switch_vec, switch_float, clamp01, smoother_step, tan_half_angle,
+    sample_from_orig_corner, mapped_index, corner_for_idx, edge_for_idx,
+    edge_control_points_node, bezier_eval_node, bezier_deriv_node,
+    sample_face_corner_pos, domain_edge_distance_node
+)
 from procedural_human.geo_node_groups.cache_bezier import *
 
 @geo_node_group
 def create_charrot_gregory_group():
     group_name = "CoonNGonPatchGenerator"     
-    if group_name in bpy.data.node_groups:
-        bpy.data.node_groups.remove(bpy.data.node_groups[group_name])
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     group.interface.new_socket(name="Subdivisions", in_out="INPUT", socket_type="NodeSocketInt").default_value = 4
     group.interface.new_socket(name="Merge By Distance", in_out="INPUT", socket_type="NodeSocketBool").default_value = True

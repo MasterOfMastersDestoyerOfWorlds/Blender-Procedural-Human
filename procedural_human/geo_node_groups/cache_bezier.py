@@ -12,10 +12,9 @@ def get_precompute_edge_data_group():
     :returns: The node group for precomputing edge Bezier control points.
     """
     group_name = "Math_PrecomputeEdgeData"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-    
-    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return ng
     ng.interface.new_socket("orig_geo", in_out="INPUT", socket_type="NodeSocketGeometry")
     ng.interface.new_socket("Result", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     in_node = ng.nodes.new("NodeGroupInput")
@@ -90,10 +89,9 @@ def get_sample_cached_bezier_group():
     :returns: The node group for sampling cached Bezier control points.
     """
     group_name = "Math_SampleCachedBezier"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-    
-    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return ng
     ng.interface.new_socket("edge_idx", in_out="INPUT", socket_type="NodeSocketInt")
     ng.interface.new_socket("is_fwd", in_out="INPUT", socket_type="NodeSocketBool")
     ng.interface.new_socket("source_geo", in_out="INPUT", socket_type="NodeSocketGeometry")

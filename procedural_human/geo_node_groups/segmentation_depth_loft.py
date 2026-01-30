@@ -5,17 +5,16 @@ import bpy
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import (
-    math_op, vec_math_op, create_node, link_or_set
+    math_op, vec_math_op, create_node, link_or_set, get_or_rebuild_node_group
 )
 
 
 @geo_node_group
 def create_segmentation_depth_loft_group():
     group_name = "Segmentation Depth Loft"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
 
     # --- Interface ---
     group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")

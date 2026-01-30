@@ -2,17 +2,17 @@ import bpy
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import (
-    math_op, vec_math_op, get_attr, smoother_step, link_or_set, create_node
+    math_op, vec_math_op, get_attr, smoother_step, link_or_set, create_node,
+    get_or_rebuild_node_group
 )
 
 
 @geo_node_group
 def create_coons_patch_group():
     group_name = "CoonsPatchGenerator"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     group.interface.new_socket(name="Subdivisions", in_out="INPUT", socket_type="NodeSocketInt").default_value = 4
     group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")

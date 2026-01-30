@@ -17,7 +17,7 @@ import bpy
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.geo_node_groups.node_helpers import (
-    math_op, vec_math_op, create_node, link_or_set
+    math_op, vec_math_op, create_node, link_or_set, get_or_rebuild_node_group
 )
 
 
@@ -31,10 +31,9 @@ def create_basalt_columns_group():
     :returns: The Basalt Columns node group.
     """
     group_name = "BasaltColumns"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(name=group_name, type='GeometryNodeTree')
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     
     # --- Interface ---
     size_x_socket = group.interface.new_socket(name="Size X", in_out='INPUT', socket_type='NodeSocketFloat')

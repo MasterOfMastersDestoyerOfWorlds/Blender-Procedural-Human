@@ -15,15 +15,44 @@ After modifying geometry node groups or operators, always verify they load corre
    - `AttributeError` 
    - `TypeError`
 
+## Node Group Reload Pattern
+
+Use `get_or_rebuild_node_group()` from `node_helpers.py` for all geometry node groups.
+This pattern:
+- Creates node groups on first call
+- Clears and rebuilds on first call after addon reload (preserves references)
+- Returns cached version on subsequent calls within the same session
+
+```python
+from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
+
+def create_my_node_group():
+    group_name = "MyNodeGroup"
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
+    
+    # Build interface and nodes...
+    group.interface.new_socket(...)
+    # ...
+    return group
+```
+
 ## Common Socket Issues (Blender 4.x)
 
-GeometryNodeCaptureAttribute socket indices:
-- `inputs[0]` or `inputs["Geometry"]` - Geometry input
-- `inputs[1]` - Value to capture (dynamic type, NOT named "Value")
-- `outputs[0]` or `outputs["Geometry"]` - Geometry output
-- `outputs[1]` - Captured attribute (dynamic type, NOT named "Attribute")
+Many nodes use indexed socket access instead of named access:
 
-WARNING: Using `inputs[0]` for the value will overwrite the Geometry connection!
+GeometryNodeCaptureAttribute:
+- `inputs[0]` - Geometry input
+- `inputs[1]` - Value to capture
+- `outputs[0]` - Geometry output
+- `outputs[1]` - Captured attribute
+
+GeometryNodeMeshBoolean:
+- `inputs[0]` - Mesh 1
+- `inputs[1]` - Mesh 2
+
+WARNING: Using wrong socket index will cause unexpected behavior or errors!
 
 ## Validation Workflow
 
@@ -31,3 +60,4 @@ WARNING: Using `inputs[0]` for the value will overwrite the Geometry connection!
 2. Check terminal window for errors
 3. If MCP server is running, use `ping_blender` to verify connection
 4. Test node group creation by applying to an object
+5. Use `validate_geometry` MCP tool to verify output has vertices/edges/faces

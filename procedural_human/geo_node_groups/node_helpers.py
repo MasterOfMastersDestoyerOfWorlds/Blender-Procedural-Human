@@ -1,4 +1,37 @@
 import bpy
+
+# Module-level set - gets reset on reload
+_rebuilt_this_session = set()
+
+def get_or_rebuild_node_group(group_name: str, node_type: str = "GeometryNodeTree"):
+    """Get an existing node group, or prepare it for rebuild on first call after reload.
+    
+    On first call after addon reload: clears the existing node group's nodes and interface
+    On subsequent calls: returns the cached node group
+    
+    :param group_name: Name of the node group
+    :param node_type: Type of node tree (default: "GeometryNodeTree")
+    :returns: Tuple of (group, needs_rebuild) - if needs_rebuild is False, caller should return group immediately
+    """
+    global _rebuilt_this_session
+    
+    if group_name in bpy.data.node_groups:
+        group = bpy.data.node_groups[group_name]
+        if group_name in _rebuilt_this_session:
+            # Already rebuilt this session, return cached
+            return group, False
+        else:
+            # First call this session, clear and rebuild
+            group.nodes.clear()
+            group.interface.clear()
+            _rebuilt_this_session.add(group_name)
+            return group, True
+    else:
+        # Create new
+        group = bpy.data.node_groups.new(group_name, node_type)
+        _rebuilt_this_session.add(group_name)
+        return group, True
+
 def is_socket(obj):
     """Check if an object is a Blender node socket.
     
@@ -318,10 +351,9 @@ def get_edge_control_points_group():
     :returns: The node group for calculating edge control points.
     """
     group_name = "Math_EdgeControlPoints"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-    
-    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return ng
     ng.interface.new_socket("edge_id", in_out="INPUT", socket_type="NodeSocketInt")
     ng.interface.new_socket("fwd", in_out="INPUT", socket_type="NodeSocketBool")
     ng.interface.new_socket("orig_geo", in_out="INPUT", socket_type="NodeSocketGeometry")
@@ -430,10 +462,9 @@ def get_bezier_eval_group():
     :returns: The node group for evaluating cubic Bezier curves.
     """
     group_name = "Math_BezierEval"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-    
-    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return ng
     ng.interface.new_socket("P0", in_out="INPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("P1", in_out="INPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("P2", in_out="INPUT", socket_type="NodeSocketVector")
@@ -489,10 +520,9 @@ def get_bezier_deriv_group():
     :returns: The node group for calculating Bezier curve derivatives.
     """
     group_name = "Math_BezierDeriv"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-    
-    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return ng
     ng.interface.new_socket("P0", in_out="INPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("P1", in_out="INPUT", socket_type="NodeSocketVector")
     ng.interface.new_socket("P2", in_out="INPUT", socket_type="NodeSocketVector")
@@ -575,10 +605,9 @@ def get_domain_edge_distance_group():
     :returns: The node group for calculating domain edge distances.
     """
     group_name = "Math_DomainEdgeDistance"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-    
-    ng = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    ng, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return ng
     ng.interface.new_socket("i_idx", in_out="INPUT", socket_type="NodeSocketInt")
     ng.interface.new_socket("N_field", in_out="INPUT", socket_type="NodeSocketInt")
     ng.interface.new_socket("domain_p_x", in_out="INPUT", socket_type="NodeSocketFloat")

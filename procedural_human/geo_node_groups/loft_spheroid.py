@@ -5,7 +5,7 @@ Moved from tmp/temp_25.py - contains the LoftSpheriod node group and its depende
 import bpy
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.decorators.geo_node_decorator import geo_node_group
-from procedural_human.geo_node_groups.node_helpers import create_node, link_or_set, vec_math_op, math_op
+from procedural_human.geo_node_groups.node_helpers import create_node, link_or_set, vec_math_op, math_op, get_or_rebuild_node_group
 
 def get_bundled_node_group(name: str):
     """
@@ -52,10 +52,9 @@ def create_array_group():
 @geo_node_group
 def create_set_axis_group():
     group_name = "SetAxis"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Object", in_out="INPUT", socket_type="NodeSocketObject")
@@ -126,10 +125,9 @@ def create_set_axis_group():
 @geo_node_group
 def create_weld__curves_group():
     group_name = "Weld Curves"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Input", in_out="INPUT", socket_type="NodeSocketInt")
@@ -341,10 +339,9 @@ def create_weld__curves_group():
 @geo_node_group
 def create_split_curves_about_axis_group():
     group_name = "SplitCurvesAboutAxis"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="CurvePos", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="CurveNeg", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Curve", in_out="INPUT", socket_type="NodeSocketGeometry")
@@ -570,10 +567,9 @@ def create_split_curves_about_axis_group():
 @geo_node_group
 def create_get_axis_group():
     group_name = "GetAxis"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Min", in_out="OUTPUT", socket_type="NodeSocketFloat")
     socket.min_value = -3.4028234663852886e+38
     socket.max_value = 3.4028234663852886e+38
@@ -698,10 +694,9 @@ def create_get_axis_group():
 @geo_node_group
 def create_orient_curve_group():
     group_name = "OrientCurve"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="CurveA", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="CurveB", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="CurveA", in_out="INPUT", socket_type="NodeSocketGeometry")
@@ -767,10 +762,9 @@ def create_orient_curve_group():
 @geo_node_group
 def create_loft_curve_parts_group():
     group_name = "LoftCurveParts"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Input", in_out="INPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Vertices Y", in_out="INPUT", socket_type="NodeSocketInt")
@@ -790,7 +784,7 @@ def create_loft_curve_parts_group():
     grid = nodes.new("GeometryNodeMeshGrid")
     grid.inputs[0].default_value = 1.0
     grid.inputs[1].default_value = 1.0
-    links.new(group_input.outputs[1], grid.inputs[3])
+    links.new(group_input.outputs[1], grid.inputs[3]) 
 
     domain_size_002 = nodes.new("GeometryNodeAttributeDomainSize")
     domain_size_002.component = "CURVE"
@@ -836,10 +830,9 @@ def create_loft_curve_parts_group():
 @geo_node_group
 def create__axis_alignment_switch_group():
     group_name = ".axis_alignment_switch"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Output", in_out="OUTPUT", socket_type="NodeSocketRotation")
     socket = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
     socket.default_value = "X"
@@ -988,10 +981,9 @@ def create__axis_alignment_switch_group():
 @geo_node_group
 def create_debug_handles_group():
     group_name = "DebugHandles"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Index", in_out="INPUT", socket_type="NodeSocketInt")
@@ -1163,10 +1155,9 @@ def create_debug_handles_group():
 @geo_node_group
 def create_set_handles_group():
     group_name = "SetHandles"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="HandleA", in_out="OUTPUT", socket_type="NodeSocketVector")
     socket.min_value = -3.4028234663852886e+38
     socket.max_value = 3.4028234663852886e+38
@@ -1373,10 +1364,9 @@ def create_set_handles_group():
 @geo_node_group
 def create_curve_rib_cage_group():
     group_name = "CurveRibCage"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="CurveA", in_out="INPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="CurveB", in_out="INPUT", socket_type="NodeSocketGeometry")
@@ -1617,10 +1607,9 @@ def create_curve_rib_cage_group():
 @geo_node_group
 def create_get_position_and_handles_group():
     group_name = "GetPositionAndHandles"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Left Inv", in_out="OUTPUT", socket_type="NodeSocketVector")
     socket.min_value = -3.4028234663852886e+38
     socket.max_value = 3.4028234663852886e+38
@@ -1762,10 +1751,9 @@ def create_get_position_and_handles_group():
 @geo_node_group
 def create_align_handles_group():
     group_name = "AlignHandles"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
@@ -1956,10 +1944,9 @@ def create_align_handles_group():
 @geo_node_group
 def create_loft_spheriod_group():
     group_name = "LoftSpheriod"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     socket = group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     socket = group.interface.new_socket(name="Value", in_out="INPUT", socket_type="NodeSocketInt")

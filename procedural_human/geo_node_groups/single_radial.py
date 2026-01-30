@@ -5,6 +5,7 @@ from procedural_human.hand.finger.finger_segment.finger_segment_properties impor
     FingerSegmentProperties,
 )
 from procedural_human.utils.node_layout import auto_layout_nodes
+from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
 
 
 def create_single_profile_radial_group():
@@ -12,10 +13,9 @@ def create_single_profile_radial_group():
     Creates a node group for radial geometry with a single profile curve.
     """
     group_name = "Radial Profile (Single)"
-    if group_name in bpy.data.node_groups:
-        return bpy.data.node_groups[group_name]
-
-    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+    group, needs_rebuild = get_or_rebuild_node_group(group_name)
+    if not needs_rebuild:
+        return group
     group.interface.new_socket(
         name="Factor", in_out="INPUT", socket_type="NodeSocketFloat"
     )
