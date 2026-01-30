@@ -4,29 +4,26 @@ Worn Edges Geometry Node Group
 Creates worn/chipped edge details on geometry by detecting sharp edges
 and applying noise-based displacement along those edges.
 
-Technique:
-    1. Capture Edge Angle on the original low-poly mesh
-    2. Apply uniform edge offset along normals (Stage 1)
-    3. Subdivide and smooth with Subdivision Surface
-    4. Apply noise-based displacement for irregular edges (Stage 2)
-    5. Optionally clip against original mesh with Boolean intersection 
+Based on Edge Damage technique from temp_0.py:
+    1. Apply uniform edge offset: Position + Normal * Edge Offset
+    2. Subdivide and smooth with Subdivision Surface
+    3. Apply noise displacement: Position + Normal * Noise * Noise Strength
+    4. Boolean intersect with original mesh to clip overhangs
 """
 
 import bpy
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.utils.node_layout import auto_layout_nodes
-from procedural_human.geo_node_groups.node_helpers import (
-    math_op, vec_math_op, create_node, link_or_set, get_or_rebuild_node_group
-)
+from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
 
 
 @geo_node_group
 def create_worn_edges_group():
-    """Creates a Geometry Node group that applies worn/chipped details to sharp edges.
+    """Creates a Geometry Node group that applies worn/chipped details to edges.
     
-    Uses two-stage displacement:
-    1. Uniform edge offset creates the base chip shape
-    2. Ridged noise adds irregular variation
+    Uses two-stage displacement following the Edge Damage pattern:
+    1. Uniform edge offset along normals
+    2. Ridged noise for irregular chipping
     
     :returns: The Worn Edges node group.
     """
@@ -40,30 +37,23 @@ def create_worn_edges_group():
     
     subdiv_socket = group.interface.new_socket(name="Subdivisions", in_out='INPUT', socket_type='NodeSocketInt')
     subdiv_socket.default_value = 2
-    subdiv_socket.min_value = 0
-    subdiv_socket.max_value = 6
-    
-    edge_thresh_socket = group.interface.new_socket(name="Edge Threshold", in_out='INPUT', socket_type='NodeSocketFloat')
-    edge_thresh_socket.default_value = 1.0  # Radians, approx 57 degrees
-    edge_thresh_socket.min_value = 0.0
-    edge_thresh_socket.max_value = 3.14159
+    subdiv_socket.min_value = 0 
+    subdiv_socket.max_value = 6 
     
     edge_offset_socket = group.interface.new_socket(name="Edge Offset", in_out='INPUT', socket_type='NodeSocketFloat')
-    edge_offset_socket.default_value = 0.02
-    edge_offset_socket.min_value = 0.0
+    edge_offset_socket.default_value = 0.05
+    edge_offset_socket.min_value = -1.0
+    edge_offset_socket.max_value = 1.0
     
     noise_scale_socket = group.interface.new_socket(name="Noise Scale", in_out='INPUT', socket_type='NodeSocketFloat')
-    noise_scale_socket.default_value = 10.0
+    noise_scale_socket.default_value = 50.0
     noise_scale_socket.min_value = 0.1
     
     noise_strength_socket = group.interface.new_socket(name="Noise Strength", in_out='INPUT', socket_type='NodeSocketFloat')
-    noise_strength_socket.default_value = 0.5
+    noise_strength_socket.default_value = 0.3
     noise_strength_socket.min_value = 0.0
     
-    use_boolean_socket = group.interface.new_socket(name="Use Boolean", in_out='INPUT', socket_type='NodeSocketBool')
-    use_boolean_socket.default_value = False
-    
-    group.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    group.interface.new_socket(name="Mesh", in_out='OUTPUT', socket_type='NodeSocketGeometry')
 
     # --- Nodes ---
     nodes = group.nodes
@@ -72,118 +62,100 @@ def create_worn_edges_group():
     input_node = nodes.new("NodeGroupInput")
     output_node = nodes.new("NodeGroupOutput")
 
-    # 1. Capture Edge Angle on low-poly mesh before any modifications
-    edge_angle = nodes.new("GeometryNodeInputMeshEdgeAngle")
+    # ===== Stage 1: Edge Offset Displacement =====
+    # Position + Normal * Edge Offset
     
-    capture_attr = nodes.new("GeometryNodeCaptureAttribute")
-    capture_attr.domain = 'POINT'  # Interpolate edge data to points
-    links.new(input_node.outputs["Geometry"], capture_attr.inputs["Geometry"])
-    # Blender 4.x: Value socket is at index 1 (index 0 is Geometry)
-    links.new(edge_angle.outputs["Unsigned Angle"], capture_attr.inputs[1])
+    normal_1 = nodes.new("GeometryNodeInputNormal")
+    position_1 = nodes.new("GeometryNodeInputPosition")
     
-    # 2. Create edge mask from captured angle
-    # Map edge angle to 0-1 range based on threshold
-    map_range = nodes.new("ShaderNodeMapRange")
-    map_range.interpolation_type = 'LINEAR'
-    map_range.inputs["From Min"].default_value = 0.0
-    # Blender 4.x: Captured value is at outputs[1] (outputs[0] is Geometry)
-    links.new(capture_attr.outputs[1], map_range.inputs["Value"])
-    links.new(input_node.outputs["Edge Threshold"], map_range.inputs["From Max"])
+    # Normal * Edge Offset
+    vec_mult_1 = nodes.new("ShaderNodeVectorMath")
+    vec_mult_1.operation = "MULTIPLY"
+    links.new(normal_1.outputs["Normal"], vec_mult_1.inputs[0])
+    links.new(input_node.outputs["Edge Offset"], vec_mult_1.inputs[1])
     
-    edge_mask = map_range.outputs["Result"]
+    # Position + (Normal * Edge Offset)
+    vec_add_1 = nodes.new("ShaderNodeVectorMath")
+    vec_add_1.operation = "ADD"
+    links.new(position_1.outputs["Position"], vec_add_1.inputs[0])
+    links.new(vec_mult_1.outputs[0], vec_add_1.inputs[1])
     
-    # 3. Stage 1: Apply uniform edge offset along normals
-    normal = nodes.new("GeometryNodeInputNormal")
+    # Set Position (edge offset)
+    set_pos_1 = nodes.new("GeometryNodeSetPosition")
+    links.new(input_node.outputs["Geometry"], set_pos_1.inputs["Geometry"])
+    links.new(vec_add_1.outputs[0], set_pos_1.inputs["Position"])
+
+    # ===== Subdivide and Smooth =====
     
-    # Scale edge offset by edge mask (only displace near sharp edges)
-    edge_offset_scaled = math_op(group, 'MULTIPLY', edge_mask, input_node.outputs["Edge Offset"])
-    edge_offset_vec = vec_math_op(group, 'SCALE', normal.outputs["Normal"], edge_offset_scaled)
+    # Subdivide Mesh
+    subdivide = nodes.new("GeometryNodeSubdivideMesh")
+    links.new(set_pos_1.outputs["Geometry"], subdivide.inputs["Mesh"])
+    links.new(input_node.outputs["Subdivisions"], subdivide.inputs["Level"])
     
-    # Negate to push inward (chips go into the surface)
-    edge_offset_neg = vec_math_op(group, 'SCALE', edge_offset_vec, -1.0)
-    
-    offset_geo = create_node(group, "GeometryNodeSetPosition", {
-        "Geometry": capture_attr.outputs["Geometry"],
-        "Offset": edge_offset_neg
-    })
-    
-    # 4. Subdivide mesh to add resolution for displacement
-    subdiv = create_node(group, "GeometryNodeSubdivideMesh", {
-        "Mesh": offset_geo.outputs["Geometry"],
-        "Level": input_node.outputs["Subdivisions"]
-    })
-    
-    # 5. Subdivision Surface for smoother results
+    # Subdivision Surface (smoothing)
     subdiv_surface = nodes.new("GeometryNodeSubdivisionSurface")
-    links.new(subdiv.outputs["Mesh"], subdiv_surface.inputs["Mesh"])
+    links.new(subdivide.outputs["Mesh"], subdiv_surface.inputs["Mesh"])
     subdiv_surface.inputs["Level"].default_value = 1
     subdiv_surface.inputs["Edge Crease"].default_value = 0.0
     subdiv_surface.inputs["Vertex Crease"].default_value = 0.0
+
+    # ===== Stage 2: Noise Displacement =====
+    # Position + Normal * Noise * Noise Strength
     
-    # 6. Stage 2: Apply noise-based displacement for irregular edges
-    position = nodes.new("GeometryNodeInputPosition")
-    
-    # Use Ridged Multifractal noise for more realistic chipping
+    # Ridged Multifractal noise for realistic chipping
     noise = nodes.new("ShaderNodeTexNoise")
     noise.noise_dimensions = '3D'
     noise.noise_type = 'RIDGED_MULTIFRACTAL'
-    links.new(position.outputs["Position"], noise.inputs["Vector"])
-    link_or_set(group, noise.inputs["Scale"], input_node.outputs["Noise Scale"])
-    noise.inputs["Roughness"].default_value = 0.25
+    noise.normalize = False
     noise.inputs["Detail"].default_value = 1.0
+    noise.inputs["Roughness"].default_value = 0.25
     noise.inputs["Lacunarity"].default_value = 2.0
+    noise.inputs["Offset"].default_value = 0.0
+    noise.inputs["Gain"].default_value = 1.0
+    noise.inputs["Distortion"].default_value = 0.0
+    links.new(input_node.outputs["Noise Scale"], noise.inputs["Scale"])
     
-    # Center noise around 0 by subtracting 0.5
-    noise_centered = math_op(group, 'SUBTRACT', noise.outputs["Fac"], 0.5)
+    normal_2 = nodes.new("GeometryNodeInputNormal")
+    position_2 = nodes.new("GeometryNodeInputPosition")
     
-    # Scale noise by strength and edge mask
-    noise_masked = math_op(group, 'MULTIPLY', noise_centered, edge_mask)
-    noise_scaled = math_op(group, 'MULTIPLY', noise_masked, input_node.outputs["Noise Strength"])
+    # Normal * Noise
+    vec_mult_2 = nodes.new("ShaderNodeVectorMath")
+    vec_mult_2.operation = "MULTIPLY"
+    links.new(normal_2.outputs["Normal"], vec_mult_2.inputs[0])
+    links.new(noise.outputs["Fac"], vec_mult_2.inputs[1])
     
-    # Get normal after subdivision for accurate displacement direction
-    normal_post = nodes.new("GeometryNodeInputNormal")
+    # (Normal * Noise) * Noise Strength
+    vec_mult_3 = nodes.new("ShaderNodeVectorMath")
+    vec_mult_3.operation = "MULTIPLY"
+    links.new(vec_mult_2.outputs[0], vec_mult_3.inputs[0])
+    links.new(input_node.outputs["Noise Strength"], vec_mult_3.inputs[1])
     
-    # Create noise displacement vector
-    noise_displacement = vec_math_op(group, 'SCALE', normal_post.outputs["Normal"], noise_scaled)
+    # Position + (Normal * Noise * Noise Strength)
+    vec_add_2 = nodes.new("ShaderNodeVectorMath")
+    vec_add_2.operation = "ADD"
+    links.new(position_2.outputs["Position"], vec_add_2.inputs[0])
+    links.new(vec_mult_3.outputs[0], vec_add_2.inputs[1])
     
-    # Negate to push inward
-    noise_displacement_neg = vec_math_op(group, 'SCALE', noise_displacement, -1.0)
+    # Set Position (noise displacement)
+    set_pos_2 = nodes.new("GeometryNodeSetPosition")
+    links.new(subdiv_surface.outputs["Mesh"], set_pos_2.inputs["Geometry"])
+    links.new(vec_add_2.outputs[0], set_pos_2.inputs["Position"])
+
+    # ===== Boolean Intersection =====
+    # Clip against original mesh to remove overhanging geometry
     
-    # Apply noise displacement
-    set_pos_noise = create_node(group, "GeometryNodeSetPosition", {
-        "Geometry": subdiv_surface.outputs["Mesh"],
-        "Offset": noise_displacement_neg
-    })
-    
-    # 7. Store wear factor as attribute for material use
-    store_wear = create_node(group, "GeometryNodeStoreNamedAttribute", {
-        "Geometry": set_pos_noise.outputs["Geometry"],
-        "Name": "wear_factor",
-        "Domain": "POINT",
-        "Data Type": "FLOAT"
-    })
-    # Store edge mask as wear factor (0-1 range)
-    links.new(edge_mask, store_wear.inputs["Value"])
-    
-    # 8. Optional Boolean intersection to clip against original mesh
     boolean = nodes.new("GeometryNodeMeshBoolean")
     boolean.operation = 'INTERSECT'
     boolean.solver = 'EXACT'
-    # Blender 4.x: Boolean uses indexed inputs - inputs[0] is Mesh 1, inputs[1] is Mesh 2
-    links.new(store_wear.outputs["Geometry"], boolean.inputs[0])
-    links.new(input_node.outputs["Geometry"], boolean.inputs[1])
     boolean.inputs["Self Intersection"].default_value = False
     boolean.inputs["Hole Tolerant"].default_value = False
-    
-    # 9. Switch between boolean and non-boolean output
-    switch = nodes.new("GeometryNodeSwitch")
-    switch.input_type = 'GEOMETRY'
-    links.new(input_node.outputs["Use Boolean"], switch.inputs["Switch"])
-    links.new(store_wear.outputs["Geometry"], switch.inputs["False"])
-    links.new(boolean.outputs["Mesh"], switch.inputs["True"])
+    # Blender 4.x: inputs[0] = Mesh 1, inputs[1] = Mesh 2
+    links.new(set_pos_2.outputs["Geometry"], boolean.inputs[0])
+    links.new(input_node.outputs["Geometry"], boolean.inputs[1])
     
     # Output
-    links.new(switch.outputs["Output"], output_node.inputs["Geometry"])
+    links.new(boolean.outputs["Mesh"], output_node.inputs["Mesh"])
     
     auto_layout_nodes(group)
     return group
+ 
