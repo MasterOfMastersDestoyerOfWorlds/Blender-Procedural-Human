@@ -11,6 +11,7 @@ from typing import Any
 
 
 DEFAULT_BASE_URL = "http://localhost:9876"
+COMMAND_TIMEOUT_SECONDS = 30
 
 
 @dataclass
@@ -37,7 +38,11 @@ class BlenderClient:
 
     def command(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Call `/command` on Blender server."""
-        return self._request("/command", {"action": action, "params": params or {}}, timeout=120)
+        return self._request(
+            "/command",
+            {"action": action, "params": params or {}},
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
 
     def health(self) -> dict[str, Any]:
         """Call `/health` on Blender server."""

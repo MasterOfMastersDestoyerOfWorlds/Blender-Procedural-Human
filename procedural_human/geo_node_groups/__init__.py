@@ -14,5 +14,51 @@ from procedural_human.geo_node_groups.worn_edges import (
 from procedural_human.geo_node_groups.terrain import (
     create_basalt_columns_group,
 )
+from procedural_human.geo_node_groups.utilities.is_edge_boundary import (
+    create_is__edge__boundary_group,
+)
+from procedural_human.geo_node_groups.utilities.rotate_on_center import (
+    create_rotate_on__centre_group,
+)
+from procedural_human.geo_node_groups.utilities.mirror import (
+    create_mirror_group,
+)
+from procedural_human.geo_node_groups.utilities.swap_attr import (
+    create_swap__attr_group,
+)
+from procedural_human.geo_node_groups.utilities.join_splines import (
+    create_join__splines_group,
+)
+from procedural_human.geo_node_groups.utilities.rivet import (
+    create_rivet_group,
+)
+from procedural_human.geo_node_groups.utilities.pipes import (
+    create_pipes_group,
+)
+from procedural_human.geo_node_groups.utilities.bi_rail_loft import (
+    create_bi_rail_loft_group,
+)
+from procedural_human.geo_node_groups.utilities.gold_wavies import (
+    create_gold__wavies_group,
+)
+from procedural_human.geo_node_groups.utilities.gold_decorations import (
+    create_gold__decorations_group,
+)
+from procedural_human.geo_node_groups.utilities.gold_on_band import (
+    create_gold_on__band_group,
+)
+from procedural_human.geo_node_groups.utilities.gem_in_holder import (
+    create_gem_in__holder_group,
+)
+from procedural_human.geo_node_groups.armor import (
+    create_shoulders_group,
+    create_sleeves_group,
+    create_neck_group,
+    create_chest_group,
+    create_waist_group,
+    create_blocker_group,
+    create_armor_material_assignment_group,
+    create_armor_suit_group,
+)
 
 

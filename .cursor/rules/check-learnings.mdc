@@ -1,0 +1,18 @@
+---
+description: Search prior learnings before planning or making non-trivial changes
+alwaysApply: true
+---
+
+# Check Learnings Before Planning
+
+Before creating a plan or starting non-trivial work, search `.cursor/docs/ai-learnings/`
+for related prior decisions, anti-patterns, and counter-intuitive findings.
+
+```
+rg -l "<keyword>" .cursor/docs/ai-learnings/
+```
+
+Use module names, tags, or topic keywords relevant to the task. Read any matching
+files and incorporate their decisions and anti-patterns into your approach.
+
+Skip this step only for single-file, obvious changes (typo fixes, comment edits, etc.).

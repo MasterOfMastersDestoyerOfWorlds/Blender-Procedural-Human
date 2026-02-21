@@ -1,0 +1,64 @@
+import bpy
+from bpy.types import GeometryNodeGroup
+from bpy.props import FloatVectorProperty, FloatProperty
+from math import radians
+from mathutils import Euler, Vector
+from procedural_human.decorators.geo_node_decorator import geo_node_group
+from procedural_human.utils.node_layout import auto_layout_nodes
+
+@geo_node_group
+def create_space_res_switch_group():
+    group_name = "Space / Res Switch"
+    if group_name in bpy.data.node_groups:
+        return bpy.data.node_groups[group_name]
+
+    group = bpy.data.node_groups.new(group_name, "GeometryNodeTree")
+
+    # --- Interface ---
+    socket = group.interface.new_socket(name="Output", in_out="OUTPUT", socket_type="NodeSocketInt")
+    socket.min_value = -2147483648
+    socket.max_value = 2147483647
+    socket = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
+    socket.default_value = "Spacing"
+    socket = group.interface.new_socket(name="Spacing", in_out="INPUT", socket_type="NodeSocketInt")
+    socket.default_value = 0
+    socket.min_value = -2147483648
+    socket.max_value = 2147483647
+    socket = group.interface.new_socket(name="Resolution", in_out="INPUT", socket_type="NodeSocketInt")
+    socket.default_value = 0
+    socket.min_value = -2147483648
+    socket.max_value = 2147483647
+
+    # --- Nodes ---
+    nodes = group.nodes
+    links = group.links
+    group_input = nodes.new("NodeGroupInput")
+    group_input.name = "Group Input"
+    group_input.label = ""
+    group_input.location = (-440.0, 0.0)
+    group_input.bl_label = "Group Input"
+    # Links for group_input
+
+    group_output = nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.label = ""
+    group_output.location = (-80.0, 40.0)
+    group_output.bl_label = "Group Output"
+    group_output.is_active_output = True
+    # Links for group_output
+
+    menu_switch_001 = nodes.new("GeometryNodeMenuSwitch")
+    menu_switch_001.name = "Menu Switch.001"
+    menu_switch_001.label = ""
+    menu_switch_001.location = (-260.0, 40.0)
+    menu_switch_001.bl_label = "Menu Switch"
+    menu_switch_001.active_index = 1
+    menu_switch_001.data_type = "INT"
+    # Links for menu_switch_001
+    links.new(group_input.outputs[0], menu_switch_001.inputs[0])
+    links.new(group_input.outputs[1], menu_switch_001.inputs[1])
+    links.new(group_input.outputs[2], menu_switch_001.inputs[2])
+    links.new(menu_switch_001.outputs[0], group_output.inputs[0])
+
+    auto_layout_nodes(group)
+    return group
