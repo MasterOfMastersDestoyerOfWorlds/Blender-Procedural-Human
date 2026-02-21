@@ -121,6 +121,49 @@ def vec_math_op(group, op, a, b=None):
         return n.outputs[1]
     return n.outputs[0]
 
+def separate_xyz(group, vec_socket):
+    """Separate a vector socket into x, y, z components.
+    
+    :param group: The node group to add the node to.
+    :param vec_socket: Vector input (socket or vector value).
+    :returns: Tuple of (x, y, z) output sockets.
+    """
+    n = group.nodes.new("ShaderNodeSeparateXYZ")
+    link_or_set(group, n.inputs[0], vec_socket)
+    return n.outputs[0], n.outputs[1], n.outputs[2]
+
+def combine_xyz(group, x, y, z):
+    """Combine x, y, z components into a vector socket.
+    
+    :param group: The node group to add the node to.
+    :param x: X component (socket or value).
+    :param y: Y component (socket or value).
+    :param z: Z component (socket or value).
+    :returns: Vector output socket.
+    """
+    n = group.nodes.new("ShaderNodeCombineXYZ")
+    link_or_set(group, n.inputs[0], x)
+    link_or_set(group, n.inputs[1], y)
+    link_or_set(group, n.inputs[2], z)
+    return n.outputs[0]
+
+def compare_op(group, op, data_type, a, b):
+    """Create a compare node and return the boolean result output.
+    
+    :param group: The node group to add the node to.
+    :param op: Compare operation (e.g., "LESS_THAN", "GREATER_THAN", "EQUAL").
+    :param data_type: Compare data type (e.g., "FLOAT", "INT", "VECTOR").
+    :param a: First operand (socket or value).
+    :param b: Second operand (socket or value).
+    :returns: Boolean result output socket.
+    """
+    n = group.nodes.new("FunctionNodeCompare")
+    n.operation = op
+    n.data_type = data_type
+    link_or_set(group, n.inputs["A"], a)
+    link_or_set(group, n.inputs["B"], b)
+    return n.outputs["Result"]
+
 def get_attr(group, name, dtype='INT'):
     """Get a named attribute from the geometry.
     

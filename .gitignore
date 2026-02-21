@@ -63,3 +63,4 @@ procedural_human/novel_view_gen/Hunyuan3D-2/*.egg-info/
 procedural_human/novel_view_gen/Hunyuan3D-2/build/
 
 procedural_human/novel_view_gen/weights/
+tmp/.blender_pid

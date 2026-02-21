@@ -50,14 +50,25 @@ from procedural_human.geo_node_groups.utilities.gold_on_band import (
 from procedural_human.geo_node_groups.utilities.gem_in_holder import (
     create_gem_in__holder_group,
 )
-from procedural_human.geo_node_groups.armor import (
+from procedural_human.geo_node_groups.armor.shoulders import (
     create_shoulders_group,
+)
+from procedural_human.geo_node_groups.armor.sleeves import (
     create_sleeves_group,
+)
+from procedural_human.geo_node_groups.armor.neck import (
     create_neck_group,
+)
+from procedural_human.geo_node_groups.armor.chest import (
     create_chest_group,
+)
+from procedural_human.geo_node_groups.armor.waist import (
     create_waist_group,
+)
+from procedural_human.geo_node_groups.armor.blocker import (
     create_blocker_group,
-    create_armor_material_assignment_group,
+)
+from procedural_human.geo_node_groups.armor.armor_suit import (
     create_armor_suit_group,
 )
 
