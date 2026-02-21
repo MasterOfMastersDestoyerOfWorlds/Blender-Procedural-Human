@@ -56,8 +56,47 @@ WARNING: Using wrong socket index will cause unexpected behavior or errors!
 
 ## Validation Workflow
 
-1. Reload addon in Blender
-2. Check terminal window for errors
-3. If MCP server is running, use `ping_blender` to verify connection
-4. Test node group creation by applying to an object
-5. Use `validate_geometry` MCP tool to verify output has vertices/edges/faces
+1. If Blender is not running, start it with `python tools/blender_cli.py start`
+2. After geo node edits, run the primary validation command:
+   - `python tools/blender_cli.py validate --group <GroupName>`
+3. Check returned JSON and ensure all checks pass:
+   - Geometry exists (`vertex_count >= 2` and `face_count >= 1`)
+   - Watertight passes by default (or intentionally disabled for open meshes)
+   - Degenerate check passes (not collapsed to line/point)
+   - Camera visibility passes
+4. Review the returned screenshot path and visually confirm output matches intent
+5. If Blender is unresponsive, run `python tools/blender_cli.py restart`
+
+## CLI Command Design
+
+Every server-side check must be exposed as its own `@cli_command` so users
+and agents can compose arbitrary pipelines. Higher-level commands (`preflight`,
+`validate`) compose these atomic commands — they never call `client.command()`
+for something that should be independently runnable.
+
+### Atomic commands (each usable standalone)
+
+| Command | Purpose |
+|---------|---------|
+| `validate-geometry` | vertex count >= 2, face count >= 1 |
+| `check-watertight` | all edges manifold |
+| `check-degenerate` | not collapsed to point/line |
+| `check-camera-visibility` | bounding box in camera frustum |
+| `screenshot` | render scene to PNG |
+| `mesh-metrics` | counts, dimensions, face histogram |
+| `apply-node-group` | create object with geo node group |
+| `reload` | clean scene + re-enable addon |
+| `exec` | arbitrary `bpy` code |
+
+### Composite commands (compose the above)
+
+| Command | Steps |
+|---------|-------|
+| `preflight` | validate-geometry → check-watertight → check-degenerate → check-camera-visibility → screenshot |
+| `validate` | reload → apply-node-group → preflight |
+
+### Adding a new check
+
+1. Add a handler in `blender_server.py` (server-side)
+2. Add an `@cli_command` in `tools/commands/` (client-side, standalone)
+3. Optionally compose it into `preflight` / `validate`

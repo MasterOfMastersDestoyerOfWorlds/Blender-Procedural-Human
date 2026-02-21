@@ -40,6 +40,23 @@ def _create_workspace_on_load(dummy):
         )
 
 
+def _move_workspace_to_back(context, window, workspace_name: str):
+    """Move workspace tab to back so default Layout stays first."""
+    if workspace_name not in bpy.data.workspaces:
+        return
+    target_workspace = bpy.data.workspaces[workspace_name]
+    previous_workspace = window.workspace
+    try:
+        window.workspace = target_workspace
+        with context.temp_override(window=window, screen=window.screen):
+            bpy.ops.workspace.reorder_to_back()
+    except Exception as e:
+        logger.warning(f"Could not reorder workspace '{workspace_name}' to back: {e}")
+    finally:
+        if previous_workspace is not None:
+            window.workspace = previous_workspace
+
+
 class procedural_workspace(DiscoverableClassDecorator):
     """
     Decorator for workspace classes that automatically sets Blender workspace attributes.
@@ -164,6 +181,7 @@ class procedural_workspace(DiscoverableClassDecorator):
                         workspace_cls.create_layout(context)
                     if original_workspace is not None:
                         window.workspace = original_workspace
+                    _move_workspace_to_back(context, window, workspace_cls.name)
                     
                     logger.info(f"Created workspace: {workspace_cls.name}")
                 except Exception as e:
@@ -248,6 +266,7 @@ class procedural_workspace(DiscoverableClassDecorator):
             if main_area:
                 main_area.type = 'VIEW_3D'
             workspace_cls.create_layout(context)
+            _move_workspace_to_back(context, context.window, workspace_cls.name)
             
             logger.info(f"Created workspace: {workspace_cls.name}")
             return True

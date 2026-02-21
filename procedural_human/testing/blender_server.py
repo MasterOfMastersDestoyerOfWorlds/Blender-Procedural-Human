@@ -2,7 +2,7 @@
 Blender HTTP Command Server
 
 A lightweight HTTP server that runs inside Blender using bpy.app.timers,
-allowing external tools (like an MCP server) to send commands to Blender.
+allowing the CLI (``uv run blender-cli``) to send commands to Blender.
 
 The server accepts JSON commands and executes Blender operators or Python code,
 returning results as JSON responses.
@@ -553,7 +553,7 @@ def handle_validate_geometry(params: Dict[str, Any]) -> Dict[str, Any]:
         edge_count = len(data.edges) if hasattr(data, 'edges') else 0
         face_count = len(data.polygons) if hasattr(data, 'polygons') else 0
         
-        has_geometry = vertex_count > 0 or edge_count > 0 or face_count > 0
+        has_geometry = vertex_count > 1 and face_count > 0
         
         return {
             "success": has_geometry,
@@ -561,13 +561,139 @@ def handle_validate_geometry(params: Dict[str, Any]) -> Dict[str, Any]:
             "vertex_count": vertex_count,
             "edge_count": edge_count,
             "face_count": face_count,
-            "error": None if has_geometry else "Geometry has no vertices, edges, or faces"
+            "error": None if has_geometry else "Geometry must have at least 2 vertices and 1 face"
         }
     except Exception as e:
         return {
             "success": False,
             "error": str(e),
             "traceback": traceback.format_exc()
+        }
+
+
+def handle_clean_scene(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Reset to a clean scene and remove any default objects."""
+    try:
+        bpy.ops.wm.read_homefile(use_empty=True)
+        removed = 0
+        for obj in list(bpy.data.objects):
+            bpy.data.objects.remove(obj, do_unlink=True)
+            removed += 1
+        return {"success": True, "removed_objects": removed}
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+
+def handle_check_watertight(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Check if evaluated mesh is watertight (all edges manifold)."""
+    import bmesh
+
+    obj_name = params.get("object_name")
+    try:
+        obj = bpy.data.objects.get(obj_name) if obj_name else bpy.context.active_object
+        if not obj:
+            return {"success": False, "error": "No object found"}
+        if obj.type != "MESH":
+            return {"success": False, "error": f"Object is not a mesh: {obj.type}"}
+
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        eval_obj = obj.evaluated_get(depsgraph)
+        eval_mesh = eval_obj.to_mesh()
+
+        bm = bmesh.new()
+        bm.from_mesh(eval_mesh)
+        non_manifold_edges = sum(1 for edge in bm.edges if not edge.is_manifold)
+        total_edges = len(bm.edges)
+
+        bm.free()
+        eval_obj.to_mesh_clear()
+
+        return {
+            "success": True,
+            "object_name": obj.name,
+            "is_watertight": non_manifold_edges == 0 and total_edges > 0,
+            "non_manifold_edges": non_manifold_edges,
+            "total_edges": total_edges,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+
+def handle_check_camera_visibility(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Check whether object bounding box is visible in active camera frame."""
+    from bpy_extras.object_utils import world_to_camera_view
+    from mathutils import Vector
+
+    obj_name = params.get("object_name")
+    try:
+        obj = bpy.data.objects.get(obj_name) if obj_name else bpy.context.active_object
+        if not obj:
+            return {"success": False, "error": "No object found"}
+
+        scene = bpy.context.scene
+        camera = scene.camera
+        if not camera:
+            return {"success": False, "error": "No active scene camera"}
+
+        corners_world = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+        projected = [world_to_camera_view(scene, camera, corner) for corner in corners_world]
+
+        inside_count = sum(
+            1
+            for p in projected
+            if 0.0 <= p.x <= 1.0 and 0.0 <= p.y <= 1.0 and 0.0 <= p.z <= 1.0
+        )
+        fraction = inside_count / len(projected) if projected else 0.0
+
+        return {
+            "success": True,
+            "object_name": obj.name,
+            "camera_name": camera.name,
+            "visible": inside_count > 0,
+            "inside_corners": inside_count,
+            "total_corners": len(projected),
+            "fraction_in_frame": fraction,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+
+def handle_reload_addon(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Reload addon and optionally clean scene before re-enable."""
+    clean_scene = params.get("clean_scene", True)
+    module_name = params.get("module_name", "procedural_human")
+    try:
+        clean_result = None
+        if clean_scene:
+            clean_result = handle_clean_scene({})
+            if not clean_result.get("success"):
+                return clean_result
+
+        bpy.ops.preferences.addon_disable(module=module_name)
+        bpy.ops.preferences.addon_enable(module=module_name)
+        return {
+            "success": True,
+            "module": module_name,
+            "clean_scene": clean_scene,
+            "clean_result": clean_result,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
         }
 
 
@@ -584,6 +710,10 @@ COMMAND_HANDLERS: Dict[str, Callable] = {
     "capture_viewport": handle_capture_viewport,
     "get_mesh_metrics": handle_get_mesh_metrics,
     "validate_geometry": handle_validate_geometry,
+    "check_watertight": handle_check_watertight,
+    "check_camera_visibility": handle_check_camera_visibility,
+    "clean_scene": handle_clean_scene,
+    "reload_addon": handle_reload_addon,
     "apply_node_group": handle_apply_node_group,
     "setup_basalt_test": handle_setup_basalt_test,
     "ping": lambda p: {"success": True, "message": "pong"},

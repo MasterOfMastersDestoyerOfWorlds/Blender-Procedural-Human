@@ -27,60 +27,14 @@ Blender operators that automate the testing workflow:
 
 ### 3. Blender HTTP Server (`blender_server.py`)
 
-HTTP server running inside Blender for external tool integration:
+HTTP server running inside Blender for external tool integration.
+The CLI (`uv run blender-cli`) communicates with this server.
 
 ```python
-# In Blender Python console
+# Server starts automatically when the addon loads via blender_bootstrap.py.
+# Manual start from Blender Python console:
 bpy.ops.procedural.start_test_server(port=9876)
-
-# Send commands from external process
-import requests
-response = requests.post("http://localhost:9876/command", json={
-    "action": "run_test",
-    "params": {"subdivisions": 2}
-})
 ```
-
-### 4. MCP Server Bridge (`mcp_server.py`)
-
-MCP server for Claude/Cursor integration:
-
-```bash
-# Run MCP server
-python -m procedural_human.testing.mcp_server
-
-# Or test connection to Blender
-python -m procedural_human.testing.mcp_server --test
-```
-
-## Setup for Claude Integration
-
-1. **Start Blender** and load the addon
-
-2. **Start the HTTP server** in Blender's Python console:
-   ```python
-   bpy.ops.procedural.start_test_server()
-   ```
-
-3. **Configure Cursor** to use the MCP server:
-   - Copy `mcp_config.json` to your Cursor settings
-   - Or add to `.cursor/mcp.json` in your project
-
-4. **Use tools in conversation**:
-   - Claude can now call `run_coon_patch_test`, `check_corner_topology`, etc.
-
-## Available MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `run_coon_patch_test` | Run full test cycle |
-| `get_point_data` | Query specific point attributes |
-| `check_corner_topology` | Verify single corner |
-| `get_csv_data` | Get latest export info |
-| `verify_topology` | Check all corners |
-| `setup_test` | Setup without applying |
-| `apply_and_export` | Apply and export CSVs |
-| `ping_blender` | Check server status |
 
 ## Verification Algorithm
 
@@ -98,6 +52,6 @@ For each corner point P:
 # Quick topology check on latest CSVs
 python procedural_human/testing/topology_checker.py
 
-# Test MCP tools (requires Blender server running)
-python -m procedural_human.testing.mcp_server --test
+# Full validation via CLI (preferred)
+uv run blender-cli validate --group <GroupName>
 ```
