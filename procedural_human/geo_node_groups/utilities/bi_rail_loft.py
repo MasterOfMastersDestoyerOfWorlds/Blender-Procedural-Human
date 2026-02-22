@@ -177,6 +177,7 @@ def create_bi_rail_loft_group():
     links.new(resample_curve_002.outputs[0], set_position.inputs[0])
 
     frame_001 = nodes.new("NodeFrame")
+    frame_001.label = "Fix Transform"
     frame_001.text = None
     frame_001.shrink = True
     frame_001.label_size = 20
@@ -215,6 +216,7 @@ def create_bi_rail_loft_group():
     links.new(integer_math_003.outputs[0], math_001.inputs[1])
 
     frame_002 = nodes.new("NodeFrame")
+    frame_002.label = "Duplicate Factor"
     frame_002.text = None
     frame_002.shrink = True
     frame_002.label_size = 20
@@ -290,6 +292,7 @@ def create_bi_rail_loft_group():
     links.new(float_to_integer.outputs[0], integer_math_004.inputs[0])
 
     frame_003 = nodes.new("NodeFrame")
+    frame_003.label = "Spline Lerp"
     frame_003.text = None
     frame_003.shrink = True
     frame_003.label_size = 20
@@ -362,6 +365,7 @@ def create_bi_rail_loft_group():
     links.new(align_rotation_to_vector_001.outputs[0], align_rotation_to_vector_002.inputs[0])
 
     frame_004 = nodes.new("NodeFrame")
+    frame_004.label = "Orient Splines"
     frame_004.text = None
     frame_004.shrink = True
     frame_004.label_size = 20

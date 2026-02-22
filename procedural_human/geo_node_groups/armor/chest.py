@@ -50,6 +50,7 @@ def create_chest_group():
     bézier_segment.inputs[4].default_value = Vector((0.0, -0.08999998867511749, 0.4099999964237213))
 
     frame = nodes.new("NodeFrame")
+    frame.label = "Centre Line"
     frame.text = None
     frame.shrink = True
     frame.label_size = 20
@@ -85,16 +86,19 @@ def create_chest_group():
     links.new(join_splines_1.outputs[0], bi_rail_loft.inputs[0])
 
     frame_001 = nodes.new("NodeFrame")
+    frame_001.label = "Outside"
     frame_001.text = None
     frame_001.shrink = True
     frame_001.label_size = 20
 
     frame_002 = nodes.new("NodeFrame")
+    frame_002.label = "Centre"
     frame_002.text = None
     frame_002.shrink = True
     frame_002.label_size = 20
 
     frame_003 = nodes.new("NodeFrame")
+    frame_003.label = "Rails"
     frame_003.text = None
     frame_003.shrink = True
     frame_003.label_size = 20
@@ -126,6 +130,7 @@ def create_chest_group():
     links.new(bézier_segment_003.outputs[0], join_geometry.inputs[0])
 
     frame_004 = nodes.new("NodeFrame")
+    frame_004.label = "Profiles"
     frame_004.text = None
     frame_004.shrink = True
     frame_004.label_size = 20
@@ -518,11 +523,13 @@ def create_chest_group():
     links.new(mesh_to_curve_001.outputs[0], trim_curve_002.inputs[0])
 
     frame_005 = nodes.new("NodeFrame")
+    frame_005.label = ""
     frame_005.text = None
     frame_005.shrink = True
     frame_005.label_size = 20
 
     frame_006 = nodes.new("NodeFrame")
+    frame_006.label = ""
     frame_006.text = None
     frame_006.shrink = True
     frame_006.label_size = 20
@@ -547,6 +554,7 @@ def create_chest_group():
     links.new(gold_on_band.outputs[0], join_geometry_005.inputs[0])
 
     frame_007 = nodes.new("NodeFrame")
+    frame_007.label = "Gold"
     frame_007.text = None
     frame_007.shrink = True
     frame_007.label_size = 20
@@ -761,6 +769,7 @@ def create_chest_group():
     links.new(random_value_006.outputs[2], gem_in_holder.inputs[8])
 
     frame_008 = nodes.new("NodeFrame")
+    frame_008.label = "Broaches"
     frame_008.text = None
     frame_008.shrink = True
     frame_008.label_size = 20
@@ -880,6 +889,7 @@ def create_chest_group():
     links.new(for_each_geometry_element_input_001.outputs[2], rotate_rotation_002.inputs[0])
 
     frame_009 = nodes.new("NodeFrame")
+    frame_009.label = "Random Wings"
     frame_009.text = None
     frame_009.shrink = True
     frame_009.label_size = 20
@@ -986,6 +996,7 @@ def create_chest_group():
     links.new(ico_sphere.outputs[0], set_shade_smooth_003.inputs[0])
 
     frame_010 = nodes.new("NodeFrame")
+    frame_010.label = "Random Jewels"
     frame_010.text = None
     frame_010.shrink = True
     frame_010.label_size = 20
@@ -1064,6 +1075,7 @@ def create_chest_group():
     links.new(random_value_010.outputs[1], instance_on_points_001.inputs[6])
 
     frame_011 = nodes.new("NodeFrame")
+    frame_011.label = "Larger Jewels"
     frame_011.text = None
     frame_011.shrink = True
     frame_011.label_size = 20

@@ -276,31 +276,37 @@ def create_gem_in__holder_group():
     links.new(group_input_003.outputs[7], curve_circle_001.inputs[0])
 
     frame = nodes.new("NodeFrame")
+    frame.label = "Profile"
     frame.text = None
     frame.shrink = True
     frame.label_size = 20
 
     frame_001 = nodes.new("NodeFrame")
+    frame_001.label = "Gem"
     frame_001.text = None
     frame_001.shrink = True
     frame_001.label_size = 20
 
     frame_002 = nodes.new("NodeFrame")
+    frame_002.label = "Strands"
     frame_002.text = None
     frame_002.shrink = True
     frame_002.label_size = 20
 
     frame_003 = nodes.new("NodeFrame")
+    frame_003.label = "Mesh"
     frame_003.text = None
     frame_003.shrink = True
     frame_003.label_size = 20
 
     frame_004 = nodes.new("NodeFrame")
+    frame_004.label = "Mirror"
     frame_004.text = None
     frame_004.shrink = True
     frame_004.label_size = 20
 
     frame_005 = nodes.new("NodeFrame")
+    frame_005.label = "Radial Array"
     frame_005.text = None
     frame_005.shrink = True
     frame_005.label_size = 20
@@ -470,6 +476,7 @@ def create_gem_in__holder_group():
     links.new(align_rotation_to_vector.outputs[0], invert_rotation.inputs[0])
 
     frame_006 = nodes.new("NodeFrame")
+    frame_006.label = "Align to X"
     frame_006.text = None
     frame_006.shrink = True
     frame_006.label_size = 20

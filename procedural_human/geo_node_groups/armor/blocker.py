@@ -51,6 +51,7 @@ def create_blocker_group():
     links.new(ico_sphere.outputs[0], transform_geometry.inputs[0])
 
     frame_001 = nodes.new("NodeFrame")
+    frame_001.label = "Chest"
     frame_001.text = None
     frame_001.shrink = True
     frame_001.label_size = 20
@@ -479,11 +480,13 @@ def create_blocker_group():
     links.new(fillet_curve.outputs[0], resample_curve_002.inputs[0])
 
     frame_002 = nodes.new("NodeFrame")
+    frame_002.label = "Piping"
     frame_002.text = None
     frame_002.shrink = True
     frame_002.label_size = 20
 
     frame_003 = nodes.new("NodeFrame")
+    frame_003.label = "Quilting"
     frame_003.text = None
     frame_003.shrink = True
     frame_003.label_size = 20
@@ -539,6 +542,7 @@ def create_blocker_group():
     links.new(compare_004.outputs[0], set_shade_smooth_002.inputs[1])
 
     frame_004 = nodes.new("NodeFrame")
+    frame_004.label = "Gambeson Pattern"
     frame_004.text = None
     frame_004.shrink = True
     frame_004.label_size = 20
@@ -684,6 +688,7 @@ def create_blocker_group():
     links.new(store_named_attribute_001.outputs[0], store_named_attribute.inputs[0])
 
     frame_005 = nodes.new("NodeFrame")
+    frame_005.label = "Thickness"
     frame_005.text = None
     frame_005.shrink = True
     frame_005.label_size = 20
@@ -701,21 +706,25 @@ def create_blocker_group():
     links.new(curve_to_mesh_002.outputs[0], reroute_002.inputs[0])
 
     frame_006 = nodes.new("NodeFrame")
+    frame_006.label = "UVMap"
     frame_006.text = None
     frame_006.shrink = True
     frame_006.label_size = 20
 
     frame_007 = nodes.new("NodeFrame")
+    frame_007.label = "General Collar Shape"
     frame_007.text = None
     frame_007.shrink = True
     frame_007.label_size = 20
 
     frame_008 = nodes.new("NodeFrame")
+    frame_008.label = "Displacement"
     frame_008.text = None
     frame_008.shrink = True
     frame_008.label_size = 20
 
     frame_009 = nodes.new("NodeFrame")
+    frame_009.label = "Collar"
     frame_009.text = None
     frame_009.shrink = True
     frame_009.label_size = 20
@@ -930,6 +939,7 @@ def create_blocker_group():
     links.new(set_shade_smooth_003.outputs[0], join_geometry_009.inputs[0])
 
     frame = nodes.new("NodeFrame")
+    frame.label = "Stitching"
     frame.text = None
     frame.shrink = True
     frame.label_size = 20

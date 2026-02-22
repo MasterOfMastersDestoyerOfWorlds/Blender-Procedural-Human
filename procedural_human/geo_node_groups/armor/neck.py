@@ -64,6 +64,7 @@ def create_neck_group():
     links.new(vector.outputs[0], quadratic_bézier_004.inputs[1])
 
     frame_006 = nodes.new("NodeFrame")
+    frame_006.label = "Centre Profile"
     frame_006.text = None
     frame_006.shrink = True
     frame_006.label_size = 20
@@ -92,6 +93,7 @@ def create_neck_group():
     links.new(vector_001.outputs[0], quadratic_bézier_007.inputs[1])
 
     frame_007 = nodes.new("NodeFrame")
+    frame_007.label = "Side Profile"
     frame_007.text = None
     frame_007.shrink = True
     frame_007.label_size = 20
@@ -155,6 +157,7 @@ def create_neck_group():
     links.new(separate_x_y_z.outputs[1], map_range.inputs[0])
 
     frame_008 = nodes.new("NodeFrame")
+    frame_008.label = "Profiles"
     frame_008.text = None
     frame_008.shrink = True
     frame_008.label_size = 20
@@ -231,11 +234,13 @@ def create_neck_group():
     links.new(integer.outputs[0], curve_circle.inputs[0])
 
     frame_009 = nodes.new("NodeFrame")
+    frame_009.label = "Neck Rails"
     frame_009.text = None
     frame_009.shrink = True
     frame_009.label_size = 20
 
     frame_010 = nodes.new("NodeFrame")
+    frame_010.label = "Neck"
     frame_010.text = None
     frame_010.shrink = True
     frame_010.label_size = 20
@@ -308,6 +313,7 @@ def create_neck_group():
     links.new(separate_geometry.outputs[0], join_geometry_001.inputs[0])
 
     frame = nodes.new("NodeFrame")
+    frame.label = "Pipes"
     frame.text = None
     frame.shrink = True
     frame.label_size = 20
@@ -397,6 +403,7 @@ def create_neck_group():
     links.new(vector_math, set_curve_normal.inputs[3])
 
     frame_005 = nodes.new("NodeFrame")
+    frame_005.label = ""
     frame_005.text = None
     frame_005.shrink = True
     frame_005.label_size = 20
@@ -408,6 +415,7 @@ def create_neck_group():
     gold_on_band.inputs[3].default_value = 1
 
     frame_011 = nodes.new("NodeFrame")
+    frame_011.label = "Gold"
     frame_011.text = None
     frame_011.shrink = True
     frame_011.label_size = 20
@@ -566,6 +574,7 @@ def create_neck_group():
     links.new(random_value_006.outputs[2], gem_in_holder.inputs[8])
 
     frame_012 = nodes.new("NodeFrame")
+    frame_012.label = "Broaches"
     frame_012.text = None
     frame_012.shrink = True
     frame_012.label_size = 20
@@ -664,6 +673,7 @@ def create_neck_group():
     links.new(compare_004.outputs[0], boolean_math_001.inputs[1])
 
     frame_001 = nodes.new("NodeFrame")
+    frame_001.label = "On Band"
     frame_001.text = None
     frame_001.shrink = True
     frame_001.label_size = 20
@@ -770,6 +780,7 @@ def create_neck_group():
     links.new(for_each_geometry_element_input_001.outputs[2], rotate_rotation_002.inputs[0])
 
     frame_014 = nodes.new("NodeFrame")
+    frame_014.label = "Random Wings"
     frame_014.text = None
     frame_014.shrink = True
     frame_014.label_size = 20
@@ -870,6 +881,7 @@ def create_neck_group():
     links.new(ico_sphere.outputs[0], set_shade_smooth_003.inputs[0])
 
     frame_015 = nodes.new("NodeFrame")
+    frame_015.label = "Random Jewels"
     frame_015.text = None
     frame_015.shrink = True
     frame_015.label_size = 20
@@ -949,6 +961,7 @@ def create_neck_group():
     links.new(random_value_010.outputs[1], instance_on_points_001.inputs[6])
 
     frame_016 = nodes.new("NodeFrame")
+    frame_016.label = "Larger Jewels"
     frame_016.text = None
     frame_016.shrink = True
     frame_016.label_size = 20
@@ -1061,6 +1074,7 @@ def create_neck_group():
     links.new(resample_curve_002.outputs[0], set_curve_normal_003.inputs[0])
 
     frame_013 = nodes.new("NodeFrame")
+    frame_013.label = ""
     frame_013.text = None
     frame_013.shrink = True
     frame_013.label_size = 20
@@ -1115,6 +1129,7 @@ def create_neck_group():
     links.new(vector_math, set_curve_normal_004.inputs[3])
 
     frame_017 = nodes.new("NodeFrame")
+    frame_017.label = ""
     frame_017.text = None
     frame_017.shrink = True
     frame_017.label_size = 20
@@ -1393,6 +1408,7 @@ def create_neck_group():
     links.new(transform_geometry_014.outputs[0], join_geometry_003.inputs[0])
 
     frame_002 = nodes.new("NodeFrame")
+    frame_002.label = "Necklace Link"
     frame_002.text = None
     frame_002.shrink = True
     frame_002.label_size = 20
@@ -1409,6 +1425,7 @@ def create_neck_group():
     links.new(ico_sphere_003.outputs[0], join_geometry_003.inputs[0])
 
     frame_003 = nodes.new("NodeFrame")
+    frame_003.label = "Align"
     frame_003.text = None
     frame_003.shrink = True
     frame_003.label_size = 20
@@ -1583,6 +1600,7 @@ def create_neck_group():
     links.new(store_named_attribute_006.outputs[0], join_geometry_010.inputs[0])
 
     frame_004 = nodes.new("NodeFrame")
+    frame_004.label = "Pendant"
     frame_004.text = None
     frame_004.shrink = True
     frame_004.label_size = 20
@@ -1635,6 +1653,7 @@ def create_neck_group():
     links.new(math_009.outputs[0], math_010.inputs[1])
 
     frame_018 = nodes.new("NodeFrame")
+    frame_018.label = "Necklace 1"
     frame_018.text = None
     frame_018.shrink = True
     frame_018.label_size = 20
@@ -1796,6 +1815,7 @@ def create_neck_group():
     links.new(float_curve_008.outputs[0], math_014.inputs[0])
 
     frame_020 = nodes.new("NodeFrame")
+    frame_020.label = "Align"
     frame_020.text = None
     frame_020.shrink = True
     frame_020.label_size = 20
@@ -1833,6 +1853,7 @@ def create_neck_group():
     links.new(math_018.outputs[0], math_019.inputs[1])
 
     frame_022 = nodes.new("NodeFrame")
+    frame_022.label = "Necklace 1"
     frame_022.text = None
     frame_022.shrink = True
     frame_022.label_size = 20
@@ -1879,6 +1900,7 @@ def create_neck_group():
     links.new(curve_circle_005.outputs[0], curve_to_mesh_001.inputs[1])
 
     frame_019 = nodes.new("NodeFrame")
+    frame_019.label = "Link"
     frame_019.text = None
     frame_019.shrink = True
     frame_019.label_size = 20
@@ -1993,6 +2015,7 @@ def create_neck_group():
     links.new(transform_geometry_023.outputs[0], join_geometry_013.inputs[0])
 
     frame_021 = nodes.new("NodeFrame")
+    frame_021.label = "Loop"
     frame_021.text = None
     frame_021.shrink = True
     frame_021.label_size = 20
@@ -2154,6 +2177,7 @@ def create_neck_group():
     links.new(join_geometry_013.outputs[0], set_shade_smooth_001.inputs[0])
 
     frame_023 = nodes.new("NodeFrame")
+    frame_023.label = "Key"
     frame_023.text = None
     frame_023.shrink = True
     frame_023.label_size = 20
@@ -2168,6 +2192,7 @@ def create_neck_group():
     links.new(set_shade_smooth_001.outputs[0], store_named_attribute_007.inputs[0])
 
     frame_024 = nodes.new("NodeFrame")
+    frame_024.label = "Necklaces"
     frame_024.text = None
     frame_024.shrink = True
     frame_024.label_size = 20
@@ -2663,11 +2688,13 @@ def create_neck_group():
     links.new(curve_circle_012.outputs[0], transform_geometry_035.inputs[0])
 
     frame_025 = nodes.new("NodeFrame")
+    frame_025.label = "Satalite Gems"
     frame_025.text = None
     frame_025.shrink = True
     frame_025.label_size = 20
 
     frame_026 = nodes.new("NodeFrame")
+    frame_026.label = "Main Broach"
     frame_026.text = None
     frame_026.shrink = True
     frame_026.label_size = 20
@@ -2744,6 +2771,7 @@ def create_neck_group():
     links.new(curve_tangent_004.outputs[0], align_rotation_to_vector_005.inputs[2])
 
     frame_027 = nodes.new("NodeFrame")
+    frame_027.label = "Collar Gems"
     frame_027.text = None
     frame_027.shrink = True
     frame_027.label_size = 20
@@ -2922,6 +2950,7 @@ def create_neck_group():
     links.new(random_value_020.outputs[2], gem_in_holder_9.inputs[8])
 
     frame_028 = nodes.new("NodeFrame")
+    frame_028.label = "Broaches"
     frame_028.text = None
     frame_028.shrink = True
     frame_028.label_size = 20
@@ -3041,5 +3070,439 @@ def create_neck_group():
     links.new(transform_geometry_043.outputs[0], store_named_attribute_005.inputs[0])
     links.new(join_geometry_007.outputs[0], transform_geometry_043.inputs[0])
 
+    # Parent assignments
+    quadratic_bézier_003.parent = frame_006
+    bi_rail_loft.parent = frame_010
+    quadratic_bézier_004.parent = frame_006
+    join_splines.parent = frame_006
+    join_geometry_005.parent = frame_006
+    vector.parent = frame_006
+    frame_006.parent = frame_008
+    quadratic_bézier_006.parent = frame_007
+    quadratic_bézier_007.parent = frame_007
+    join_splines_1.parent = frame_007
+    join_geometry_006.parent = frame_007
+    vector_001.parent = frame_007
+    frame_007.parent = frame_008
+    join_geometry_008.parent = frame_008
+    transform_geometry_002.parent = frame_009
+    transform_geometry_003.parent = frame_009
+    curve_circle.parent = frame_009
+    curve_circle_001.parent = frame_009
+    set_position.parent = frame_009
+    position.parent = frame_009
+    separate_x_y_z.parent = frame_009
+    map_range.parent = frame_009
+    frame_008.parent = frame_010
+    float_curve_001.parent = frame_009
+    combine_x_y_z.parent = frame_009
+    transform_geometry_004.parent = frame_009
+    transform_geometry_005.parent = frame_009
+    closure_input_001.parent = frame_010
+    closure_output_001.parent = frame_010
+    math.parent = frame_010
+    math_001.parent = frame_010
+    transform_geometry_001.parent = frame_007
+    transform_geometry_006.parent = frame_006
+    integer.parent = frame_009
+    frame_009.parent = frame_010
+    pipes.parent = frame
+    separate_x_y_z_002.parent = frame
+    compare_001.parent = frame
+    separate_geometry.parent = frame
+    join_geometry_001.parent = frame
+    join_geometry_002.parent = frame_011
+    switch.parent = frame_011
+    group_input.parent = frame_011
+    set_spline_cyclic.parent = frame_011
+    trim_curve.parent = frame_005
+    resample_curve_001.parent = frame_005
+    gold_decorations.parent = frame_005
+    set_curve_normal.parent = frame_005
+    sample_nearest_surface.parent = frame_011
+    normal.parent = frame_011
+    curve_tangent.parent = frame_005
+    frame_005.parent = frame_011
+    gold_on_band.parent = frame_001
+    gem_in_holder.parent = frame_012
+    curve_to_points.parent = frame_012
+    for_each_geometry_element_input.parent = frame_012
+    for_each_geometry_element_output.parent = frame_012
+    position_002.parent = frame_012
+    transform_geometry_007.parent = frame_012
+    rotate_rotation.parent = frame_012
+    random_value.parent = frame_012
+    transform_geometry_008.parent = frame_012
+    random_value_001.parent = frame_012
+    store_named_attribute_001.parent = frame_014
+    random_value_002.parent = frame_012
+    rotate_rotation_001.parent = frame_012
+    random_value_003.parent = frame_012
+    random_value_004.parent = frame_012
+    random_value_005.parent = frame_012
+    random_value_006.parent = frame_012
+    frame_012.parent = frame_011
+    separate_geometry_001.parent = frame_001
+    separate_x_y_z_003.parent = frame_001
+    compare_002.parent = frame_001
+    trim_curve_001.parent = frame_012
+    set_curve_normal_001.parent = frame_012
+    compare_003.parent = frame_001
+    boolean_math.parent = frame_001
+    boolean_math_001.parent = frame_001
+    compare_004.parent = frame_001
+    frame_001.parent = frame_011
+    boolean_math_002.parent = frame_001
+    compare_005.parent = frame_001
+    gem_in_holder_1.parent = frame_014
+    mesh_to_curve_002.parent = frame_014
+    is_edge_boundary.parent = frame_014
+    set_spline_cyclic_001.parent = frame_014
+    trim_curve_004.parent = frame_014
+    curve_to_points_001.parent = frame_014
+    set_curve_normal_002.parent = frame_014
+    position_004.parent = frame_014
+    for_each_geometry_element_input_001.parent = frame_014
+    for_each_geometry_element_output_001.parent = frame_014
+    transform_geometry_009.parent = frame_014
+    rotate_rotation_002.parent = frame_014
+    frame_014.parent = frame_011
+    random_value_007.parent = frame_014
+    random_value_008.parent = frame_014
+    distribute_points_on_faces.parent = frame_015
+    instance_on_points.parent = frame_015
+    ico_sphere.parent = frame_015
+    store_named_attribute_002.parent = frame_015
+    random_value_009.parent = frame_015
+    boolean_math_003.parent = frame_015
+    store_named_attribute_003.parent = frame_015
+    realize_instances_001.parent = frame_015
+    set_shade_smooth_003.parent = frame_015
+    frame_015.parent = frame_011
+    reroute_001.parent = frame_016
+    distribute_points_on_faces_001.parent = frame_016
+    geometry_proximity.parent = frame_016
+    compare_006.parent = frame_016
+    gem_in_holder_2.parent = frame_016
+    instance_on_points_001.parent = frame_016
+    random_value_010.parent = frame_016
+    frame_016.parent = frame_011
+    realize_instances_002.parent = frame_016
+    transform_geometry_010.parent = frame_016
+    swap_attr.parent = frame_016
+    capture_attribute_001.parent = frame_016
+    index.parent = frame_016
+    set_position_001.parent = frame_014
+    geometry_proximity_001.parent = frame_014
+    curve_to_mesh.parent = frame_014
+    separate_geometry_002.parent = frame_013
+    compare_007.parent = frame_013
+    separate_x_y_z_004.parent = frame_013
+    trim_curve_002.parent = frame_013
+    resample_curve_002.parent = frame_013
+    gold_decorations_1.parent = frame_013
+    set_curve_normal_003.parent = frame_013
+    frame_013.parent = frame_011
+    transform_geometry.parent = frame_013
+    random_value_011.parent = frame_015
+    trim_curve_003.parent = frame_017
+    resample_curve_003.parent = frame_017
+    gold_decorations_2.parent = frame_017
+    set_curve_normal_004.parent = frame_017
+    frame_017.parent = frame_011
+    transform_geometry_011.parent = frame_017
+    mesh_to_curve.parent = frame_017
+    set_curve_tilt.parent = frame_017
+    reroute_002.parent = frame_011
+    curve_circle_002.parent = frame_018
+    transform_geometry_012.parent = frame_018
+    set_position_002.parent = frame_018
+    position_003.parent = frame_018
+    separate_x_y_z_005.parent = frame_018
+    map_range_001.parent = frame_018
+    float_curve.parent = frame_018
+    math_002.parent = frame_018
+    combine_x_y_z_001.parent = frame_018
+    position_005.parent = frame_018
+    vector_math_001.parent = frame_018
+    combine_x_y_z_002.parent = frame_018
+    float_curve_002.parent = frame_018
+    store_named_attribute.parent = frame_024
+    resample_curve.parent = frame_018
+    instance_on_points_002.parent = frame_018
+    align_rotation_to_vector.parent = frame_003
+    curve_tangent_001.parent = frame_003
+    align_rotation_to_vector_001.parent = frame_003
+    normal_001.parent = frame_003
+    rotate_rotation_003.parent = frame_003
+    spline_parameter.parent = frame_018
+    math_003.parent = frame_018
+    math_004.parent = frame_018
+    set_curve_tilt_002.parent = frame_018
+    map_range_002.parent = frame_018
+    float_curve_003.parent = frame_018
+    spline_parameter_001.parent = frame_018
+    math_005.parent = frame_018
+    curve_circle_003.parent = frame_002
+    instance_on_points_003.parent = frame_002
+    ico_sphere_001.parent = frame_002
+    cylinder_001.parent = frame_002
+    join_geometry_003.parent = frame_002
+    ico_sphere_002.parent = frame_002
+    transform_geometry_013.parent = frame_002
+    set_position_003.parent = frame_002
+    vector_math_002.parent = frame_002
+    noise_texture.parent = frame_002
+    transform_geometry_014.parent = frame_002
+    frame_002.parent = frame_018
+    rotate_rotation_004.parent = frame_003
+    ico_sphere_003.parent = frame_002
+    frame_003.parent = frame_018
+    store_named_attribute_004.parent = frame_002
+    cylinder_002.parent = frame_004
+    math_006.parent = frame_018
+    spline_parameter_002.parent = frame_018
+    float_curve_004.parent = frame_018
+    set_position_004.parent = frame_004
+    position_006.parent = frame_004
+    separate_x_y_z_006.parent = frame_004
+    math_007.parent = frame_004
+    combine_x_y_z_003.parent = frame_004
+    map_range_003.parent = frame_004
+    math_008.parent = frame_004
+    boolean_math_004.parent = frame_004
+    mesh_to_curve_001.parent = frame_004
+    ico_sphere_004.parent = frame_004
+    instance_on_points_004.parent = frame_004
+    transform_geometry_015.parent = frame_004
+    ico_sphere_005.parent = frame_004
+    dual_mesh.parent = frame_004
+    join_geometry_007.parent = frame_004
+    transform_geometry_016.parent = frame_004
+    transform_geometry_017.parent = frame_004
+    transform_geometry_018.parent = frame_004
+    transform_geometry_019.parent = frame_004
+    join_geometry_009.parent = frame_004
+    store_named_attribute_005.parent = frame_004
+    join_geometry_010.parent = frame_004
+    store_named_attribute_006.parent = frame_004
+    frame_004.parent = frame_018
+    sample_curve.parent = frame_018
+    transform_geometry_020.parent = frame_018
+    join_geometry_011.parent = frame_018
+    vector_math_003.parent = frame_018
+    float_curve_005.parent = frame_018
+    spline_parameter_003.parent = frame_018
+    math_009.parent = frame_018
+    math_010.parent = frame_018
+    frame_018.parent = frame_024
+    curve_circle_004.parent = frame_022
+    transform_geometry_021.parent = frame_022
+    set_position_005.parent = frame_022
+    position_007.parent = frame_022
+    separate_x_y_z_007.parent = frame_022
+    map_range_004.parent = frame_022
+    float_curve_006.parent = frame_022
+    math_011.parent = frame_022
+    combine_x_y_z_004.parent = frame_022
+    position_008.parent = frame_022
+    vector_math_004.parent = frame_022
+    combine_x_y_z_005.parent = frame_022
+    float_curve_007.parent = frame_022
+    resample_curve_004.parent = frame_022
+    instance_on_points_005.parent = frame_022
+    align_rotation_to_vector_002.parent = frame_020
+    curve_tangent_002.parent = frame_020
+    align_rotation_to_vector_003.parent = frame_020
+    normal_002.parent = frame_020
+    spline_parameter_004.parent = frame_022
+    math_012.parent = frame_022
+    math_013.parent = frame_022
+    set_curve_tilt_003.parent = frame_022
+    map_range_005.parent = frame_022
+    float_curve_008.parent = frame_022
+    spline_parameter_005.parent = frame_022
+    math_014.parent = frame_022
+    frame_020.parent = frame_022
+    math_015.parent = frame_022
+    spline_parameter_006.parent = frame_022
+    float_curve_009.parent = frame_022
+    float_curve_010.parent = frame_022
+    spline_parameter_007.parent = frame_022
+    math_018.parent = frame_022
+    math_019.parent = frame_022
+    frame_022.parent = frame_024
+    quadrilateral.parent = frame_019
+    fillet_curve.parent = frame_019
+    set_spline_type.parent = frame_019
+    curve_to_mesh_001.parent = frame_019
+    curve_circle_005.parent = frame_019
+    frame_019.parent = frame_022
+    rotate_rotation_006.parent = frame_020
+    rotate_rotation_005.parent = frame_020
+    random_value_012.parent = frame_020
+    index_001.parent = frame_020
+    math_016.parent = frame_020
+    switch_001.parent = frame_020
+    combine_x_y_z_006.parent = frame_020
+    join_geometry_012.parent = frame_024
+    curve_circle_006.parent = frame_021
+    curve_to_mesh_002.parent = frame_021
+    sample_curve_001.parent = frame_022
+    transform_geometry_022.parent = frame_022
+    join_geometry_013.parent = frame_022
+    vector_math_005.parent = frame_022
+    curve_circle_007.parent = frame_021
+    curve_line.parent = frame_023
+    transform_geometry_023.parent = frame_022
+    frame_021.parent = frame_022
+    vector_math_006.parent = frame_022
+    curve_to_mesh_003.parent = frame_023
+    resample_curve_005.parent = frame_023
+    curve_circle_008.parent = frame_023
+    spline_parameter_008.parent = frame_023
+    float_curve_011.parent = frame_023
+    curve_circle_009.parent = frame_023
+    curve_to_mesh_004.parent = frame_023
+    curve_circle_010.parent = frame_023
+    join_geometry_014.parent = frame_023
+    curve_circle_011.parent = frame_023
+    instance_on_points_006.parent = frame_023
+    transform_geometry_024.parent = frame_023
+    grid.parent = frame_023
+    delete_geometry_001.parent = frame_023
+    random_value_013.parent = frame_023
+    extrude_mesh.parent = frame_023
+    flip_faces.parent = frame_023
+    join_geometry_015.parent = frame_023
+    merge_by_distance.parent = frame_023
+    transform_geometry_025.parent = frame_023
+    subdivision_surface.parent = frame_023
+    set_shade_smooth_001.parent = frame_022
+    frame_023.parent = frame_022
+    store_named_attribute_007.parent = frame_022
+    ico_sphere_006.parent = frame_026
+    transform_geometry_026.parent = frame_026
+    instance_on_points_007.parent = frame_026
+    quadratic_bézier.parent = frame_026
+    realize_instances_003.parent = frame_026
+    mesh_to_s_d_f_grid.parent = frame_026
+    grid_to_mesh.parent = frame_026
+    dual_mesh_001.parent = frame_026
+    triangulate.parent = frame_026
+    s_d_f_grid_boolean.parent = frame_026
+    cube.parent = frame_026
+    mesh_to_s_d_f_grid_001.parent = frame_026
+    transform_geometry_027.parent = frame_026
+    mesh_boolean.parent = frame_026
+    cube_001.parent = frame_026
+    transform_geometry_028.parent = frame_026
+    delete_geometry_002.parent = frame_026
+    mesh_boolean_001.parent = frame_026
+    cube_002.parent = frame_026
+    transform_geometry_029.parent = frame_026
+    join_geometry_016.parent = frame_026
+    delete_geometry_003.parent = frame_026
+    normal_003.parent = frame_026
+    compare_008.parent = frame_026
+    mesh_to_curve_003.parent = frame_026
+    resample_curve_006.parent = frame_026
+    set_spline_cyclic_002.parent = frame_026
+    curve_to_mesh_005.parent = frame_026
+    gem_in_holder_3.parent = frame_026
+    trim_curve_005.parent = frame_026
+    instance_on_points_008.parent = frame_026
+    resample_curve_007.parent = frame_026
+    align_rotation_to_vector_004.parent = frame_026
+    curve_tangent_003.parent = frame_026
+    realize_instances_004.parent = frame_026
+    transform_geometry_030.parent = frame_026
+    flip_faces_002.parent = frame_026
+    join_geometry_018.parent = frame_026
+    merge_by_distance_001.parent = frame_026
+    is_edge_boundary_1.parent = frame_026
+    spline_parameter_009.parent = frame_026
+    math_020.parent = frame_026
+    math_021.parent = frame_026
+    curve_to_points_002.parent = frame_026
+    points_to_curves.parent = frame_026
+    gradient_texture.parent = frame_026
+    math_022.parent = frame_026
+    math_023.parent = frame_026
+    delete_geometry_004.parent = frame_026
+    position_009.parent = frame_026
+    separate_x_y_z_008.parent = frame_026
+    compare_009.parent = frame_026
+    float_curve_012.parent = frame_026
+    transform_geometry_031.parent = frame_026
+    flip_faces_003.parent = frame_026
+    join_geometry_019.parent = frame_026
+    gem_in_holder_4.parent = frame_026
+    join_geometry_020.parent = frame_026
+    gem_in_holder_5.parent = frame_026
+    transform_geometry_032.parent = frame_026
+    join_geometry_021.parent = frame_026
+    flip_faces_001.parent = frame_026
+    gem_in_holder_6.parent = frame_026
+    transform_geometry_033.parent = frame_026
+    join_geometry_022.parent = frame_026
+    flip_faces_004.parent = frame_026
+    transform_geometry_034.parent = frame_026
+    join_geometry_017.parent = frame_026
+    store_named_attribute_008.parent = frame_026
+    store_named_attribute_009.parent = frame_026
+    gem_in_holder_7.parent = frame_025
+    instance_on_points_009.parent = frame_025
+    curve_circle_012.parent = frame_025
+    transform_geometry_035.parent = frame_025
+    frame_025.parent = frame_026
+    transform_geometry_036.parent = frame_026
+    instance_on_points_010.parent = frame_027
+    gem_in_holder_8.parent = frame_027
+    realize_instances_005.parent = frame_027
+    capture_attribute_002.parent = frame_027
+    index_002.parent = frame_027
+    resample_curve_008.parent = frame_027
+    align_rotation_to_vector_005.parent = frame_027
+    normal_004.parent = frame_027
+    align_rotation_to_vector_006.parent = frame_027
+    curve_tangent_004.parent = frame_027
+    frame_027.parent = frame_011
+    trim_curve_006.parent = frame_027
+    gem_in_holder_9.parent = frame_028
+    curve_to_points_003.parent = frame_028
+    for_each_geometry_element_input_002.parent = frame_028
+    for_each_geometry_element_output_002.parent = frame_028
+    position_010.parent = frame_028
+    transform_geometry_037.parent = frame_028
+    rotate_rotation_007.parent = frame_028
+    random_value_014.parent = frame_028
+    transform_geometry_038.parent = frame_028
+    trim_curve_007.parent = frame_028
+    random_value_015.parent = frame_028
+    store_named_attribute_010.parent = frame_028
+    random_value_016.parent = frame_028
+    rotate_rotation_008.parent = frame_028
+    random_value_017.parent = frame_028
+    random_value_018.parent = frame_028
+    random_value_019.parent = frame_028
+    random_value_020.parent = frame_028
+    frame_028.parent = frame_011
+    store_named_attribute_011.parent = frame_026
+    store_named_attribute_012.parent = frame_028
+    mesh_boolean_002.parent = frame_017
+    ico_sphere_007.parent = frame_017
+    transform_geometry_039.parent = frame_017
+    store_named_attribute_013.parent = frame_027
+    boolean_math_005.parent = frame_027
+    named_attribute.parent = frame_027
+    store_named_attribute_014.parent = frame_027
+    math_017.parent = frame_027
+    transform_geometry_040.parent = frame_004
+    transform_geometry_041.parent = frame_004
+    scale_elements.parent = frame_004
+    transform_geometry_042.parent = frame_004
+    join_geometry_023.parent = frame_004
+    transform_geometry_043.parent = frame_004
     auto_layout_nodes(group)
     return group

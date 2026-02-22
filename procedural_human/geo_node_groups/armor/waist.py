@@ -46,6 +46,7 @@ def create_waist_group():
     bézier_segment.inputs[4].default_value = Vector((0.0, -0.18999998271465302, -0.049999989569187164))
 
     frame = nodes.new("NodeFrame")
+    frame.label = "Centre Line"
     frame.text = None
     frame.shrink = True
     frame.label_size = 20
@@ -67,16 +68,19 @@ def create_waist_group():
     links.new(join_splines_1.outputs[0], bi_rail_loft.inputs[0])
 
     frame_001 = nodes.new("NodeFrame")
+    frame_001.label = "Outside"
     frame_001.text = None
     frame_001.shrink = True
     frame_001.label_size = 20
 
     frame_002 = nodes.new("NodeFrame")
+    frame_002.label = "Centre"
     frame_002.text = None
     frame_002.shrink = True
     frame_002.label_size = 20
 
     frame_003 = nodes.new("NodeFrame")
+    frame_003.label = "Rails"
     frame_003.text = None
     frame_003.shrink = True
     frame_003.label_size = 20
@@ -92,6 +96,7 @@ def create_waist_group():
     links.new(quadratic_bézier.outputs[0], join_geometry_002.inputs[0])
 
     frame_004 = nodes.new("NodeFrame")
+    frame_004.label = "Profiles"
     frame_004.text = None
     frame_004.shrink = True
     frame_004.label_size = 20
@@ -261,6 +266,7 @@ def create_waist_group():
     links.new(extrude_mesh.outputs[1], boolean_math_001.inputs[1])
 
     frame_005 = nodes.new("NodeFrame")
+    frame_005.label = "Pipes"
     frame_005.text = None
     frame_005.shrink = True
     frame_005.label_size = 20
@@ -404,6 +410,7 @@ def create_waist_group():
     links.new(join_geometry_003.outputs[0], set_shade_smooth.inputs[0])
 
     frame_006 = nodes.new("NodeFrame")
+    frame_006.label = "Gold"
     frame_006.text = None
     frame_006.shrink = True
     frame_006.label_size = 20
@@ -476,6 +483,7 @@ def create_waist_group():
     links.new(vector_math_001.outputs[0], set_position.inputs[2])
 
     frame_007 = nodes.new("NodeFrame")
+    frame_007.label = "Merge Centre Line"
     frame_007.text = None
     frame_007.shrink = True
     frame_007.label_size = 20
@@ -653,11 +661,13 @@ def create_waist_group():
     links.new(transform_geometry_007.outputs[0], join_geometry_009.inputs[0])
 
     frame_008 = nodes.new("NodeFrame")
+    frame_008.label = "Knot"
     frame_008.text = None
     frame_008.shrink = True
     frame_008.label_size = 20
 
     frame_009 = nodes.new("NodeFrame")
+    frame_009.label = "Waist Loops"
     frame_009.text = None
     frame_009.shrink = True
     frame_009.label_size = 20
@@ -777,6 +787,7 @@ def create_waist_group():
     links.new(store_named_attribute_005.outputs[0], switch.inputs[2])
 
     frame_010 = nodes.new("NodeFrame")
+    frame_010.label = "ROPE"
     frame_010.text = None
     frame_010.shrink = True
     frame_010.label_size = 20
@@ -969,6 +980,7 @@ def create_waist_group():
     links.new(for_each_geometry_element_input_001.outputs[2], rotate_rotation_002.inputs[0])
 
     frame_011 = nodes.new("NodeFrame")
+    frame_011.label = "Random Wings"
     frame_011.text = None
     frame_011.shrink = True
     frame_011.label_size = 20
@@ -1037,6 +1049,7 @@ def create_waist_group():
     links.new(reroute.outputs[0], reroute_002.inputs[0])
 
     frame_012 = nodes.new("NodeFrame")
+    frame_012.label = ""
     frame_012.text = None
     frame_012.shrink = True
     frame_012.label_size = 20

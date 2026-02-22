@@ -288,6 +288,15 @@ class NodeGroupExporter:
 
             lines.append("")
 
+        lines.append("    # Parent assignments")
+        for node in node_group.nodes:
+            if node.parent is not None:
+                child_var = node_var_map.get(node.name)
+                parent_var = node_var_map.get(node.parent.name)
+                if child_var and parent_var:
+                    lines.append(f"    {child_var}.parent = {parent_var}")
+        lines.append("")
+
         lines.append("    auto_layout_nodes(group)")
         lines.append("    return group")
 

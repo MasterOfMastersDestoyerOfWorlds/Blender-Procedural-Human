@@ -175,6 +175,7 @@ def create_shoulders_group():
     links.new(capture_attribute_001.outputs[1], set_position_003.inputs[1])
 
     frame_013 = nodes.new("NodeFrame")
+    frame_013.label = "End curve"
     frame_013.text = None
     frame_013.shrink = True
     frame_013.label_size = 20
@@ -256,6 +257,7 @@ def create_shoulders_group():
     mesh_to_curve_002.mode = "EDGES"
 
     frame_014 = nodes.new("NodeFrame")
+    frame_014.label = "Shoulder Cover"
     frame_014.text = None
     frame_014.shrink = True
     frame_014.label_size = 20
@@ -284,6 +286,7 @@ def create_shoulders_group():
     links.new(curve_to_mesh_001.outputs[0], flip_faces_005.inputs[0])
 
     frame_015 = nodes.new("NodeFrame")
+    frame_015.label = "Outer Band"
     frame_015.text = None
     frame_015.shrink = True
     frame_015.label_size = 20
@@ -463,6 +466,7 @@ def create_shoulders_group():
     links.new(math_007.outputs[0], vector_math_006.inputs[1])
 
     frame = nodes.new("NodeFrame")
+    frame.label = "Arm Extension"
     frame.text = None
     frame.shrink = True
     frame.label_size = 20
@@ -629,6 +633,7 @@ def create_shoulders_group():
     links.new(join_geometry_017.outputs[0], reroute_011.inputs[0])
 
     frame_002 = nodes.new("NodeFrame")
+    frame_002.label = ""
     frame_002.text = None
     frame_002.shrink = True
     frame_002.label_size = 20
@@ -743,6 +748,7 @@ def create_shoulders_group():
     links.new(flip_faces.outputs[0], join_geometry.inputs[0])
 
     frame_001 = nodes.new("NodeFrame")
+    frame_001.label = ""
     frame_001.text = None
     frame_001.shrink = True
     frame_001.label_size = 20
@@ -752,6 +758,7 @@ def create_shoulders_group():
     links.new(gold_on_band.outputs[0], join_geometry_001.inputs[0])
 
     frame_003 = nodes.new("NodeFrame")
+    frame_003.label = "Gold"
     frame_003.text = None
     frame_003.shrink = True
     frame_003.label_size = 20
@@ -875,6 +882,7 @@ def create_shoulders_group():
     links.new(set_curve_normal_002.outputs[0], set_curve_tilt_004.inputs[0])
 
     frame_004 = nodes.new("NodeFrame")
+    frame_004.label = "Gold"
     frame_004.text = None
     frame_004.shrink = True
     frame_004.label_size = 20
@@ -1015,6 +1023,7 @@ def create_shoulders_group():
     links.new(random_value_001.outputs[1], instance_on_points_002.inputs[6])
 
     frame_005 = nodes.new("NodeFrame")
+    frame_005.label = "Extra Rubies"
     frame_005.text = None
     frame_005.shrink = True
     frame_005.label_size = 20
@@ -1164,16 +1173,19 @@ def create_shoulders_group():
     links.new(integer.outputs[0], curve_circle.inputs[0])
 
     frame_006 = nodes.new("NodeFrame")
+    frame_006.label = ""
     frame_006.text = None
     frame_006.shrink = True
     frame_006.label_size = 20
 
     frame_007 = nodes.new("NodeFrame")
+    frame_007.label = ""
     frame_007.text = None
     frame_007.shrink = True
     frame_007.label_size = 20
 
     frame_008 = nodes.new("NodeFrame")
+    frame_008.label = ""
     frame_008.text = None
     frame_008.shrink = True
     frame_008.label_size = 20
@@ -1261,6 +1273,7 @@ def create_shoulders_group():
     links.new(math.outputs[0], vector_math_008.inputs[3])
 
     frame_009 = nodes.new("NodeFrame")
+    frame_009.label = "Broaches"
     frame_009.text = None
     frame_009.shrink = True
     frame_009.label_size = 20
@@ -1303,6 +1316,7 @@ def create_shoulders_group():
     links.new(transform_geometry_008.outputs[0], join_geometry_003.inputs[0])
 
     frame_010 = nodes.new("NodeFrame")
+    frame_010.label = ""
     frame_010.text = None
     frame_010.shrink = True
     frame_010.label_size = 20
@@ -1320,6 +1334,7 @@ def create_shoulders_group():
     links.new(group_input.outputs[0], switch_001.inputs[0])
 
     frame_011 = nodes.new("NodeFrame")
+    frame_011.label = "Decor"
     frame_011.text = None
     frame_011.shrink = True
     frame_011.label_size = 20
@@ -1390,6 +1405,7 @@ def create_shoulders_group():
     links.new(boolean_math_006.outputs[0], separate_geometry_002.inputs[1])
 
     frame_012 = nodes.new("NodeFrame")
+    frame_012.label = ""
     frame_012.text = None
     frame_012.shrink = True
     frame_012.label_size = 20
@@ -1435,6 +1451,7 @@ def create_shoulders_group():
     links.new(for_each_geometry_element_input_001.outputs[2], rotate_rotation_002.inputs[0])
 
     frame_016 = nodes.new("NodeFrame")
+    frame_016.label = "Random Wings"
     frame_016.text = None
     frame_016.shrink = True
     frame_016.label_size = 20
@@ -1561,6 +1578,7 @@ def create_shoulders_group():
     links.new(random_value_010.outputs[1], instance_on_points_004.inputs[6])
 
     frame_017 = nodes.new("NodeFrame")
+    frame_017.label = "Larger Jewels"
     frame_017.text = None
     frame_017.shrink = True
     frame_017.label_size = 20
@@ -1733,6 +1751,7 @@ def create_shoulders_group():
     links.new(join_geometry_005.outputs[0], merge_by_distance_002.inputs[0])
 
     frame_018 = nodes.new("NodeFrame")
+    frame_018.label = "Curved"
     frame_018.text = None
     frame_018.shrink = True
     frame_018.label_size = 20

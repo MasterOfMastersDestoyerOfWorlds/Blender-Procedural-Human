@@ -51,6 +51,7 @@ def create_sleeves_group():
     links.new(cone.outputs[4], store_named_attribute.inputs[3])
 
     frame_011 = nodes.new("NodeFrame")
+    frame_011.label = "Sleeve"
     frame_011.text = None
     frame_011.shrink = True
     frame_011.label_size = 20
@@ -216,6 +217,7 @@ def create_sleeves_group():
     links.new(map_range_002.outputs[0], vector_math_001.inputs[1])
 
     frame_012 = nodes.new("NodeFrame")
+    frame_012.label = "Inner Sleeve"
     frame_012.text = None
     frame_012.shrink = True
     frame_012.label_size = 20
@@ -359,6 +361,7 @@ def create_sleeves_group():
     links.new(gold_on_band.outputs[0], join_geometry_016.inputs[0])
 
     frame = nodes.new("NodeFrame")
+    frame.label = "Gold"
     frame.text = None
     frame.shrink = True
     frame.label_size = 20
