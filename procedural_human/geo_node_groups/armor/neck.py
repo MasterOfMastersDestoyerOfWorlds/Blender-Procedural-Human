@@ -38,6 +38,7 @@ def create_neck_group():
 
     bi_rail_loft = nodes.new("GeometryNodeGroup")
     bi_rail_loft.node_tree = create_bi_rail_loft_group()
+    bi_rail_loft.inputs[4].default_value = "Resolution"
     bi_rail_loft.inputs[3].default_value = 0
     bi_rail_loft.inputs[5].default_value = 0.009999999776482582
     bi_rail_loft.inputs[6].default_value = 0.029999999329447746

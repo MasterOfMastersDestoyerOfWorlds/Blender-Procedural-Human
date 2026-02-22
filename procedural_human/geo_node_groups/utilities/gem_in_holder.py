@@ -140,8 +140,12 @@ def create_gem_in__holder_group():
     extrude_mesh_001.mode = "VERTICES"
     extrude_mesh_001.inputs[3].default_value = 0.0020000000949949026
     extrude_mesh_001.inputs[4].default_value = True
-
+    
     repeat_input_001 = nodes.new("GeometryNodeRepeatInput")
+    repeat_input_001.inputs[2].default_value = True
+    repeat_input_001.inputs[3].default_value = [0.0, 0.0, 0.0]
+    links.new(repeat_input_001.outputs[2], extrude_mesh_001.inputs[1])
+
     repeat_input_001.inputs[0].default_value = 60
     links.new(repeat_input_001.outputs[1], extrude_mesh_001.inputs[0])
     links.new(points_to_vertices.outputs[0], repeat_input_001.inputs[1])

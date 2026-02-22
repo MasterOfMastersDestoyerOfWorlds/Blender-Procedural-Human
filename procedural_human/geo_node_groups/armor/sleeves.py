@@ -136,6 +136,7 @@ def create_sleeves_group():
 
     bi_rail_loft = nodes.new("GeometryNodeGroup")
     bi_rail_loft.node_tree = create_bi_rail_loft_group()
+    bi_rail_loft.inputs[4].default_value = "Resolution"
     bi_rail_loft.inputs[3].default_value = 82
     bi_rail_loft.inputs[5].default_value = 0.10000000149011612
     bi_rail_loft.inputs[6].default_value = 0.10000000149011612

@@ -41,8 +41,9 @@ def create_gold__wavies_group():
     extrude_mesh_001.mode = "VERTICES"
     extrude_mesh_001.inputs[3].default_value = 0.0010000000474974513
     extrude_mesh_001.inputs[4].default_value = True
-
     repeat_input = nodes.new("GeometryNodeRepeatInput")
+    repeat_input.inputs[2].default_value = True
+    links.new(repeat_input.outputs[2], extrude_mesh_001.inputs[1])
     repeat_input.inputs[0].default_value = 50
     links.new(points_to_vertices.outputs[0], repeat_input.inputs[1])
     links.new(repeat_input.outputs[1], extrude_mesh_001.inputs[0])
@@ -119,6 +120,24 @@ def create_gold__wavies_group():
     links.new(repeat_output_001.outputs[0], group_output.inputs[0])
 
     index_switch = nodes.new("GeometryNodeIndexSwitch")
+    index_switch.inputs[3].default_value = 1.0099999904632568
+    index_switch.inputs[4].default_value = 1.2999999523162842
+    index_switch.inputs[5].default_value = 1.2999999523162842
+    index_switch.inputs[6].default_value = 2.569999933242798
+    index_switch.inputs[7].default_value = 3.6499998569488525
+    index_switch.inputs[8].default_value = 4.029999732971191
+    index_switch.inputs[9].default_value = 4.599999904632568
+    index_switch.inputs[10].default_value = 6.239999771118164
+    index_switch.inputs[11].default_value = 10.100000381469727
+    index_switch.inputs[12].default_value = 10.270000457763672
+    index_switch.inputs[13].default_value = 10.369999885559082
+    index_switch.inputs[14].default_value = 10.670000076293945
+    index_switch.inputs[15].default_value = 10.720000267028809
+    index_switch.inputs[16].default_value = 10.890000343322754
+    index_switch.inputs[17].default_value = 11.130000114440918
+    index_switch.inputs[18].default_value = 11.289999961853027
+    index_switch.inputs[19].default_value = 11.390000343322754
+    index_switch.inputs[20].default_value = 11.800000190734863
     index_switch.data_type = "FLOAT"
     index_switch.inputs[1].default_value = 1.5700000524520874
     index_switch.inputs[2].default_value = 0.3499999940395355

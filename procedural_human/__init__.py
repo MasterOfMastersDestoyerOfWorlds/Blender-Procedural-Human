@@ -206,6 +206,12 @@ _t0 = _time_module.perf_counter()
 import bpy
 from procedural_human.dsl.finger_segment_const import SEGMENT_SAMPLE_COUNT
 from procedural_human.logger import *
+try:
+    import procedural_human.logger as _ph_logger_module
+    if hasattr(_ph_logger_module, "configure_logging"):
+        _ph_logger_module.configure_logging()
+except Exception:
+    pass
 
 from procedural_human.decorators.curve_preset_decorator import register_preset_class
 from procedural_human.decorators.panel_decorator import procedural_panel
@@ -313,7 +319,7 @@ def register():
             try:
                 func()
             except Exception as e:
-                logger.info(f"Error creating node group {func.__name__}: {e}")
+                logger.exception(f"Error creating node group {func.__name__}: {e}")
         logger.info("Node group initialization complete.")
         return None
 
@@ -323,7 +329,7 @@ def register():
             try:
                 func()
             except Exception as e:
-                logger.info(f"Error creating shader group {func.__name__}: {e}")
+                logger.exception(f"Error creating shader group {func.__name__}: {e}")
         logger.info("Shader group initialization complete.")
         return None
 

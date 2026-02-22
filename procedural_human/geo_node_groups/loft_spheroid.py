@@ -6,6 +6,7 @@ import bpy
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import create_node, link_or_set, vec_math_op, math_op, get_or_rebuild_node_group
+from mathutils import Vector, Euler
 
 def get_bundled_node_group(name: str):
     """

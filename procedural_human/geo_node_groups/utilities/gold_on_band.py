@@ -54,8 +54,10 @@ def create_gold_on__band_group():
     extrude_mesh_001.mode = "VERTICES"
     extrude_mesh_001.inputs[3].default_value = 0.0020000000949949026
     extrude_mesh_001.inputs[4].default_value = True
-
+    
     repeat_input = nodes.new("GeometryNodeRepeatInput")
+    repeat_input.inputs[2].default_value = True
+    links.new(repeat_input.outputs[2], extrude_mesh_001.inputs[1])
     repeat_input.inputs[0].default_value = 100
     links.new(repeat_input.outputs[1], extrude_mesh_001.inputs[0])
     links.new(points_to_vertices.outputs[0], repeat_input.inputs[1])

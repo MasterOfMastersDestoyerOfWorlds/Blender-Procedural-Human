@@ -329,9 +329,12 @@ def create_shoulders_group():
     extrude_mesh = nodes.new("GeometryNodeExtrudeMesh")
     extrude_mesh.mode = "EDGES"
     extrude_mesh.inputs[3].default_value = 0.07000000029802322
+    repeat_input = nodes.new("GeometryNodeRepeatInput") 
+    repeat_input.inputs[3].default_value = 0.0
     extrude_mesh.inputs[4].default_value = True
 
-    repeat_input = nodes.new("GeometryNodeRepeatInput")
+    links.new(boolean_math.outputs[0], repeat_input.inputs[2])
+    links.new(repeat_input.outputs[2], extrude_mesh.inputs[1])
     links.new(flip_faces_005.outputs[0], repeat_input.inputs[1])
     links.new(repeat_input.outputs[1], extrude_mesh.inputs[0])
 

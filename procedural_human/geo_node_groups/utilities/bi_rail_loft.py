@@ -32,7 +32,7 @@ def create_bi_rail_loft_group():
     socket.default_value = 0
     socket.min_value = 0
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
+    menu_socket = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
     socket = group.interface.new_socket(name="X Spacing", in_out="INPUT", socket_type="NodeSocketFloat")
     socket.default_value = 0.10000000149011612
     socket.min_value = 0.0
@@ -590,6 +590,26 @@ def create_bi_rail_loft_group():
     links.new(math_001.outputs[0], evaluate_closure.inputs[1])
     links.new(group_input_004.outputs[9], evaluate_closure.inputs[0])
     links.new(evaluate_closure.outputs[0], math_002.inputs[0])
+
+    space_res_switch = nodes.new("GeometryNodeGroup")
+    space_res_switch.node_tree = create_space_res_switch_group()
+    menu_socket.from_socket(space_res_switch, space_res_switch.inputs[0])
+    menu_socket.default_value = "Spacing"
+    links.new(group_input_003.outputs[4], space_res_switch.inputs[0])
+    links.new(group_input_003.outputs[7], space_res_switch.inputs[2])
+    links.new(math_004.outputs[0], space_res_switch.inputs[1])
+    links.new(space_res_switch.outputs[0], resample_curve_003.inputs[3])
+    links.new(space_res_switch.outputs[0], grid.inputs[3])
+
+    space_res_switch_1 = nodes.new("GeometryNodeGroup")
+    space_res_switch_1.node_tree = create_space_res_switch_group()
+    links.new(space_res_switch_1.outputs[0], resample_curve.inputs[3])
+    links.new(space_res_switch_1.outputs[0], resample_curve_001.inputs[3])
+    links.new(space_res_switch_1.outputs[0], grid.inputs[2])
+    links.new(space_res_switch_1.outputs[0], reroute_001.inputs[0])
+    links.new(group_input_001.outputs[4], space_res_switch_1.inputs[0])
+    links.new(spacing_len, space_res_switch_1.inputs[1])
+    links.new(group_input_001.outputs[8], space_res_switch_1.inputs[2])
 
     auto_layout_nodes(group)
     return group

@@ -15,7 +15,7 @@ def create_space_res_switch_group():
     socket = group.interface.new_socket(name="Output", in_out="OUTPUT", socket_type="NodeSocketInt")
     socket.min_value = -2147483648
     socket.max_value = 2147483647
-    socket = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
+    menu_socket = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
     socket = group.interface.new_socket(name="Spacing", in_out="INPUT", socket_type="NodeSocketInt")
     socket.default_value = 0
     socket.min_value = -2147483648
@@ -34,8 +34,13 @@ def create_space_res_switch_group():
     group_output.is_active_output = True
 
     menu_switch_001 = nodes.new("GeometryNodeMenuSwitch")
-    menu_switch_001.active_index = 1
     menu_switch_001.data_type = "INT"
+    menu_switch_001.enum_items.clear()
+    menu_switch_001.enum_items.new("Resolution")
+    menu_switch_001.enum_items.new("Spacing")   
+    menu_switch_001.active_index = 1
+    menu_socket.from_socket(menu_switch_001, menu_switch_001.inputs[0])
+    menu_socket.default_value = "Spacing"
     links.new(group_input.outputs[0], menu_switch_001.inputs[0])
     links.new(group_input.outputs[1], menu_switch_001.inputs[1])
     links.new(group_input.outputs[2], menu_switch_001.inputs[2])
