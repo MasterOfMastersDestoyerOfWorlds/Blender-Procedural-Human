@@ -313,11 +313,33 @@ def register():
     logger.info(f"Node group registry: {geo_node_group.registry}")
     logger.info(f"Shader group registry: {shader_node_group.registry}")
     
+    def validate_node_group(group, func_name):
+        if group is None:
+            return
+        skip_types = {"GeometryNodeViewer"}
+        for link in group.links:
+            if not link.is_valid:
+                if link.to_node and link.to_node.bl_idname in skip_types:
+                    continue
+                from_label = f"{link.from_node.name}.{link.from_socket.name}" if link.from_node else "?"
+                to_label = f"{link.to_node.name}.{link.to_socket.name}" if link.to_node else "?"
+                logger.warning(f"[Node Validation] {group.name}: invalid link {from_label} -> {to_label}")
+        for node in group.nodes:
+            if node.bl_idname in skip_types:
+                continue
+            for i, sock in enumerate(node.inputs):
+                if sock.bl_idname == "NodeSocketVirtual" and any(l.to_socket == sock for l in group.links):
+                    logger.warning(f"[Node Validation] {group.name}: virtual input socket {node.name}.inputs[{i}] has link (missing capture/repeat/index item?)")
+            for i, sock in enumerate(node.outputs):
+                if sock.bl_idname == "NodeSocketVirtual" and any(l.from_socket == sock for l in group.links):
+                    logger.warning(f"[Node Validation] {group.name}: virtual output socket {node.name}.outputs[{i}] has link (missing capture/repeat/index item?)")
+
     def create_registered_node_groups():
         logger.info("Initializing registered node groups...")
         for func in geo_node_group.registry.values():
             try:
-                func()
+                group = func()
+                validate_node_group(group, func.__name__)
             except Exception as e:
                 logger.exception(f"Error creating node group {func.__name__}: {e}")
         logger.info("Node group initialization complete.")

@@ -130,12 +130,15 @@ def create_chest_group():
     frame_004.shrink = True
     frame_004.label_size = 20
 
-    closure_input = nodes.new("NodeClosureInput")
-
     closure_output = nodes.new("NodeClosureOutput")
+    closure_output.input_items.new("FLOAT", "Value")
+    closure_output.output_items.new("FLOAT", "Value")
     closure_output.active_input_index = 0
     closure_output.active_output_index = 0
     closure_output.define_signature = False
+
+    closure_input = nodes.new("NodeClosureInput")
+    closure_input.pair_with_output(closure_output)
     links.new(closure_output.outputs[0], bi_rail_loft.inputs[9])
 
     float_curve = nodes.new("ShaderNodeFloatCurve")
@@ -605,10 +608,12 @@ def create_chest_group():
     for_each_geometry_element_input = nodes.new("GeometryNodeForeachGeometryElementInput")
     for_each_geometry_element_input.inputs[1].default_value = True
     links.new(curve_to_points.outputs[0], for_each_geometry_element_input.inputs[0])
-    links.new(curve_to_points.outputs[3], for_each_geometry_element_input.inputs[2])
 
     for_each_geometry_element_output = nodes.new("GeometryNodeForeachGeometryElementOutput")
+    for_each_geometry_element_output.input_items.new("ROTATION", "Rotation")
+    for_each_geometry_element_input.pair_with_output(for_each_geometry_element_output)
     for_each_geometry_element_output.active_input_index = 1
+    links.new(curve_to_points.outputs[3], for_each_geometry_element_input.inputs[2])
     for_each_geometry_element_output.active_generation_index = 0
     for_each_geometry_element_output.active_main_index = 0
     for_each_geometry_element_output.domain = "POINT"
@@ -827,6 +832,7 @@ def create_chest_group():
     links.new(trim_curve_004.outputs[0], curve_to_points_001.inputs[0])
 
     capture_attribute = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute.capture_items.new("VECTOR", "Value")
     capture_attribute.active_index = 0
     capture_attribute.domain = "POINT"
     links.new(bi_rail_loft.outputs[0], capture_attribute.inputs[0])
@@ -848,11 +854,13 @@ def create_chest_group():
     for_each_geometry_element_input_001 = nodes.new("GeometryNodeForeachGeometryElementInput")
     for_each_geometry_element_input_001.inputs[1].default_value = True
     links.new(curve_to_points_001.outputs[0], for_each_geometry_element_input_001.inputs[0])
-    links.new(position_004.outputs[0], for_each_geometry_element_input_001.inputs[2])
-    links.new(curve_to_points_001.outputs[3], for_each_geometry_element_input_001.inputs[2])
 
     for_each_geometry_element_output_001 = nodes.new("GeometryNodeForeachGeometryElementOutput")
+    for_each_geometry_element_output_001.input_items.new("ROTATION", "Rotation")
+    for_each_geometry_element_input_001.pair_with_output(for_each_geometry_element_output_001)
     for_each_geometry_element_output_001.active_input_index = 1
+    links.new(position_004.outputs[0], for_each_geometry_element_input_001.inputs[2])
+    links.new(curve_to_points_001.outputs[3], for_each_geometry_element_input_001.inputs[2])
     for_each_geometry_element_output_001.active_generation_index = 0
     for_each_geometry_element_output_001.active_main_index = 0
     for_each_geometry_element_output_001.domain = "POINT"
@@ -1081,6 +1089,7 @@ def create_chest_group():
     links.new(realize_instances_001.outputs[0], swap_attr.inputs[0])
 
     capture_attribute_001 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_001.capture_items.new("INT", "Value")
     capture_attribute_001.active_index = 0
     capture_attribute_001.domain = "INSTANCE"
     links.new(capture_attribute_001.outputs[0], realize_instances_001.inputs[0])

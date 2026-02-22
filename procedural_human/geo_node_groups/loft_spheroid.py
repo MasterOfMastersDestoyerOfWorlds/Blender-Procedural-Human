@@ -6,7 +6,7 @@ import bpy
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import create_node, link_or_set, vec_math_op, math_op, get_or_rebuild_node_group
-from mathutils import Vector, Euler
+from mathutils import Vector, Euler 
 
 def get_bundled_node_group(name: str):
     """
@@ -835,10 +835,8 @@ def create__axis_alignment_switch_group():
     if not needs_rebuild:
         return group
     socket = group.interface.new_socket(name="Output", in_out="OUTPUT", socket_type="NodeSocketRotation")
-    socket = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
-    socket.default_value = "X"
-    socket = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
-    socket.default_value = "X"
+    menu_socket_1 = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
+    menu_socket_2 = group.interface.new_socket(name="Menu", in_out="INPUT", socket_type="NodeSocketMenu")
     socket = group.interface.new_socket(name="Input", in_out="INPUT", socket_type="NodeSocketVector")
     socket.default_value = [0.0, 0.0, 0.0]
     socket.min_value = -3.4028234663852886e+38
@@ -855,19 +853,31 @@ def create__axis_alignment_switch_group():
     group_input = nodes.new("NodeGroupInput")
 
     menu_switch_007 = nodes.new("GeometryNodeMenuSwitch")
-    menu_switch_007.active_index = 2
     menu_switch_007.data_type = "INT"
+    menu_switch_007.enum_items.clear()
+    menu_switch_007.enum_items.new("X")
+    menu_switch_007.enum_items.new("Y")
+    menu_switch_007.enum_items.new("Z")
+    menu_switch_007.active_index = 2
     menu_switch_007.inputs[1].default_value = 0
     menu_switch_007.inputs[2].default_value = 1
     menu_switch_007.inputs[3].default_value = 2
+    menu_socket_1.from_socket(menu_switch_007, menu_switch_007.inputs[0])
+    menu_socket_1.default_value = "X"
     links.new(group_input.outputs[0], menu_switch_007.inputs[0])
 
     menu_switch_008 = nodes.new("GeometryNodeMenuSwitch")
-    menu_switch_008.active_index = 2
     menu_switch_008.data_type = "INT"
+    menu_switch_008.enum_items.clear()
+    menu_switch_008.enum_items.new("X")
+    menu_switch_008.enum_items.new("Y")
+    menu_switch_008.enum_items.new("Z")
+    menu_switch_008.active_index = 2
     menu_switch_008.inputs[1].default_value = 0
     menu_switch_008.inputs[2].default_value = 1
     menu_switch_008.inputs[3].default_value = 2
+    menu_socket_2.from_socket(menu_switch_008, menu_switch_008.inputs[0])
+    menu_socket_2.default_value = "X"
     links.new(group_input.outputs[1], menu_switch_008.inputs[0])
 
     axes_to_rotation_004 = nodes.new("FunctionNodeAxesToRotation")
@@ -880,10 +890,12 @@ def create__axis_alignment_switch_group():
 
     index_switch_012 = nodes.new("GeometryNodeIndexSwitch")
     index_switch_012.data_type = "ROTATION"
+    index_switch_012.index_switch_items.new()
     links.new(menu_switch_007.outputs[0], index_switch_012.inputs[0])
 
     index_switch_013 = nodes.new("GeometryNodeIndexSwitch")
     index_switch_013.data_type = "ROTATION"
+    index_switch_013.index_switch_items.new()
     index_switch_013.inputs[1].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
     links.new(axes_to_rotation_004.outputs[0], index_switch_013.inputs[2])
     links.new(axes_to_rotation_005.outputs[0], index_switch_013.inputs[3])
@@ -891,11 +903,13 @@ def create__axis_alignment_switch_group():
 
     index_switch_014 = nodes.new("GeometryNodeIndexSwitch")
     index_switch_014.data_type = "ROTATION"
+    index_switch_014.index_switch_items.new()
     index_switch_014.inputs[2].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
     links.new(index_switch_014.outputs[0], index_switch_012.inputs[2])
 
     index_switch_015 = nodes.new("GeometryNodeIndexSwitch")
     index_switch_015.data_type = "ROTATION"
+    index_switch_015.index_switch_items.new()
     index_switch_015.inputs[3].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
     links.new(index_switch_015.outputs[0], index_switch_012.inputs[3])
 

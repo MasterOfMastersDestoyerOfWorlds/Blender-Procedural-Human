@@ -41,16 +41,19 @@ def create_gold__wavies_group():
     extrude_mesh_001.mode = "VERTICES"
     extrude_mesh_001.inputs[3].default_value = 0.0010000000474974513
     extrude_mesh_001.inputs[4].default_value = True
-    repeat_input = nodes.new("GeometryNodeRepeatInput")
-    repeat_input.inputs[2].default_value = True
-    links.new(repeat_input.outputs[2], extrude_mesh_001.inputs[1])
-    repeat_input.inputs[0].default_value = 50
-    links.new(points_to_vertices.outputs[0], repeat_input.inputs[1])
-    links.new(repeat_input.outputs[1], extrude_mesh_001.inputs[0])
-
     repeat_output = nodes.new("GeometryNodeRepeatOutput")
     repeat_output.active_index = 1
     repeat_output.inspection_index = 0
+    repeat_output.repeat_items.new("BOOLEAN", "Top")
+
+    repeat_input = nodes.new("GeometryNodeRepeatInput") 
+    repeat_input.pair_with_output(repeat_output)
+    repeat_input.inputs[2].default_value = True
+    repeat_input.inputs[0].default_value = 50
+    links.new(repeat_input.outputs[2], extrude_mesh_001.inputs[1])
+    links.new(points_to_vertices.outputs[0], repeat_input.inputs[1])
+    links.new(repeat_input.outputs[1], extrude_mesh_001.inputs[0])
+
     links.new(extrude_mesh_001.outputs[1], repeat_output.inputs[1])
     links.new(extrude_mesh_001.outputs[0], repeat_output.inputs[0])
 
@@ -111,15 +114,35 @@ def create_gold__wavies_group():
     links.new(spline_parameter.outputs[0], math_004.inputs[1])
     links.new(math_004.outputs[0], curve_to_mesh_001.inputs[2])
 
-    repeat_input_001 = nodes.new("GeometryNodeRepeatInput")
-    repeat_input_001.inputs[0].default_value = 20
-
     repeat_output_001 = nodes.new("GeometryNodeRepeatOutput")
     repeat_output_001.active_index = 0
     repeat_output_001.inspection_index = 19
+
+    repeat_input_001 = nodes.new("GeometryNodeRepeatInput")
+    repeat_input_001.pair_with_output(repeat_output_001)
+    repeat_input_001.inputs[0].default_value = 20
     links.new(repeat_output_001.outputs[0], group_output.inputs[0])
 
     index_switch = nodes.new("GeometryNodeIndexSwitch")
+    index_switch.data_type = "FLOAT"
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
     index_switch.inputs[3].default_value = 1.0099999904632568
     index_switch.inputs[4].default_value = 1.2999999523162842
     index_switch.inputs[5].default_value = 1.2999999523162842
@@ -138,7 +161,6 @@ def create_gold__wavies_group():
     index_switch.inputs[18].default_value = 11.289999961853027
     index_switch.inputs[19].default_value = 11.390000343322754
     index_switch.inputs[20].default_value = 11.800000190734863
-    index_switch.data_type = "FLOAT"
     index_switch.inputs[1].default_value = 1.5700000524520874
     index_switch.inputs[2].default_value = 0.3499999940395355
     links.new(repeat_input_001.outputs[0], index_switch.inputs[0])

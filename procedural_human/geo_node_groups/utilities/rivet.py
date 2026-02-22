@@ -35,6 +35,7 @@ def create_rivet_group():
     group_input = nodes.new("NodeGroupInput")
 
     capture_attribute_005 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_005.capture_items.new("VECTOR", "Value")
     capture_attribute_005.active_index = 0
     capture_attribute_005.domain = "POINT"
     links.new(group_input.outputs[0], capture_attribute_005.inputs[0])

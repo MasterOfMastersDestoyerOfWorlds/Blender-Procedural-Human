@@ -94,14 +94,16 @@ def create_shoulders_group():
     links.new(set_curve_tilt.outputs[0], resample_curve.inputs[0])
 
     capture_attribute = nodes.new("GeometryNodeCaptureAttribute")
-    capture_attribute.active_index = 1
+    capture_attribute.capture_items.new("FLOAT", "Value")
+    capture_attribute.active_index = 0
     capture_attribute.domain = "POINT"
     links.new(capture_attribute.outputs[0], curve_to_mesh.inputs[1])
     links.new(transform_geometry_012.outputs[0], capture_attribute.inputs[0])
     links.new(spline_parameter.outputs[0], capture_attribute.inputs[1])
 
     capture_attribute_001 = nodes.new("GeometryNodeCaptureAttribute")
-    capture_attribute_001.active_index = 2
+    capture_attribute_001.capture_items.new("FLOAT", "Value")
+    capture_attribute_001.active_index = 0
     capture_attribute_001.domain = "POINT"
     links.new(capture_attribute_001.outputs[0], curve_to_mesh.inputs[0])
 
@@ -287,6 +289,7 @@ def create_shoulders_group():
     frame_015.label_size = 20
 
     capture_attribute_002 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_002.capture_items.new("BOOLEAN", "Value")
     capture_attribute_002.active_index = 0
     capture_attribute_002.domain = "POINT"
     links.new(capture_attribute_002.outputs[0], curve_to_mesh_001.inputs[1])
@@ -301,7 +304,8 @@ def create_shoulders_group():
     boolean_math.operation = "AND"
 
     capture_attribute_003 = nodes.new("GeometryNodeCaptureAttribute")
-    capture_attribute_003.active_index = 1
+    capture_attribute_003.capture_items.new("BOOLEAN", "Value")
+    capture_attribute_003.active_index = 0
     capture_attribute_003.domain = "POINT"
     links.new(capture_attribute_003.outputs[0], curve_to_mesh_001.inputs[0])
     links.new(set_curve_tilt_001.outputs[0], capture_attribute_003.inputs[0])
@@ -329,18 +333,23 @@ def create_shoulders_group():
     extrude_mesh = nodes.new("GeometryNodeExtrudeMesh")
     extrude_mesh.mode = "EDGES"
     extrude_mesh.inputs[3].default_value = 0.07000000029802322
-    repeat_input = nodes.new("GeometryNodeRepeatInput") 
-    repeat_input.inputs[3].default_value = 0.0
     extrude_mesh.inputs[4].default_value = True
-
-    links.new(boolean_math.outputs[0], repeat_input.inputs[2])
-    links.new(repeat_input.outputs[2], extrude_mesh.inputs[1])
-    links.new(flip_faces_005.outputs[0], repeat_input.inputs[1])
-    links.new(repeat_input.outputs[1], extrude_mesh.inputs[0])
 
     repeat_output = nodes.new("GeometryNodeRepeatOutput")
     repeat_output.active_index = 2
     repeat_output.inspection_index = 0
+    repeat_output.repeat_items.new("BOOLEAN", "Top")
+    repeat_output.repeat_items.new("FLOAT", "Value")
+
+    repeat_input = nodes.new("GeometryNodeRepeatInput")
+    repeat_input.pair_with_output(repeat_output)
+    repeat_input.inputs[3].default_value = 0.0
+
+    links.new(boolean_math.outputs[0], repeat_input.inputs[2])
+    links.new(repeat_input.outputs[2], extrude_mesh.inputs[1])
+    links.new(flip_faces_005.outputs[0], repeat_input.inputs[1]) 
+    links.new(repeat_input.outputs[1], extrude_mesh.inputs[0])
+
     links.new(extrude_mesh.outputs[0], repeat_output.inputs[0])
     links.new(extrude_mesh.outputs[1], repeat_output.inputs[1])
 
@@ -368,6 +377,7 @@ def create_shoulders_group():
     links.new(float_curve_004.outputs[0], math_003.inputs[1])
 
     capture_attribute_004 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_004.capture_items.new("VECTOR", "Value")
     capture_attribute_004.active_index = 0
     capture_attribute_004.domain = "POINT"
     links.new(merge_by_distance_001.outputs[0], capture_attribute_004.inputs[0])
@@ -837,6 +847,7 @@ def create_shoulders_group():
     links.new(repeat_output.outputs[1], evaluate_on_domain.inputs[0])
 
     capture_attribute_005 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_005.capture_items.new("VECTOR", "Value")
     capture_attribute_005.active_index = 0
     capture_attribute_005.domain = "POINT"
     links.new(capture_attribute_005.outputs[0], mesh_to_curve_001.inputs[0])
@@ -869,6 +880,7 @@ def create_shoulders_group():
     frame_004.label_size = 20
 
     capture_attribute_006 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_006.capture_items.new("BOOLEAN", "Value")
     capture_attribute_006.active_index = 0
     capture_attribute_006.domain = "POINT"
     capture_attribute_006.inputs[1].default_value = True
@@ -1398,10 +1410,12 @@ def create_shoulders_group():
 
     for_each_geometry_element_input_001 = nodes.new("GeometryNodeForeachGeometryElementInput")
     for_each_geometry_element_input_001.inputs[1].default_value = True
-    links.new(position_006.outputs[0], for_each_geometry_element_input_001.inputs[2])
 
     for_each_geometry_element_output_001 = nodes.new("GeometryNodeForeachGeometryElementOutput")
+    for_each_geometry_element_output_001.input_items.new("VECTOR", "Vector")
+    for_each_geometry_element_input_001.pair_with_output(for_each_geometry_element_output_001)
     for_each_geometry_element_output_001.active_input_index = 1
+    links.new(position_006.outputs[0], for_each_geometry_element_input_001.inputs[2])
     for_each_geometry_element_output_001.active_generation_index = 0
     for_each_geometry_element_output_001.active_main_index = 0
     for_each_geometry_element_output_001.domain = "POINT"
@@ -1572,6 +1586,7 @@ def create_shoulders_group():
     links.new(swap_attr.outputs[0], join_geometry_019.inputs[0])
 
     capture_attribute_008 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_008.capture_items.new("INT", "Value")
     capture_attribute_008.active_index = 0
     capture_attribute_008.domain = "INSTANCE"
     links.new(capture_attribute_008.outputs[0], realize_instances_004.inputs[0])

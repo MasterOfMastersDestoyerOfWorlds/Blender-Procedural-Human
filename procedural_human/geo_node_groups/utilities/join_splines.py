@@ -23,6 +23,7 @@ def create_join__splines_group():
     group_input = nodes.new("NodeGroupInput")
 
     capture_attribute_001 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_001.capture_items.new("BOOLEAN", "Value")
     capture_attribute_001.active_index = 0
     capture_attribute_001.domain = "POINT"
 

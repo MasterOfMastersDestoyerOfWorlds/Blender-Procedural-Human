@@ -141,18 +141,21 @@ def create_gem_in__holder_group():
     extrude_mesh_001.inputs[3].default_value = 0.0020000000949949026
     extrude_mesh_001.inputs[4].default_value = True
     
-    repeat_input_001 = nodes.new("GeometryNodeRepeatInput")
-    repeat_input_001.inputs[2].default_value = True
-    repeat_input_001.inputs[3].default_value = [0.0, 0.0, 0.0]
-    links.new(repeat_input_001.outputs[2], extrude_mesh_001.inputs[1])
-
-    repeat_input_001.inputs[0].default_value = 60
-    links.new(repeat_input_001.outputs[1], extrude_mesh_001.inputs[0])
-    links.new(points_to_vertices.outputs[0], repeat_input_001.inputs[1])
-
     repeat_output_001 = nodes.new("GeometryNodeRepeatOutput")
     repeat_output_001.active_index = 2
     repeat_output_001.inspection_index = 0
+    repeat_output_001.repeat_items.new("BOOLEAN", "Top")
+    repeat_output_001.repeat_items.new("VECTOR", "Value")
+
+    repeat_input_001 = nodes.new("GeometryNodeRepeatInput")
+    repeat_input_001.pair_with_output(repeat_output_001)
+    repeat_input_001.inputs[2].default_value = True
+    repeat_input_001.inputs[3].default_value = [0.0, 0.0, 0.0]
+    repeat_input_001.inputs[0].default_value = 60
+    links.new(repeat_input_001.outputs[2], extrude_mesh_001.inputs[1])
+    links.new(repeat_input_001.outputs[1], extrude_mesh_001.inputs[0])
+    links.new(points_to_vertices.outputs[0], repeat_input_001.inputs[1])
+
     links.new(extrude_mesh_001.outputs[1], repeat_output_001.inputs[1])
     links.new(extrude_mesh_001.outputs[0], repeat_output_001.inputs[0])
 
@@ -194,6 +197,7 @@ def create_gem_in__holder_group():
     index = nodes.new("GeometryNodeInputIndex")
 
     capture_attribute_007 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_007.capture_items.new("INT", "Value")
     capture_attribute_007.active_index = 0
     capture_attribute_007.domain = "POINT"
     links.new(capture_attribute_007.outputs[0], points_to_vertices.inputs[0])

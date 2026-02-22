@@ -185,12 +185,15 @@ def create_neck_group():
     links.new(transform_geometry_005.outputs[0], transform_geometry_002.inputs[0])
     links.new(curve_circle.outputs[0], transform_geometry_005.inputs[0])
 
-    closure_input_001 = nodes.new("NodeClosureInput")
-
     closure_output_001 = nodes.new("NodeClosureOutput")
+    closure_output_001.input_items.new("FLOAT", "Value")
+    closure_output_001.output_items.new("FLOAT", "Value")
     closure_output_001.active_input_index = 0
     closure_output_001.active_output_index = 0
     closure_output_001.define_signature = False
+
+    closure_input_001 = nodes.new("NodeClosureInput")
+    closure_input_001.pair_with_output(closure_output_001)
     links.new(closure_output_001.outputs[0], bi_rail_loft.inputs[9])
 
     math = nodes.new("ShaderNodeMath")
@@ -425,10 +428,12 @@ def create_neck_group():
     for_each_geometry_element_input = nodes.new("GeometryNodeForeachGeometryElementInput")
     for_each_geometry_element_input.inputs[1].default_value = True
     links.new(curve_to_points.outputs[0], for_each_geometry_element_input.inputs[0])
-    links.new(curve_to_points.outputs[3], for_each_geometry_element_input.inputs[2])
 
     for_each_geometry_element_output = nodes.new("GeometryNodeForeachGeometryElementOutput")
+    for_each_geometry_element_output.input_items.new("ROTATION", "Rotation")
+    for_each_geometry_element_input.pair_with_output(for_each_geometry_element_output)
     for_each_geometry_element_output.active_input_index = 1
+    links.new(curve_to_points.outputs[3], for_each_geometry_element_input.inputs[2])
     for_each_geometry_element_output.active_generation_index = 0
     for_each_geometry_element_output.active_main_index = 0
     for_each_geometry_element_output.domain = "POINT"
@@ -738,11 +743,13 @@ def create_neck_group():
     for_each_geometry_element_input_001 = nodes.new("GeometryNodeForeachGeometryElementInput")
     for_each_geometry_element_input_001.inputs[1].default_value = True
     links.new(curve_to_points_001.outputs[0], for_each_geometry_element_input_001.inputs[0])
-    links.new(position_004.outputs[0], for_each_geometry_element_input_001.inputs[2])
-    links.new(curve_to_points_001.outputs[3], for_each_geometry_element_input_001.inputs[2])
 
     for_each_geometry_element_output_001 = nodes.new("GeometryNodeForeachGeometryElementOutput")
+    for_each_geometry_element_output_001.input_items.new("ROTATION", "Rotation")
+    for_each_geometry_element_input_001.pair_with_output(for_each_geometry_element_output_001)
     for_each_geometry_element_output_001.active_input_index = 1
+    links.new(position_004.outputs[0], for_each_geometry_element_input_001.inputs[2])
+    links.new(curve_to_points_001.outputs[3], for_each_geometry_element_input_001.inputs[2])
     for_each_geometry_element_output_001.active_generation_index = 0
     for_each_geometry_element_output_001.active_main_index = 0
     for_each_geometry_element_output_001.domain = "POINT"
@@ -967,6 +974,7 @@ def create_neck_group():
     links.new(swap_attr.outputs[0], join_geometry_002.inputs[0])
 
     capture_attribute_001 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_001.capture_items.new("INT", "Value")
     capture_attribute_001.active_index = 0
     capture_attribute_001.domain = "INSTANCE"
     links.new(capture_attribute_001.outputs[0], realize_instances_002.inputs[0])
@@ -2698,6 +2706,7 @@ def create_neck_group():
     realize_instances_005.inputs[3].default_value = 0
 
     capture_attribute_002 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_002.capture_items.new("INT", "Value")
     capture_attribute_002.active_index = 0
     capture_attribute_002.domain = "INSTANCE"
     links.new(capture_attribute_002.outputs[0], realize_instances_005.inputs[0])
@@ -2765,10 +2774,12 @@ def create_neck_group():
     for_each_geometry_element_input_002 = nodes.new("GeometryNodeForeachGeometryElementInput")
     for_each_geometry_element_input_002.inputs[1].default_value = True
     links.new(curve_to_points_003.outputs[0], for_each_geometry_element_input_002.inputs[0])
-    links.new(curve_to_points_003.outputs[3], for_each_geometry_element_input_002.inputs[2])
 
     for_each_geometry_element_output_002 = nodes.new("GeometryNodeForeachGeometryElementOutput")
+    for_each_geometry_element_output_002.input_items.new("ROTATION", "Rotation")
+    for_each_geometry_element_input_002.pair_with_output(for_each_geometry_element_output_002)
     for_each_geometry_element_output_002.active_input_index = 1
+    links.new(curve_to_points_003.outputs[3], for_each_geometry_element_input_002.inputs[2])
     for_each_geometry_element_output_002.active_generation_index = 0
     for_each_geometry_element_output_002.active_main_index = 0
     for_each_geometry_element_output_002.domain = "POINT"

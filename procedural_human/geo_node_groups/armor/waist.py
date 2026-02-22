@@ -146,12 +146,15 @@ def create_waist_group():
     quadratic_bézier_006.inputs[3].default_value = Vector((1.0, 0.0, 0.0))
     links.new(quadratic_bézier_006.outputs[0], join_geometry_002.inputs[0])
 
-    closure_input = nodes.new("NodeClosureInput")
-
     closure_output = nodes.new("NodeClosureOutput")
+    closure_output.input_items.new("FLOAT", "Value")
+    closure_output.output_items.new("FLOAT", "Value")
     closure_output.active_input_index = 0
     closure_output.active_output_index = 0
     closure_output.define_signature = False
+
+    closure_input = nodes.new("NodeClosureInput")
+    closure_input.pair_with_output(closure_output)
     links.new(closure_output.outputs[0], bi_rail_loft.inputs[9])
 
     float_curve = nodes.new("ShaderNodeFloatCurve")
@@ -284,6 +287,7 @@ def create_waist_group():
     separate_x_y_z_001 = nodes.new("ShaderNodeSeparateXYZ")
 
     capture_attribute = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute.capture_items.new("VECTOR", "Value")
     capture_attribute.active_index = 0
     capture_attribute.domain = "POINT"
     links.new(capture_attribute.outputs[0], extrude_mesh.inputs[0])
@@ -345,7 +349,8 @@ def create_waist_group():
     normal.legacy_corner_normals = False
 
     capture_attribute_001 = nodes.new("GeometryNodeCaptureAttribute")
-    capture_attribute_001.active_index = 1
+    capture_attribute_001.capture_items.new("VECTOR", "Value")
+    capture_attribute_001.active_index = 0
     capture_attribute_001.domain = "FACE"
     links.new(capture_attribute_001.outputs[0], mesh_to_points.inputs[0])
     links.new(separate_geometry_003.outputs[0], capture_attribute_001.inputs[0])
@@ -382,6 +387,7 @@ def create_waist_group():
     links.new(random_scale, instance_on_points.inputs[6])
 
     capture_attribute_002 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_002.capture_items.new("INT", "Value")
     capture_attribute_002.active_index = 0
     capture_attribute_002.domain = "INSTANCE"
     links.new(capture_attribute_002.outputs[0], realize_instances.inputs[0])
@@ -740,12 +746,14 @@ def create_waist_group():
     links.new(store_named_attribute_003.outputs[0], store_named_attribute_004.inputs[0])
 
     capture_attribute_003 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_003.capture_items.new("FLOAT", "Value")
     capture_attribute_003.active_index = 0
     capture_attribute_003.domain = "POINT"
     links.new(capture_attribute_003.outputs[0], curve_to_mesh.inputs[1])
     links.new(realize_instances_001.outputs[0], capture_attribute_003.inputs[0])
 
     capture_attribute_004 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_004.capture_items.new("FLOAT", "Value")
     capture_attribute_004.active_index = 0
     capture_attribute_004.domain = "POINT"
     links.new(capture_attribute_004.outputs[0], curve_to_mesh.inputs[0])
@@ -931,14 +939,17 @@ def create_waist_group():
     gem_in_holder_1.inputs[8].default_value = 10
 
     position_004 = nodes.new("GeometryNodeInputPosition")
-    for_each_geometry_element_input_001.inputs[3].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
 
     for_each_geometry_element_input_001 = nodes.new("GeometryNodeForeachGeometryElementInput")
     for_each_geometry_element_input_001.inputs[1].default_value = True
-    links.new(position_004.outputs[0], for_each_geometry_element_input_001.inputs[2])
 
     for_each_geometry_element_output_001 = nodes.new("GeometryNodeForeachGeometryElementOutput")
+    for_each_geometry_element_output_001.input_items.new("VECTOR", "Vector")
+    for_each_geometry_element_output_001.input_items.new("ROTATION", "Rotation 2")
+    for_each_geometry_element_input_001.pair_with_output(for_each_geometry_element_output_001)
     for_each_geometry_element_output_001.active_input_index = 1
+    for_each_geometry_element_input_001.inputs[3].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
+    links.new(position_004.outputs[0], for_each_geometry_element_input_001.inputs[2])
     for_each_geometry_element_output_001.active_generation_index = 0
     for_each_geometry_element_output_001.active_main_index = 0
     for_each_geometry_element_output_001.domain = "POINT"

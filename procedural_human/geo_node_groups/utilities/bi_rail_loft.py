@@ -495,6 +495,7 @@ def create_bi_rail_loft_group():
     links.new(spline_parameter_003.outputs[0], combine_x_y_z_001.inputs[0])
 
     capture_attribute = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute.capture_items.new("FLOAT", "Value")
     capture_attribute.active_index = 0
     capture_attribute.domain = "POINT"
     links.new(capture_attribute.outputs[0], instance_on_points.inputs[0])
@@ -584,6 +585,8 @@ def create_bi_rail_loft_group():
     group_input_004 = nodes.new("NodeGroupInput")
 
     evaluate_closure = nodes.new("NodeEvaluateClosure")
+    evaluate_closure.input_items.new("FLOAT", "Value")
+    evaluate_closure.output_items.new("FLOAT", "Value")
     evaluate_closure.active_input_index = 0
     evaluate_closure.active_output_index = 0
     evaluate_closure.define_signature = False

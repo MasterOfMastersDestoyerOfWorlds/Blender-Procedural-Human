@@ -547,11 +547,13 @@ def create_blocker_group():
     sample_u_v_surface.data_type = "FLOAT_VECTOR"
 
     capture_attribute = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute.capture_items.new("FLOAT", "Value")
     capture_attribute.active_index = 0
     capture_attribute.domain = "POINT"
     links.new(capture_attribute.outputs[0], curve_to_mesh_002.inputs[1])
 
     capture_attribute_001 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_001.capture_items.new("FLOAT", "Value")
     capture_attribute_001.active_index = 0
     capture_attribute_001.domain = "POINT"
     links.new(capture_attribute_001.outputs[0], curve_to_mesh_002.inputs[0])
@@ -632,14 +634,17 @@ def create_blocker_group():
     links.new(math_005.outputs[0], vector_math_004.inputs[3])
 
     capture_attribute_002 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_002.capture_items.new("VECTOR", "Value")
+    capture_attribute_002.capture_items.new("VECTOR", "Value")
+    capture_attribute_002.capture_items.new("VECTOR", "Value")
     capture_attribute_002.active_index = 0
     capture_attribute_002.domain = "POINT"
-    links.new(sample_u_v_surface_001.outputs[0], capture_attribute_002.inputs[1])
-    links.new(capture_attribute_002.outputs[1], vector_math_004.inputs[0])
-    links.new(map_range_001.outputs[1], capture_attribute_002.inputs[1])
-    links.new(capture_attribute_002.outputs[1], vector_math_003.inputs[0])
     links.new(sample_u_v_surface.outputs[0], capture_attribute_002.inputs[1])
     links.new(capture_attribute_002.outputs[1], set_position_003.inputs[2])
+    links.new(sample_u_v_surface_001.outputs[0], capture_attribute_002.inputs[2])
+    links.new(capture_attribute_002.outputs[2], vector_math_004.inputs[0])
+    links.new(map_range_001.outputs[1], capture_attribute_002.inputs[3])
+    links.new(capture_attribute_002.outputs[3], vector_math_003.inputs[0])
 
     noise_texture_002 = nodes.new("ShaderNodeTexNoise")
     noise_texture_002.noise_dimensions = "4D"
@@ -722,7 +727,7 @@ def create_blocker_group():
     store_named_attribute_002.inputs[2].default_value = "UVMap"
     links.new(store_named_attribute_002.outputs[0], set_position_003.inputs[0])
     links.new(capture_attribute_002.outputs[0], store_named_attribute_002.inputs[0])
-    links.new(capture_attribute_002.outputs[1], store_named_attribute_002.inputs[3])
+    links.new(capture_attribute_002.outputs[3], store_named_attribute_002.inputs[3])
 
     switch_001 = nodes.new("GeometryNodeSwitch")
     switch_001.input_type = "GEOMETRY"
@@ -873,6 +878,7 @@ def create_blocker_group():
     links.new(combine_x_y_z_002.outputs[0], set_position.inputs[2])
 
     capture_attribute_003 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_003.capture_items.new("BOOLEAN", "Value")
     capture_attribute_003.active_index = 0
     capture_attribute_003.domain = "POINT"
     links.new(capture_attribute_003.outputs[0], curve_to_mesh_003.inputs[1])
