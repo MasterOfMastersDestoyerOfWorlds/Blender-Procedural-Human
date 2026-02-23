@@ -1,15 +1,6 @@
 import bpy
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from mathutils import Euler, Vector
-from procedural_human.geo_node_groups.utilities.bi_rail_loft import create_bi_rail_loft_group
-from procedural_human.geo_node_groups.utilities.gem_in_holder import create_gem_in__holder_group
-from procedural_human.geo_node_groups.utilities.gold_decorations import create_gold__decorations_group
-from procedural_human.geo_node_groups.utilities.gold_on_band import create_gold_on__band_group
-from procedural_human.geo_node_groups.utilities.is_edge_boundary import create_is__edge__boundary_group
-from procedural_human.geo_node_groups.utilities.join_splines import create_join__splines_group
-from procedural_human.geo_node_groups.utilities.pipes import create_pipes_group
-from procedural_human.geo_node_groups.utilities.rivet import create_rivet_group
-from procedural_human.geo_node_groups.utilities.swap_attr import create_swap__attr_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group, vec_math_op
 from procedural_human.utils.node_layout import auto_layout_nodes
 

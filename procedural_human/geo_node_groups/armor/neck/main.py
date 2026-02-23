@@ -1,6 +1,7 @@
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.armor.neck.centre_profile import create_neck_centre_profile_group
 from procedural_human.geo_node_groups.armor.neck.neck_rails import create_neck_neck_rails_group
+from procedural_human.geo_node_groups.armor.neck.neck_trim import create_neck_trim_group
 from procedural_human.geo_node_groups.armor.neck.side_profile import create_neck_side_profile_group
 from procedural_human.geo_node_groups.utilities.bi_rail_loft import create_bi_rail_loft_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
@@ -72,6 +73,13 @@ def create_neck_group():
     links.new(neck_rails.outputs[1], bi_rail_loft.inputs[1])
     links.new(profile_join.outputs[0], bi_rail_loft.inputs[2])
     links.new(bi_rail_loft.outputs[0], group_output.inputs[0])
+
+    neck_trim = nodes.new("GeometryNodeGroup")
+    neck_trim.node_tree = create_neck_trim_group()
+    links.new(neck_trim.outputs[1], group_output.inputs[0])
+    
+    links.new(bi_rail_loft.outputs[0], neck_trim.inputs[0])
+    links.new(bi_rail_loft.outputs[2], neck_trim.inputs[1])
 
     auto_layout_nodes(group)
     return group
