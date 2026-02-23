@@ -89,6 +89,11 @@ def create_neck_neck_rails_group():
 
     float_curve_001 = nodes.new("ShaderNodeFloatCurve")
     float_curve_001.inputs[0].default_value = 1.0
+    curve_map = float_curve_001.mapping.curves[0]
+    curve_map.points[0].location = (0.0, 0.0)
+    curve_map.points[1].location = (1.0, 0.0)
+    curve_map.points.new(0.645, 0.058)
+    float_curve_001.mapping.update()
 
 
     combine_x_y_z = nodes.new("ShaderNodeCombineXYZ")

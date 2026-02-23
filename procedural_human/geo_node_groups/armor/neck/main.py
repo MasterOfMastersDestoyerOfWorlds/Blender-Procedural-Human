@@ -45,6 +45,29 @@ def create_neck_group():
     bi_rail_loft.inputs[7].default_value = 42
     bi_rail_loft.inputs[8].default_value = 148
 
+    closure_output = nodes.new("NodeClosureOutput")
+    closure_output.input_items.new("FLOAT", "Value")
+    closure_output.output_items.new("FLOAT", "Value")
+    closure_output.active_input_index = 0
+    closure_output.active_output_index = 0
+    closure_output.define_signature = False
+
+    closure_input = nodes.new("NodeClosureInput")
+    closure_input.pair_with_output(closure_output)
+
+    math = nodes.new("ShaderNodeMath")
+    math.operation = "PINGPONG"
+    math.inputs[1].default_value = 0.25
+    links.new(closure_input.outputs[0], math.inputs[0])
+
+    math_001 = nodes.new("ShaderNodeMath")
+    math_001.operation = "MULTIPLY"
+    math_001.inputs[1].default_value = 4.0
+    links.new(math.outputs[0], math_001.inputs[0])
+    links.new(math_001.outputs[0], closure_output.inputs[0])
+
+    links.new(closure_output.outputs[0], bi_rail_loft.inputs[9])
+
     links.new(neck_rails.outputs[0], bi_rail_loft.inputs[0])
     links.new(neck_rails.outputs[1], bi_rail_loft.inputs[1])
     links.new(profile_join.outputs[0], bi_rail_loft.inputs[2])

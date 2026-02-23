@@ -60,6 +60,33 @@ def _log(message: str) -> None:
     except Exception:
         pass
 
+
+def _active_object() -> Any:
+    obj = getattr(bpy.context, "active_object", None)
+    if obj is not None:
+        return obj
+    view_layer = getattr(bpy.context, "view_layer", None)
+    if view_layer is not None:
+        return getattr(view_layer.objects, "active", None)
+    return None
+
+
+def _create_plane_object(name: str) -> bpy.types.Object:
+    mesh = bpy.data.meshes.new(f"{name}Mesh")
+    mesh.from_pydata(
+        [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (0.5, 0.5, 0.0), (-0.5, 0.5, 0.0)],
+        [],
+        [(0, 1, 2, 3)],
+    )
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    view_layer = getattr(bpy.context, "view_layer", None)
+    if view_layer is not None:
+        view_layer.objects.active = obj
+    obj.select_set(True)
+    return obj
+
 def handle_run_test(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run the full Coon patch test."""
     subdivisions = params.get("subdivisions", 2)
@@ -329,7 +356,7 @@ def handle_render_viewport(params: Dict[str, Any]) -> Dict[str, Any]:
     try:
         scene = bpy.context.scene
         obj_name = params.get("object_name")
-        obj = bpy.data.objects.get(obj_name) if obj_name else bpy.context.active_object
+        obj = bpy.data.objects.get(obj_name) if obj_name else _active_object()
 
         # Ensure a validation camera exists and frames the active object.
         if not scene.camera:
@@ -453,7 +480,7 @@ def handle_get_mesh_metrics(params: Dict[str, Any]) -> Dict[str, Any]:
             if not obj:
                 return {"success": False, "error": f"Object '{obj_name}' not found"}
         else:
-            obj = bpy.context.active_object
+            obj = _active_object()
             if not obj:
                 return {"success": False, "error": "No active object"}
         
@@ -500,9 +527,7 @@ def handle_apply_node_group(params: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         # Create a simple mesh (plane or cube) as base
-        bpy.ops.mesh.primitive_plane_add(size=1)
-        obj = bpy.context.active_object
-        obj.name = object_name
+        obj = _create_plane_object(object_name)
         
         # Add geometry nodes modifier
         mod = obj.modifiers.new(name="GeometryNodes", type='NODES')
@@ -629,7 +654,7 @@ def handle_validate_geometry(params: Dict[str, Any]) -> Dict[str, Any]:
     obj_name = params.get("object_name")
     
     try:
-        obj = bpy.data.objects.get(obj_name) if obj_name else bpy.context.active_object
+        obj = bpy.data.objects.get(obj_name) if obj_name else _active_object()
         if not obj:
             return {"success": False, "error": "No object found"}
         
@@ -685,7 +710,7 @@ def handle_check_watertight(params: Dict[str, Any]) -> Dict[str, Any]:
 
     obj_name = params.get("object_name")
     try:
-        obj = bpy.data.objects.get(obj_name) if obj_name else bpy.context.active_object
+        obj = bpy.data.objects.get(obj_name) if obj_name else _active_object()
         if not obj:
             return {"success": False, "error": "No object found"}
         if obj.type != "MESH":
@@ -725,7 +750,7 @@ def handle_check_camera_visibility(params: Dict[str, Any]) -> Dict[str, Any]:
 
     obj_name = params.get("object_name")
     try:
-        obj = bpy.data.objects.get(obj_name) if obj_name else bpy.context.active_object
+        obj = bpy.data.objects.get(obj_name) if obj_name else _active_object()
         if not obj:
             return {"success": False, "error": "No object found"}
 
@@ -814,6 +839,20 @@ def handle_reload_addon(params: Dict[str, Any]) -> Dict[str, Any]:
         error_text = str(e)
         if "already registered as a subclass" in error_text:
             _log(f"reload_addon_fallback module={module_name} error={error_text}")
+            import importlib
+            import sys
+
+            reloaded_modules = []
+            for name in sorted(list(sys.modules.keys()), key=len, reverse=True):
+                if name == module_name or name.startswith(f"{module_name}."):
+                    module = sys.modules.get(name)
+                    if module is None:
+                        continue
+                    try:
+                        importlib.reload(module)
+                        reloaded_modules.append(name)
+                    except Exception as reload_error:
+                        _log(f"reload_addon_fallback_module_error module={name} error={reload_error}")
             _ensure_timer()
             return {
                 "success": True,
@@ -821,6 +860,7 @@ def handle_reload_addon(params: Dict[str, Any]) -> Dict[str, Any]:
                 "clean_scene": clean_scene,
                 "warning": error_text,
                 "fallback": "continued_with_existing_registration",
+                "reloaded_modules": reloaded_modules,
             }
         return {
             "success": False,

@@ -74,8 +74,8 @@ def create_neck_centre_profile_group():
     vector.parent = frame_006
 
     # Internal links
-    links.new(quadratic_bézier_003.outputs[0], join_geometry_005.inputs[0])
     links.new(quadratic_bézier_004.outputs[0], join_geometry_005.inputs[0])
+    links.new(quadratic_bézier_003.outputs[0], join_geometry_005.inputs[0])
     links.new(join_geometry_005.outputs[0], join_splines.inputs[0])
     links.new(vector.outputs[0], quadratic_bézier_003.inputs[3])
     links.new(vector.outputs[0], quadratic_bézier_004.inputs[1])

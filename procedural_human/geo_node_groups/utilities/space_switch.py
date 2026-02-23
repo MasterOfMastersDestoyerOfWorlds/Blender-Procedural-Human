@@ -36,8 +36,8 @@ def create_space_res_switch_group():
     menu_switch_001 = nodes.new("GeometryNodeMenuSwitch")
     menu_switch_001.data_type = "INT"
     menu_switch_001.enum_items.clear()
+    menu_switch_001.enum_items.new("Spacing")
     menu_switch_001.enum_items.new("Resolution")
-    menu_switch_001.enum_items.new("Spacing")   
     menu_switch_001.active_index = 1
     menu_socket.from_socket(menu_switch_001, menu_switch_001.inputs[0])
     menu_socket.default_value = "Spacing"

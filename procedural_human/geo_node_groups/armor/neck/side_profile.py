@@ -75,8 +75,8 @@ def create_neck_side_profile_group():
 
     # Internal links
     links.new(join_geometry_006.outputs[0], join_splines_1.inputs[0])
-    links.new(quadratic_bézier_006.outputs[0], join_geometry_006.inputs[0])
     links.new(quadratic_bézier_007.outputs[0], join_geometry_006.inputs[0])
+    links.new(quadratic_bézier_006.outputs[0], join_geometry_006.inputs[0])
     links.new(vector_001.outputs[0], quadratic_bézier_006.inputs[3])
     links.new(vector_001.outputs[0], quadratic_bézier_007.inputs[1])
     links.new(join_splines_1.outputs[0], transform_geometry_001.inputs[0])
