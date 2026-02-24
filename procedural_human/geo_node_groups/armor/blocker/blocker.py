@@ -2,7 +2,7 @@ import bpy
 from mathutils import Euler, Vector
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.utils.node_layout import auto_layout_nodes
-from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group, math_op
+from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group, math_op, float_curve
 
 @geo_node_group
 def create_blocker_group():
@@ -202,10 +202,13 @@ def create_blocker_group():
 
     spline_parameter_001 = nodes.new("GeometryNodeSplineParameter")
 
-    float_curve_001 = nodes.new("ShaderNodeFloatCurve")
-    float_curve_001.inputs[0].default_value = 1.0
-    links.new(spline_parameter_001.outputs[0], float_curve_001.inputs[1])
-    links.new(float_curve_001.outputs[0], curve_to_mesh_002.inputs[2])
+    float_curve_001 = float_curve(group, spline_parameter_001.outputs[0], [
+        (0.0, 0.7650688290596008),
+        (0.46223577857017517, 0.6594827175140381),
+        (0.8187312483787537, 0.7587241530418396),
+        (1.0, 0.7294828295707703),
+    ])
+    links.new(float_curve_001, curve_to_mesh_002.inputs[2])
 
     resample_curve_001 = nodes.new("GeometryNodeResampleCurve")
     resample_curve_001.keep_last_segment = True
@@ -750,7 +753,7 @@ def create_blocker_group():
     curve_to_mesh_004.inputs[3].default_value = False
     links.new(curve_to_mesh_004.outputs[0], switch_001.inputs[1])
     links.new(set_curve_tilt.outputs[0], curve_to_mesh_004.inputs[0])
-    links.new(float_curve_001.outputs[0], curve_to_mesh_004.inputs[2])
+    links.new(float_curve_001, curve_to_mesh_004.inputs[2])
 
     curve_circle_004 = nodes.new("GeometryNodeCurvePrimitiveCircle")
     curve_circle_004.mode = "RADIUS"
@@ -874,11 +877,16 @@ def create_blocker_group():
     map_range_002.inputs[11].default_value = [4.0, 4.0, 4.0]
     links.new(separate_x_y_z.outputs[0], map_range_002.inputs[0])
 
-    float_curve = nodes.new("ShaderNodeFloatCurve")
-    float_curve.inputs[0].default_value = 1.0
-    links.new(map_range_002.outputs[0], float_curve.inputs[1])
+    fc = float_curve(group, map_range_002.outputs[0], [
+        (0.0, 0.0),
+        (0.16918471455574036, 0.04741369187831879),
+        (0.22054383158683777, 1.0),
+        (0.2765861451625824, 0.3771551549434662, 'VECTOR'),
+        (0.41087615489959717, 1.0),
+        (1.0, 1.0),
+    ])
 
-    y_offset = math_op(group, "MULTIPLY", separate_x_y_z.outputs[1], float_curve.outputs[0])
+    y_offset = math_op(group, "MULTIPLY", separate_x_y_z.outputs[1], fc)
 
     combine_x_y_z_002 = nodes.new("ShaderNodeCombineXYZ")
     links.new(separate_x_y_z.outputs[0], combine_x_y_z_002.inputs[0])
@@ -974,6 +982,155 @@ def create_blocker_group():
     random_value_001.inputs[7].default_value = 0
     random_value_001.inputs[8].default_value = 0
     links.new(random_value_001.outputs[0], instance_on_points_001.inputs[6])
+
+
+    
+    # Parent assignments
+    store_named_attribute.parent = frame_009
+    ico_sphere.parent = frame_001
+    transform_geometry.parent = frame_001
+    transform_geometry_001.parent = frame_001
+    mesh_to_s_d_f_grid.parent = frame_001
+    mesh_to_s_d_f_grid_001.parent = frame_001
+    s_d_f_grid_boolean.parent = frame_001
+    grid_to_mesh.parent = frame_001
+    s_d_f_grid_fillet.parent = frame_001
+    instance_on_points.parent = frame_001
+    curve_circle_001.parent = frame_001
+    curve_to_mesh_001.parent = frame_001
+    position_002.parent = frame_001
+    separate_x_y_z_001.parent = frame_001
+    compare_001.parent = frame_001
+    align_rotation_to_vector.parent = frame_001
+    normal_001.parent = frame_001
+    rotate_rotation.parent = frame_001
+    rotate_rotation_001.parent = frame_001
+    random_value.parent = frame_001
+    realize_instances.parent = frame_001
+    switch.parent = frame_001
+    join_geometry_002.parent = frame_001
+    reroute.parent = frame_001
+    group_input.parent = frame_001
+    curve_to_mesh_002.parent = frame_007
+    curve_circle_002.parent = frame_007
+    spline_parameter_001.parent = frame_007
+    float_curve_001.node.parent = frame_007
+    resample_curve_001.parent = frame_007
+    quadratic_bézier_001.parent = frame_007
+    set_position_001.parent = frame_008
+    vector_math_002.parent = frame_008
+    noise_texture_001.parent = frame_008
+    vector_math_003.parent = frame_008
+    quadrilateral.parent = frame_004
+    fillet_curve.parent = frame_004
+    set_spline_type.parent = frame_004
+    index_switch.parent = frame_004
+    index.parent = frame_004
+    fill_curve.parent = frame_004
+    extrude_mesh_002.parent = frame_004
+    flip_faces_002.parent = frame_004
+    join_geometry_004.parent = frame_004
+    merge_by_distance_002.parent = frame_004
+    grid.parent = frame_004
+    extrude_mesh_003.parent = frame_004
+    scale_elements.parent = frame_004
+    merge_by_distance_003.parent = frame_004
+    subdivide_mesh.parent = frame_004
+    mesh_boolean.parent = frame_004
+    extrude_mesh_004.parent = frame_004
+    flip_faces_003.parent = frame_004
+    join_geometry_005.parent = frame_004
+    merge_by_distance_004.parent = frame_004
+    delete_geometry_002.parent = frame_004
+    set_position_002.parent = frame_003
+    geometry_proximity.parent = frame_003
+    separate_geometry.parent = frame_004
+    geometry_proximity_001.parent = frame_004
+    compare_003.parent = frame_004
+    combine_x_y_z.parent = frame_003
+    map_range.parent = frame_003
+    math_002.parent = frame_003
+    math_003.parent = frame_003
+    math_004.parent = frame_003
+    curve_to_mesh_003.parent = frame_002
+    curve_circle_003.parent = frame_002
+    transform_geometry_002.parent = frame_002
+    resample_curve_002.parent = frame_002
+    frame_002.parent = frame_004
+    frame_003.parent = frame_004
+    transform_geometry_003.parent = frame_004
+    flip_faces_004.parent = frame_004
+    join_geometry_006.parent = frame_004
+    join_geometry_007.parent = frame_004
+    set_shade_smooth_001.parent = frame_004
+    set_shade_smooth_002.parent = frame_004
+    compare_004.parent = frame_004
+    frame_004.parent = frame_009
+    sample_u_v_surface.parent = frame_009
+    capture_attribute.parent = frame_007
+    capture_attribute_001.parent = frame_007
+    spline_parameter_002.parent = frame_007
+    combine_x_y_z_001.parent = frame_007
+    set_spline_cyclic.parent = frame_007
+    set_curve_tilt.parent = frame_007
+    position_005.parent = frame_009
+    set_position_003.parent = frame_009
+    bounding_box.parent = frame_006
+    position_006.parent = frame_006
+    map_range_001.parent = frame_006
+    sample_u_v_surface_001.parent = frame_009
+    normal_003.parent = frame_009
+    separate_x_y_z_003.parent = frame_005
+    vector_math_004.parent = frame_005
+    math_005.parent = frame_005
+    capture_attribute_002.parent = frame_009
+    noise_texture_002.parent = frame_008
+    vector_math_006.parent = frame_008
+    vector_math_005.parent = frame_008
+    store_named_attribute_001.parent = frame_009
+    frame_005.parent = frame_009
+    reroute_001.parent = frame_009
+    reroute_002.parent = frame_009
+    frame_006.parent = frame_009
+    frame_007.parent = frame_009
+    frame_008.parent = frame_009
+    store_named_attribute_002.parent = frame_009
+    switch_001.parent = frame_009
+    group_input_001.parent = frame_009
+    curve_to_mesh_004.parent = frame_007
+    curve_circle_004.parent = frame_007
+    set_spline_cyclic_001.parent = frame_007
+    mesh_to_curve.parent = frame
+    resample_curve.parent = frame
+    subdivide_mesh_001.parent = frame
+    geometry_proximity_002.parent = frame
+    compare.parent = frame
+    delete_geometry.parent = frame
+    instance_on_points_001.parent = frame
+    align_rotation_to_vector_001.parent = frame
+    curve_tangent.parent = frame
+    ico_sphere_001.parent = frame
+    transform_geometry_004.parent = frame
+    realize_instances_001.parent = frame
+    set_position.parent = frame_002
+    position.parent = frame_002
+    separate_x_y_z.parent = frame_002
+    map_range_002.parent = frame_002
+    fc.node.parent = frame_002
+    math.parent = frame_002
+    combine_x_y_z_002.parent = frame_002
+    capture_attribute_003.parent = frame_002
+    index_001.parent = frame_002
+    compare_002.parent = frame_002
+    mesh_to_curve_001.parent = frame_002
+    join_geometry_001.parent = frame
+    join_geometry_008.parent = frame_004
+    set_shade_smooth_003.parent = frame_004
+    join_geometry_009.parent = frame_004
+    frame.parent = frame_004
+    store_named_attribute_003.parent = frame
+    store_named_attribute_004.parent = frame_004
+    random_value_001.parent = frame
 
     auto_layout_nodes(group)
     return group

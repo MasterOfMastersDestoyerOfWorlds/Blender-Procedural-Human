@@ -164,6 +164,31 @@ def compare_op(group, op, data_type, a, b):
     link_or_set(group, n.inputs["B"], b)
     return n.outputs["Result"]
 
+def float_curve(group, value, points, factor=1.0):
+    """Create a ShaderNodeFloatCurve with control points.
+
+    :param group: The node group to add the node to.
+    :param value: Input value to map through the curve (socket or float).
+    :param points: List of (x, y) tuples, or (x, y, handle_type) for non-AUTO handles.
+    :param factor: Blend factor between input and curved output (default 1.0).
+    :returns: The output socket of the float curve node.
+    """
+    n = group.nodes.new("ShaderNodeFloatCurve")
+    link_or_set(group, n.inputs[0], factor)
+    link_or_set(group, n.inputs[1], value)
+    curve = n.mapping.curves[0]
+    for i, pt in enumerate(points):
+        x, y = pt[0], pt[1]
+        handle = pt[2] if len(pt) > 2 else 'AUTO'
+        if i < 2:
+            curve.points[i].location = (x, y)
+            curve.points[i].handle_type = handle
+        else:
+            p = curve.points.new(x, y)
+            p.handle_type = handle
+    n.mapping.update()
+    return n.outputs[0]
+
 def get_attr(group, name, dtype='INT'):
     """Get a named attribute from the geometry.
     

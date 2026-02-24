@@ -1,7 +1,7 @@
 import bpy
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from mathutils import Euler, Vector
-from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group, vec_math_op
+from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group, vec_math_op, float_curve
 from procedural_human.utils.node_layout import auto_layout_nodes
 
 
@@ -78,13 +78,8 @@ def create_neck_neck_rails_group():
     map_range.inputs[11].default_value = [4.0, 4.0, 4.0]
 
 
-    float_curve_001 = nodes.new("ShaderNodeFloatCurve")
-    float_curve_001.inputs[0].default_value = 1.0
-    curve_map = float_curve_001.mapping.curves[0]
-    curve_map.points[0].location = (0.0, 0.0)
-    curve_map.points[1].location = (1.0, 0.0)
-    curve_map.points.new(0.645, 0.058)
-    float_curve_001.mapping.update()
+    float_curve_001 = float_curve(group, map_range.outputs[0],
+        [(0.0, 0.0), (0.645, 0.058), (1.0, 0.0)])
 
 
     combine_x_y_z = nodes.new("ShaderNodeCombineXYZ")
@@ -121,7 +116,7 @@ def create_neck_neck_rails_group():
     combine_x_y_z.parent = frame_009
     curve_circle.parent = frame_009
     curve_circle_001.parent = frame_009
-    float_curve_001.parent = frame_009
+    float_curve_001.node.parent = frame_009
     integer.parent = frame_009
     map_range.parent = frame_009
     position.parent = frame_009
@@ -136,9 +131,8 @@ def create_neck_neck_rails_group():
     links.new(transform_geometry_003.outputs[0], set_position.inputs[0])
     links.new(position.outputs[0], separate_x_y_z.inputs[0])
     links.new(separate_x_y_z.outputs[1], map_range.inputs[0])
-    links.new(map_range.outputs[0], float_curve_001.inputs[1])
     links.new(combine_x_y_z.outputs[0], set_position.inputs[3])
-    links.new(float_curve_001.outputs[0], combine_x_y_z.inputs[2])
+    links.new(float_curve_001, combine_x_y_z.inputs[2])
     links.new(curve_circle_001.outputs[0], transform_geometry_004.inputs[0])
     links.new(transform_geometry_004.outputs[0], transform_geometry_003.inputs[0])
     links.new(transform_geometry_005.outputs[0], transform_geometry_002.inputs[0])
