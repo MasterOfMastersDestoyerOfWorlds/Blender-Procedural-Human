@@ -1,7 +1,7 @@
 import bpy
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from mathutils import Euler, Vector
-from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group, vec_math_op, float_curve
+from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group, vec_math_op, create_float_curve
 from procedural_human.utils.node_layout import auto_layout_nodes
 
 
@@ -78,7 +78,7 @@ def create_neck_neck_rails_group():
     map_range.inputs[11].default_value = [4.0, 4.0, 4.0]
 
 
-    float_curve_001 = float_curve(group, map_range.outputs[0],
+    float_curve_001 = create_float_curve(group, map_range.outputs[0],
         [(0.0, 0.0), (0.645, 0.058), (1.0, 0.0)])
 
 

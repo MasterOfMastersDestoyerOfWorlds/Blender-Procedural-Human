@@ -164,7 +164,7 @@ def compare_op(group, op, data_type, a, b):
     link_or_set(group, n.inputs["B"], b)
     return n.outputs["Result"]
 
-def float_curve(group, value, points, factor=1.0):
+def create_float_curve(group, value, points, factor=1.0):
     """Create a ShaderNodeFloatCurve with control points.
 
     :param group: The node group to add the node to.

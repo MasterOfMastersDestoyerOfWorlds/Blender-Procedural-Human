@@ -79,6 +79,43 @@ def to_python_repr(val):
     return str(val)
 
 
+def generate_curve_mapping_lines(var_name, node):
+    """Generate code lines for a node's CurveMapping data (float/vector/RGB curves).
+
+    Handles mapping settings, curve points with locations and handle types.
+    Works for ShaderNodeFloatCurve, ShaderNodeVectorCurve, and ShaderNodeRGBCurve.
+    """
+    if not hasattr(node, "mapping"):
+        return []
+
+    mapping = node.mapping
+    lines = []
+    lines.append(f"    # Mapping settings")
+    lines.append(f"    {var_name}.mapping.extend = '{mapping.extend}'")
+    lines.append(f"    {var_name}.mapping.use_clip = {mapping.use_clip}")
+    lines.append(f"    {var_name}.mapping.clip_min_x = {mapping.clip_min_x}")
+    lines.append(f"    {var_name}.mapping.clip_min_y = {mapping.clip_min_y}")
+    lines.append(f"    {var_name}.mapping.clip_max_x = {mapping.clip_max_x}")
+    lines.append(f"    {var_name}.mapping.clip_max_y = {mapping.clip_max_y}")
+
+    for ci, curve in enumerate(mapping.curves):
+        curve_var = f"{var_name}_curve_{ci}"
+        lines.append(f"    {curve_var} = {var_name}.mapping.curves[{ci}]")
+        for pi, point in enumerate(curve.points):
+            x, y = point.location.x, point.location.y
+            handle = point.handle_type
+            if pi < 2:
+                lines.append(f"    {curve_var}.points[{pi}].location = ({x}, {y})")
+                lines.append(f"    {curve_var}.points[{pi}].handle_type = '{handle}'")
+            else:
+                pt_var = f"{curve_var}_pt{pi}"
+                lines.append(f"    {pt_var} = {curve_var}.points.new({x}, {y})")
+                lines.append(f"    {pt_var}.handle_type = '{handle}'")
+
+    lines.append(f"    {var_name}.mapping.update()")
+    return lines
+
+ 
 class NodeGroupExporter:
     def __init__(self):
         self.visited_groups = set()
@@ -233,6 +270,7 @@ class NodeGroupExporter:
                     )
                 except:
                     pass
+            lines.extend(generate_curve_mapping_lines(var_name, node))
             for j, inp in enumerate(node.inputs):
                 if not inp.is_linked:
                     if hasattr(inp, "default_value"):

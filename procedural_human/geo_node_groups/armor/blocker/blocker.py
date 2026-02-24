@@ -2,7 +2,7 @@ import bpy
 from mathutils import Euler, Vector
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.utils.node_layout import auto_layout_nodes
-from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group, math_op, float_curve
+from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group, math_op, create_float_curve
 
 @geo_node_group
 def create_blocker_group():
@@ -202,7 +202,7 @@ def create_blocker_group():
 
     spline_parameter_001 = nodes.new("GeometryNodeSplineParameter")
 
-    float_curve_001 = float_curve(group, spline_parameter_001.outputs[0], [
+    float_curve_001 = create_float_curve(group, spline_parameter_001.outputs[0], [
         (0.0, 0.7650688290596008),
         (0.46223577857017517, 0.6594827175140381),
         (0.8187312483787537, 0.7587241530418396),
@@ -877,7 +877,7 @@ def create_blocker_group():
     map_range_002.inputs[11].default_value = [4.0, 4.0, 4.0]
     links.new(separate_x_y_z.outputs[0], map_range_002.inputs[0])
 
-    fc = float_curve(group, map_range_002.outputs[0], [
+    fc = create_float_curve(group, map_range_002.outputs[0], [
         (0.0, 0.0),
         (0.16918471455574036, 0.04741369187831879),
         (0.22054383158683777, 1.0),

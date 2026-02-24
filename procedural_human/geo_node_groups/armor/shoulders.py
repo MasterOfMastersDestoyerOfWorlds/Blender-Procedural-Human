@@ -15,6 +15,7 @@ from procedural_human.geo_node_groups.node_helpers import (
     get_or_rebuild_node_group,
     separate_xyz,
 )
+from procedural_human.geo_node_groups.node_helpers import create_float_curve
 
 @geo_node_group
 def create_shoulders_group():
@@ -71,6 +72,28 @@ def create_shoulders_group():
     spline_parameter = nodes.new("GeometryNodeSplineParameter")
 
     float_curve_003 = nodes.new("ShaderNodeFloatCurve")
+    float_curve_003.name = "Float Curve.003"
+    float_curve_003.label = ""
+    float_curve_003.location = (770.0, -636.0)
+    float_curve_003.bl_label = "Float Curve"
+    # Mapping settings
+    float_curve_003.mapping.extend = 'EXTRAPOLATED'
+    float_curve_003.mapping.use_clip = True
+    float_curve_003.mapping.clip_min_x = 0.0
+    float_curve_003.mapping.clip_min_y = 0.0
+    float_curve_003.mapping.clip_max_x = 1.0
+    float_curve_003.mapping.clip_max_y = 1.0
+    float_curve_003_curve_0 = float_curve_003.mapping.curves[0]
+    float_curve_003_curve_0.points[0].location = (0.0, 1.0)
+    float_curve_003_curve_0.points[0].handle_type = 'AUTO'
+    float_curve_003_curve_0.points[1].location = (0.09365545958280563, 1.0)
+    float_curve_003_curve_0.points[1].handle_type = 'AUTO'
+    float_curve_003_curve_0_pt2 = float_curve_003_curve_0.points.new(0.6888216733932495, 0.7370689511299133)
+    float_curve_003_curve_0_pt2.handle_type = 'AUTO'
+    float_curve_003_curve_0_pt3 = float_curve_003_curve_0.points.new(1.0, 0.6724140048027039)
+    float_curve_003_curve_0_pt3.handle_type = 'AUTO'
+    float_curve_003.mapping.update()
+    # Factor
     float_curve_003.inputs[0].default_value = 1.0
     links.new(spline_parameter.outputs[0], float_curve_003.inputs[1])
 
@@ -374,10 +397,29 @@ def create_shoulders_group():
 
     spline_parameter_002 = nodes.new("GeometryNodeSplineParameter")
 
+
     float_curve_004 = nodes.new("ShaderNodeFloatCurve")
+    float_curve_004.name = "Float Curve.004"
+    float_curve_004.label = ""
+    float_curve_004.location = (30.0, -96.0)
+    float_curve_004.bl_label = "Float Curve"
+    # Mapping settings
+    float_curve_004.mapping.extend = 'EXTRAPOLATED'
+    float_curve_004.mapping.use_clip = True
+    float_curve_004.mapping.clip_min_x = 0.0
+    float_curve_004.mapping.clip_min_y = 0.0
+    float_curve_004.mapping.clip_max_x = 1.0
+    float_curve_004.mapping.clip_max_y = 1.0
+    float_curve_004_curve_0 = float_curve_004.mapping.curves[0]
+    float_curve_004_curve_0.points[0].location = (0.0, 0.0)
+    float_curve_004_curve_0.points[0].handle_type = 'AUTO'
+    float_curve_004_curve_0.points[1].location = (0.4924471974372864, 0.060344818979501724)
+    float_curve_004_curve_0.points[1].handle_type = 'AUTO'
+    float_curve_004_curve_0_pt2 = float_curve_004_curve_0.points.new(1.0, 0.31896543502807617)
+    float_curve_004_curve_0_pt2.handle_type = 'AUTO'
+    float_curve_004.mapping.update()
+    # Factor
     float_curve_004.inputs[0].default_value = 1.0
-    links.new(spline_parameter_002.outputs[0], float_curve_004.inputs[1])
-    links.new(float_curve_004.outputs[0], math_003.inputs[1])
 
     capture_attribute_004 = nodes.new("GeometryNodeCaptureAttribute")
     capture_attribute_004.capture_items.new("VECTOR", "Value")
@@ -453,6 +495,26 @@ def create_shoulders_group():
     links.new(vector_math_005.outputs[0], extrude_mesh.inputs[2])
 
     float_curve_005 = nodes.new("ShaderNodeFloatCurve")
+    float_curve_005.name = "Float Curve.005"
+    float_curve_005.label = ""
+    float_curve_005.location = (955.0, -556.0)
+    float_curve_005.bl_label = "Float Curve"
+    # Mapping settings
+    float_curve_005.mapping.extend = 'EXTRAPOLATED'
+    float_curve_005.mapping.use_clip = True
+    float_curve_005.mapping.clip_min_x = 0.0
+    float_curve_005.mapping.clip_min_y = 0.0
+    float_curve_005.mapping.clip_max_x = 1.0
+    float_curve_005.mapping.clip_max_y = 1.0
+    float_curve_005_curve_0 = float_curve_005.mapping.curves[0]
+    float_curve_005_curve_0.points[0].location = (0.0, 0.0)
+    float_curve_005_curve_0.points[0].handle_type = 'AUTO'
+    float_curve_005_curve_0.points[1].location = (0.5800604820251465, 0.3965517282485962)
+    float_curve_005_curve_0.points[1].handle_type = 'AUTO'
+    float_curve_005_curve_0_pt2 = float_curve_005_curve_0.points.new(1.0, 1.0)
+    float_curve_005_curve_0_pt2.handle_type = 'AUTO'
+    float_curve_005.mapping.update()
+    # Factor
     float_curve_005.inputs[0].default_value = 1.0
     links.new(math_006.outputs[0], float_curve_005.inputs[1])
     links.new(float_curve_005.outputs[0], math_008.inputs[0])
@@ -1250,8 +1312,16 @@ def create_shoulders_group():
     links.new(combine_x_y_z_001.outputs[0], sample_u_v_surface_001.inputs[2])
     links.new(separate_x_y_z_002.outputs[1], combine_x_y_z_001.inputs[1])
 
-    float_curve = nodes.new("ShaderNodeFloatCurve")
-    float_curve.inputs[0].default_value = 1.0
+
+    float_curve = float_curve(group, map_range_002.outputs[0], [
+        (0.0, 0.0),
+        (0.16918471455574036, 0.04741369187831879),
+        (0.22054383158683777, 1.0),
+        (0.2765861451625824, 0.3771551549434662, 'VECTOR'),
+        (0.41087615489959717, 1.0),
+        (1.0, 1.0),
+    ])
+
     links.new(float_curve.outputs[0], combine_x_y_z_001.inputs[0])
     links.new(separate_x_y_z_002.outputs[0], float_curve.inputs[1])
 
