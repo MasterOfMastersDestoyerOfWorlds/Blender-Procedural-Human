@@ -19,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
 import tools.commands.capture  # noqa: F401
 import tools.commands.geometry  # noqa: F401
 import tools.commands.lifecycle  # noqa: F401
+import tools.commands.node_tools  # noqa: F401
 import tools.commands.validation  # noqa: F401
 from tools.cli_registry import CliCommand, get_registry
 from tools.commands.common import BlenderClient, DEFAULT_BASE_URL

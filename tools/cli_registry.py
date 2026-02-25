@@ -34,10 +34,19 @@ _REGISTRY: dict[str, CliCommand] = {}
 _PARAM_RE = re.compile(r"^\s*:param\s+(\w+)\s*:\s*(.+)\s*$")
 
 
+_BUILTIN_TYPE_NAMES = {"bool": bool, "str": str, "int": int, "float": float}
+
+
 def _normalize_annotation(annotation: Any) -> Any:
-    """Normalize Optional/Union annotations to a concrete parser type."""
+    """Normalize Optional/Union annotations to a concrete parser type.
+
+    Handles string annotations from ``from __future__ import annotations``.
+    """
     if annotation is inspect._empty:
         return str
+
+    if isinstance(annotation, str):
+        return _BUILTIN_TYPE_NAMES.get(annotation, str)
 
     origin = get_origin(annotation)
     if origin is None:
