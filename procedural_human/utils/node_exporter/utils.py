@@ -78,6 +78,10 @@ def to_snake_case(name):
     return re.sub(r"_{2,}", "_", s).strip("_")
 
 
+def to_pascal_case(name):
+    return "".join(word.capitalize() for word in to_snake_case(name).split("_"))
+
+
 def get_unique_var_name(name, existing_names):
     base_name = to_snake_case(name)
     base_name = re.sub(r"_{2,}", "_", base_name)

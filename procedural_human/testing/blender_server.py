@@ -21,6 +21,7 @@ Usage:
 
 import bpy
 import json
+import os
 import threading
 import traceback
 import time
@@ -1024,8 +1025,12 @@ def handle_export_group(params: Dict[str, Any]) -> Dict[str, Any]:
             if not init_path.exists():
                 init_path.touch()
             files = exporter.get_files(package_name=group_dir_name)
-            for filename, code in files.items():
-                file_path = group_dir / filename
+            for filepath, code in files.items():
+                file_path = group_dir / filepath.replace("/", os.sep)
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                sub_init = file_path.parent / "__init__.py"
+                if not sub_init.exists():
+                    sub_init.touch()
                 with open(file_path, "w") as f:
                     f.write(code)
                 written_files.append(str(file_path))

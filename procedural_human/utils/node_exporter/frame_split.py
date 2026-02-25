@@ -34,8 +34,14 @@ def collect_frame_descendants(frame, all_nodes):
     return members
 
 
-def analyze_frame_interface(frame, members, node_group):
-    """Determine the input/output interface of a frame by scanning cross-boundary links."""
+def analyze_frame_interface(frame, members, node_group, scope=None):
+    """Determine the input/output interface of a frame by scanning cross-boundary links.
+
+    :param scope: Optional set of node names that define the current scope.
+        When provided, only links where the external endpoint is within the
+        scope are considered.  This prevents links from entirely outside the
+        scope from leaking into the interface during recursive splitting.
+    """
     interface = FrameInterface()
     seen_inputs = {}
     seen_outputs = {}
@@ -43,12 +49,16 @@ def analyze_frame_interface(frame, members, node_group):
     for link in node_group.links:
         if not link.is_valid:
             continue
-        from_in = link.from_node.name in members
-        to_in = link.to_node.name in members
+        from_name = link.from_node.name
+        to_name = link.to_node.name
+        from_in = from_name in members
+        to_in = to_name in members
 
         if not from_in and to_in:
+            if scope is not None and from_name not in scope:
+                continue
             from_idx = socket_index(link.from_socket, link.from_node.outputs)
-            source_key = (link.from_node.name, from_idx)
+            source_key = (from_name, from_idx)
             if source_key not in seen_inputs:
                 idx = len(interface.inputs)
                 sock_type = SOCKET_TYPE_MAP.get(link.from_socket.type, 'NodeSocketFloat')
@@ -58,12 +68,14 @@ def analyze_frame_interface(frame, members, node_group):
 
             gi_idx = seen_inputs[source_key]
             to_idx = socket_index(link.to_socket, link.to_node.inputs)
-            interface.input_map[(link.to_node.name, to_idx)] = (gi_idx, link.to_node.name, to_idx)
-            interface.inbound_links.append((link.from_node.name, from_idx, gi_idx))
+            interface.input_map[(to_name, to_idx)] = (gi_idx, to_name, to_idx)
+            interface.inbound_links.append((from_name, from_idx, gi_idx))
 
         elif from_in and not to_in:
+            if scope is not None and to_name not in scope:
+                continue
             from_idx = socket_index(link.from_socket, link.from_node.outputs)
-            source_key = (link.from_node.name, from_idx)
+            source_key = (from_name, from_idx)
             if source_key not in seen_outputs:
                 idx = len(interface.outputs)
                 sock_type = SOCKET_TYPE_MAP.get(link.from_socket.type, 'NodeSocketFloat')
@@ -73,21 +85,35 @@ def analyze_frame_interface(frame, members, node_group):
 
             go_idx = seen_outputs[source_key]
             to_idx = socket_index(link.to_socket, link.to_node.inputs)
-            interface.output_map[(link.from_node.name, from_idx)] = (
-                link.from_node.name, from_idx, go_idx
+            interface.output_map[(from_name, from_idx)] = (
+                from_name, from_idx, go_idx
             )
-            interface.outbound_links.append((go_idx, link.to_node.name, to_idx))
+            interface.outbound_links.append((go_idx, to_name, to_idx))
 
     return interface
 
 
 def generate_main_code(exporter, node_group, function_name, group_base_name,
-                       top_frames, frame_interfaces, frame_members, all_framed):
-    """Generate the main.py composition function for frame-split exports."""
+                       top_frames, frame_interfaces, frame_members, all_framed,
+                       scope_names=None, group_name_override=None,
+                       parent_interface=None):
+    """Generate the main.py composition function for frame-split exports.
+
+    :param scope_names: Set of node names in scope. None means all nodes.
+    :param group_name_override: Override the Blender node group name.
+    :param parent_interface: FrameInterface from the parent level for boundary wiring.
+    """
     opts = exporter.options
-    unframed_nodes = [
-        n for n in node_group.nodes if n.name not in all_framed
-    ]
+
+    if scope_names is not None:
+        unframed_nodes = [
+            n for n in node_group.nodes
+            if n.name in scope_names and n.name not in all_framed
+        ]
+    else:
+        unframed_nodes = [
+            n for n in node_group.nodes if n.name not in all_framed
+        ]
     all_main_names = {n.name for n in unframed_nodes}
 
     input_link_map = exporter._build_input_link_map(node_group.links)
@@ -137,38 +163,69 @@ def generate_main_code(exporter, node_group, function_name, group_base_name,
         fvar = frame_var_map[frame.name]
         for i, (name, stype) in enumerate(interface.outputs):
             output_expr_map[(f"__frame_{frame.name}", i)] = f"{fvar}.outputs[{i}]"
+        for (from_name, from_idx), (_, _, go_idx) in interface.output_map.items():
+            output_expr_map[(from_name, from_idx)] = f"{fvar}.outputs[{go_idx}]"
 
     lines = []
     lines.append("@geo_node_group")
     lines.append(f"def {function_name}():")
-    lines.append(f'    group_name = "{node_group.name}"')
+
+    gname = group_name_override or node_group.name
+    lines.append(f'    group_name = "{gname}"')
     lines.append(f"    group, needs_rebuild = get_or_rebuild_node_group(group_name)")
     lines.append(f"    if not needs_rebuild:")
     lines.append(f"        return group")
     lines.append("")
 
-    for item in node_group.interface.items_tree:
-        if item.item_type == "PANEL":
-            continue
-        socket_type = item.socket_type
-        name = clean_string(item.name)
-        io_type = item.in_out
-        lines.append(
-            f'    socket = group.interface.new_socket(name="{name}", in_out="{io_type}", socket_type="{socket_type}")'
-        )
-        if io_type == "INPUT":
-            if hasattr(item, "default_value"):
-                val = item.default_value
-                if not isinstance(val, SKIP_VALUE_TYPES):
-                    lines.append(f"    socket.default_value = {to_python_repr(val)}")
-        if hasattr(item, "min_value"):
-            lines.append(f"    socket.min_value = {item.min_value}")
-        if hasattr(item, "max_value"):
-            lines.append(f"    socket.max_value = {item.max_value}")
+    if parent_interface is not None:
+        for name, stype in (parent_interface.outputs or []):
+            lines.append(
+                f'    group.interface.new_socket(name="{name}", in_out="OUTPUT", socket_type="{stype}")'
+            )
+        for name, stype in (parent_interface.inputs or []):
+            lines.append(
+                f'    group.interface.new_socket(name="{name}", in_out="INPUT", socket_type="{stype}")'
+            )
+    else:
+        for item in node_group.interface.items_tree:
+            if item.item_type == "PANEL":
+                continue
+            socket_type = item.socket_type
+            name = clean_string(item.name)
+            io_type = item.in_out
+            lines.append(
+                f'    socket = group.interface.new_socket(name="{name}", in_out="{io_type}", socket_type="{socket_type}")'
+            )
+            if io_type == "INPUT":
+                if hasattr(item, "default_value"):
+                    val = item.default_value
+                    if not isinstance(val, SKIP_VALUE_TYPES):
+                        lines.append(f"    socket.default_value = {to_python_repr(val)}")
+            if hasattr(item, "min_value"):
+                lines.append(f"    socket.min_value = {item.min_value}")
+            if hasattr(item, "max_value"):
+                lines.append(f"    socket.max_value = {item.max_value}")
 
     lines.append("")
     lines.append("    nodes = group.nodes")
     lines.append("    links = group.links")
+
+    has_group_input = False
+    has_group_output = False
+    if parent_interface:
+        if parent_interface.inputs:
+            lines.append('    group_input = nodes.new("NodeGroupInput")')
+            has_group_input = True
+            seen_gi = set()
+            for from_name, from_idx, gi_idx in parent_interface.inbound_links:
+                key = (from_name, from_idx)
+                if key not in seen_gi:
+                    output_expr_map[key] = f"group_input.outputs[{gi_idx}]"
+                    seen_gi.add(key)
+        if parent_interface.outputs:
+            lines.append('    group_output = nodes.new("NodeGroupOutput")')
+            lines.append("    group_output.is_active_output = True")
+            has_group_output = True
 
     for frame in top_frames:
         fvar = frame_var_map[frame.name]
@@ -214,6 +271,14 @@ def generate_main_code(exporter, node_group, function_name, group_base_name,
         )
         lines.append("")
 
+    # Build parent boundary lookups for routing outside-scope links
+    parent_input_lookup = {}
+    if parent_interface:
+        for from_name, from_idx, parent_gi_idx in parent_interface.inbound_links:
+            key = (from_name, from_idx)
+            if key not in parent_input_lookup:
+                parent_input_lookup[key] = parent_gi_idx
+
     # Links between unframed nodes and frame sub-groups
     for frame in top_frames:
         interface = frame_interfaces[frame.name]
@@ -247,10 +312,59 @@ def generate_main_code(exporter, node_group, function_name, group_base_name,
             if key in seen_outbound:
                 continue
             seen_outbound.add(key)
+            if (to_node_name, to_idx) in consumed_sockets:
+                continue
             if to_node_name in node_var_map:
                 lines.append(
                     f"    links.new({fvar}.outputs[{go_idx}], {node_var_map[to_node_name]}.inputs[{to_idx}])"
                 )
+
+    # Boundary wiring: parent Group Input → internal targets
+    if parent_interface and has_group_input:
+        for (target_name, target_inp), (gi_idx, _, _) in parent_interface.input_map.items():
+            if (target_name, target_inp) in consumed_sockets:
+                continue
+            if target_name in node_var_map:
+                target_var = node_var_map[target_name]
+                lines.append(
+                    f"    links.new(group_input.outputs[{gi_idx}], {target_var}.inputs[{target_inp}])"
+                )
+            elif target_name in all_framed:
+                for frame in top_frames:
+                    if target_name in frame_members[frame.name]:
+                        fvar = frame_var_map[frame.name]
+                        iface = frame_interfaces[frame.name]
+                        sub_entry = iface.input_map.get((target_name, target_inp))
+                        if sub_entry is not None:
+                            sub_gi_idx = sub_entry[0]
+                            lines.append(
+                                f"    links.new(group_input.outputs[{gi_idx}], {fvar}.inputs[{sub_gi_idx}])"
+                            )
+                        break
+
+    # Boundary wiring: internal sources → parent Group Output
+    if parent_interface and has_group_output:
+        for (source_name, source_out), (_, _, go_idx) in parent_interface.output_map.items():
+            if source_name in node_var_map:
+                from_expr = output_expr_map.get(
+                    (source_name, source_out),
+                    f"{node_var_map[source_name]}.outputs[{source_out}]"
+                )
+                lines.append(
+                    f"    links.new({from_expr}, group_output.inputs[{go_idx}])"
+                )
+            elif source_name in all_framed:
+                for frame in top_frames:
+                    if source_name in frame_members[frame.name]:
+                        fvar = frame_var_map[frame.name]
+                        iface = frame_interfaces[frame.name]
+                        for (fn, fi), (_, _, sub_go_idx) in iface.output_map.items():
+                            if fn == source_name and fi == source_out:
+                                lines.append(
+                                    f"    links.new({fvar}.outputs[{sub_go_idx}], group_output.inputs[{go_idx}])"
+                                )
+                                break
+                        break
 
     lines.append("")
     lines.append("    auto_layout_nodes(group)")

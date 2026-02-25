@@ -4,8 +4,9 @@ from collections import defaultdict, deque
 
 from procedural_human.utils.node_exporter.utils import (
     SKIP_PROPS, SKIP_OBJECT_TYPES, SKIP_VALUE_TYPES,
-    clean_string, to_snake_case, get_unique_var_name, to_python_repr,
-    generate_curve_mapping_lines, socket_index, resolve_socket_key,
+    clean_string, to_snake_case, to_pascal_case, get_unique_var_name,
+    to_python_repr, generate_curve_mapping_lines, socket_index,
+    resolve_socket_key,
 )
 from procedural_human.utils.node_exporter.frame_split import (
     FrameInterface, collect_frame_descendants, analyze_frame_interface,
@@ -161,11 +162,15 @@ class NodeGroupExporter:
         if link:
             from_node = link.from_node
             from_idx = socket_index(link.from_socket, from_node.outputs)
-            expr = output_expr_map.get(
-                (from_node.name, from_idx),
-                f"{node_var_map[from_node.name]}.outputs[{from_idx}]"
-            )
-            return expr, True
+            expr = output_expr_map.get((from_node.name, from_idx))
+            if expr is not None:
+                return expr, True
+            if from_node.name in node_var_map:
+                return f"{node_var_map[from_node.name]}.outputs[{from_idx}]", True
+            socket = node.inputs[inp_idx]
+            if hasattr(socket, "default_value") and socket.default_value is not None:
+                return to_python_repr(socket.default_value), False
+            return "None", False
 
         socket = node.inputs[inp_idx]
         if hasattr(socket, "default_value") and socket.default_value is not None:
@@ -545,20 +550,55 @@ class NodeGroupExporter:
     # Frame splitting
     # =====================================================================
 
-    def _generate_split(self, node_group, function_name):
+    def _generate_split(self, node_group, function_name,
+                        scope_nodes=None, file_prefix="",
+                        group_name_override=None, parent_interface=None):
+        """Split frames into separate files, recursing into sub-frames.
+
+        :param scope_nodes: List of nodes to consider. None means all.
+        :param file_prefix: Path prefix for generated files (e.g. ``"collar/"``).
+        :param group_name_override: Override the Blender group name for sub-groups.
+        :param parent_interface: FrameInterface from the parent split level.
+        """
+        if scope_nodes is not None:
+            scoped = list(scope_nodes)
+        else:
+            scoped = list(node_group.nodes)
+
+        scope_names = {n.name for n in scoped}
+
         top_frames = [
-            n for n in node_group.nodes
-            if n.bl_idname == "NodeFrame" and n.parent is None
+            n for n in scoped
+            if n.bl_idname == "NodeFrame"
+            and (n.parent is None or n.parent.name not in scope_names)
         ]
 
         if not top_frames:
-            code = self._generate_group_code(node_group, function_name)
-            self.generated_code_blocks.append(code)
+            if scope_nodes is not None:
+                code = self._generate_group_code(
+                    node_group, function_name,
+                    nodes_subset=scoped,
+                    group_name_override=group_name_override,
+                    interface_inputs=parent_interface.inputs if parent_interface else None,
+                    interface_outputs=parent_interface.outputs if parent_interface else None,
+                    boundary_input_map=parent_interface.input_map if parent_interface else None,
+                    boundary_output_map=parent_interface.output_map if parent_interface else None,
+                )
+                parts = file_prefix.rstrip("/").split("/")
+                filename = f"{parts[-1]}.py" if parts and parts[-1] else "output.py"
+                parent_dir = "/".join(parts[:-1])
+                if parent_dir:
+                    self.generated_files[f"{parent_dir}/{filename}"] = code
+                else:
+                    self.generated_files[filename] = code
+            else:
+                code = self._generate_group_code(node_group, function_name)
+                self.generated_code_blocks.append(code)
             return
 
         frame_members = {}
         for frame in top_frames:
-            frame_members[frame.name] = collect_frame_descendants(frame, node_group.nodes)
+            frame_members[frame.name] = collect_frame_descendants(frame, scoped)
 
         all_framed = set()
         for members in frame_members.values():
@@ -567,11 +607,16 @@ class NodeGroupExporter:
         frame_interfaces = {}
         for frame in top_frames:
             interface = analyze_frame_interface(
-                frame, frame_members[frame.name], node_group
+                frame, frame_members[frame.name], node_group, scope=scope_names
             )
             frame_interfaces[frame.name] = interface
 
-        group_base_name = to_snake_case(clean_string(node_group.name))
+        base = function_name
+        if base.startswith("create_"):
+            base = base[len("create_"):]
+        if base.endswith("_group"):
+            base = base[:-len("_group")]
+        group_base_name = base
 
         for frame in top_frames:
             interface = frame_interfaces[frame.name]
@@ -580,30 +625,47 @@ class NodeGroupExporter:
             frame_snake = to_snake_case(clean_string(frame_label))
 
             sub_func = f"create_{group_base_name}_{frame_snake}_group"
-            sub_group_name = f"{node_group.name}_{frame_label}"
+            parent_pascal = to_pascal_case(group_name_override or node_group.name)
+            sub_group_name = f"{parent_pascal}{to_pascal_case(frame_label)}"
 
             member_nodes = [
-                n for n in node_group.nodes
+                n for n in scoped
                 if n.name in members and n != frame
             ]
 
-            code = self._generate_group_code(
-                node_group, sub_func,
-                nodes_subset=member_nodes,
-                group_name_override=sub_group_name,
-                interface_inputs=interface.inputs,
-                interface_outputs=interface.outputs,
-                boundary_input_map=interface.input_map,
-                boundary_output_map=interface.output_map,
-            )
-            filename = f"{frame_snake}.py"
-            self.generated_files[filename] = code
+            child_frames = [
+                n for n in member_nodes
+                if n.bl_idname == "NodeFrame" and n.parent == frame
+            ]
+
+            if child_frames:
+                self._generate_split(
+                    node_group, sub_func,
+                    scope_nodes=member_nodes,
+                    file_prefix=f"{file_prefix}{frame_snake}/",
+                    group_name_override=sub_group_name,
+                    parent_interface=interface,
+                )
+            else:
+                code = self._generate_group_code(
+                    node_group, sub_func,
+                    nodes_subset=member_nodes,
+                    group_name_override=sub_group_name,
+                    interface_inputs=interface.inputs,
+                    interface_outputs=interface.outputs,
+                    boundary_input_map=interface.input_map,
+                    boundary_output_map=interface.output_map,
+                )
+                self.generated_files[f"{file_prefix}{frame_snake}.py"] = code
 
         main_code = generate_main_code(
             self, node_group, function_name, group_base_name,
-            top_frames, frame_interfaces, frame_members, all_framed
+            top_frames, frame_interfaces, frame_members, all_framed,
+            scope_names=scope_names,
+            group_name_override=group_name_override,
+            parent_interface=parent_interface,
         )
-        self.generated_files["main.py"] = main_code
+        self.generated_files[f"{file_prefix}main.py"] = main_code
 
     # =====================================================================
     # Output
@@ -645,9 +707,10 @@ class NodeGroupExporter:
         return header + "\n\n" + "\n\n".join(self.generated_code_blocks)
 
     def get_files(self, package_name=None):
-        """Get all generated files as a dict of {filename: code_string}.
+        """Get all generated files as a dict of {filepath: code_string}.
 
-        For split_frames, returns multiple files. Otherwise returns a single file.
+        For split_frames, returns multiple files including nested directories.
+        Otherwise returns a single file.
         """
         if not self.generated_files:
             return {"output.py": self.get_full_code()}
@@ -655,55 +718,58 @@ class NodeGroupExporter:
         result = {}
         group_base = package_name or "output"
 
-        for filename, code in self.generated_files.items():
-            if filename == "main.py":
-                sub_imports = []
-                for other_name in self.generated_files:
-                    if other_name != "main.py":
-                        sub_imports_found = re.findall(
-                            r"(create_\w+_group)\(\)", code
-                        )
-                        for func_name in sub_imports_found:
-                            for other_file, other_code in self.generated_files.items():
-                                if other_file == "main.py":
-                                    continue
-                                if f"def {func_name}()" in other_code:
-                                    mod = other_file.replace(".py", "")
-                                    imp = (
-                                        f"procedural_human.tmp.{group_base}.{mod}",
-                                        func_name
-                                    )
-                                    if imp not in sub_imports:
-                                        sub_imports.append(imp)
+        def _is_main(filepath):
+            return filepath == "main.py" or filepath.endswith("/main.py")
 
+        def _resolve_sub_imports(filepath, code):
+            sub_imports = []
+            func_calls = re.findall(r"(create_\w+_group)\(\)", code)
+            for func_name in func_calls:
+                for other_file, other_code in self.generated_files.items():
+                    if other_file == filepath:
+                        continue
+                    if f"def {func_name}()" in other_code:
+                        mod = other_file.replace(".py", "").replace("/", ".").replace("\\", ".")
+                        imp = (f"procedural_human.tmp.{group_base}.{mod}", func_name)
+                        if imp not in sub_imports:
+                            sub_imports.append(imp)
+            return sub_imports
+
+        def _build_leaf_header(code):
+            per_file_helpers = set()
+            for helper_name in self.used_helpers:
+                if helper_name in code:
+                    per_file_helpers.add(helper_name)
+
+            h_lines = []
+            h_lines.append("import bpy")
+            h_lines.append("from mathutils import Vector, Color, Matrix, Euler")
+            h_lines.append(
+                "from procedural_human.decorators.geo_node_decorator import geo_node_group"
+            )
+            h_lines.append(
+                "from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group"
+            )
+            if per_file_helpers:
+                h_lines.append(
+                    f"from procedural_human.geo_node_groups.node_helpers import {', '.join(sorted(per_file_helpers))}"
+                )
+            h_lines.append(
+                "from procedural_human.utils.node_layout import auto_layout_nodes"
+            )
+            for module, func_name in self.used_group_imports:
+                if func_name in code:
+                    h_lines.append(f"from {module} import {func_name}")
+            h_lines.append("")
+            return "\n".join(h_lines)
+
+        for filepath, code in self.generated_files.items():
+            if _is_main(filepath):
+                sub_imports = _resolve_sub_imports(filepath, code)
                 header = self._build_header(for_main=True, sub_imports=sub_imports)
-                result[filename] = header + "\n\n" + code
+                result[filepath] = header + "\n\n" + code
             else:
-                per_file_helpers = set()
-                for helper_name in self.used_helpers:
-                    if helper_name in code:
-                        per_file_helpers.add(helper_name)
-
-                h_lines = []
-                h_lines.append("import bpy")
-                h_lines.append("from mathutils import Vector, Color, Matrix, Euler")
-                h_lines.append(
-                    "from procedural_human.decorators.geo_node_decorator import geo_node_group"
-                )
-                h_lines.append(
-                    "from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group"
-                )
-                if per_file_helpers:
-                    h_lines.append(
-                        f"from procedural_human.geo_node_groups.node_helpers import {', '.join(sorted(per_file_helpers))}"
-                    )
-                h_lines.append(
-                    "from procedural_human.utils.node_layout import auto_layout_nodes"
-                )
-                for module, func_name in self.used_group_imports:
-                    if func_name in code:
-                        h_lines.append(f"from {module} import {func_name}")
-                h_lines.append("")
-                result[filename] = "\n".join(h_lines) + "\n\n" + code
+                header = _build_leaf_header(code)
+                result[filepath] = header + "\n\n" + code
 
         return result
