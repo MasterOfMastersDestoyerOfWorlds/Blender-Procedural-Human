@@ -1,7 +1,22 @@
 import bpy
 
+from procedural_human.decorators.node_helper_decorator import node_helper
+
 # Module-level set - gets reset on reload
 _rebuilt_this_session = set()
+
+_UNARY_MATH_OPS = frozenset({
+    "SINE", "COSINE", "TANGENT", "ARCSINE", "ARCCOSINE", "ARCTANGENT",
+    "SQRT", "ABSOLUTE", "FLOOR", "CEIL", "ROUND", "SIGN", "FRACT",
+    "RADIANS", "DEGREES", "TRUNC", "EXPONENT", "INVERSE_SQRT", "NEGATE",
+})
+
+_UNARY_VEC_OPS = frozenset({
+    "NORMALIZE", "FLOOR", "CEIL", "FRACT", "LENGTH", "ABSOLUTE", "NEGATE",
+    "SINE", "COSINE", "TANGENT",
+})
+
+_SCALAR_RESULT_VEC_OPS = frozenset({"DOT_PRODUCT", "LENGTH", "DISTANCE"})
 
 def get_or_rebuild_node_group(group_name: str, node_type: str = "GeometryNodeTree"):
     """Get an existing node group, or prepare it for rebuild on first call after reload.
@@ -84,6 +99,13 @@ def create_node(group, type_name, inputs=None, **properties):
                 link_or_set(group, node.inputs[k], v)
     return node
 
+@node_helper(
+    bl_idname="ShaderNodeMath",
+    prop_args=["operation"],
+    inputs={0: "a", 1: "b"},
+    optional_inputs=lambda node: {1} if node.operation in _UNARY_MATH_OPS else set(),
+    outputs={0: None},
+)
 def math_op(group, op, a, b=None):
     """Create a math operation node.
     
@@ -100,6 +122,15 @@ def math_op(group, op, a, b=None):
         link_or_set(group, n.inputs[1], b)
     return n.outputs[0]
 
+@node_helper(
+    bl_idname="ShaderNodeVectorMath",
+    prop_args=["operation"],
+    inputs=lambda node: {0: "a", (3 if node.operation == 'SCALE' else 1): "b"},
+    optional_inputs=lambda node: (
+        {3 if node.operation == 'SCALE' else 1} if node.operation in _UNARY_VEC_OPS else set()
+    ),
+    outputs=lambda node: {(1 if node.operation in _SCALAR_RESULT_VEC_OPS else 0): None},
+)
 def vec_math_op(group, op, a, b=None):
     """Create a vector math operation node.
     
@@ -121,6 +152,11 @@ def vec_math_op(group, op, a, b=None):
         return n.outputs[1]
     return n.outputs[0]
 
+@node_helper(
+    bl_idname="ShaderNodeSeparateXYZ",
+    inputs={0: "vec_socket"},
+    outputs={0: "_x", 1: "_y", 2: "_z"},
+)
 def separate_xyz(group, vec_socket):
     """Separate a vector socket into x, y, z components.
     
@@ -132,6 +168,11 @@ def separate_xyz(group, vec_socket):
     link_or_set(group, n.inputs[0], vec_socket)
     return n.outputs[0], n.outputs[1], n.outputs[2]
 
+@node_helper(
+    bl_idname="ShaderNodeCombineXYZ",
+    inputs={0: "x", 1: "y", 2: "z"},
+    outputs={0: None},
+)
 def combine_xyz(group, x, y, z):
     """Combine x, y, z components into a vector socket.
     
@@ -147,6 +188,12 @@ def combine_xyz(group, x, y, z):
     link_or_set(group, n.inputs[2], z)
     return n.outputs[0]
 
+@node_helper(
+    bl_idname="FunctionNodeCompare",
+    prop_args=["operation", "data_type"],
+    inputs={"A": "a", "B": "b"},
+    outputs={"Result": None},
+)
 def compare_op(group, op, data_type, a, b):
     """Create a compare node and return the boolean result output.
     
@@ -164,6 +211,41 @@ def compare_op(group, op, data_type, a, b):
     link_or_set(group, n.inputs["B"], b)
     return n.outputs["Result"]
 
+def _float_curve_emit(node, var_name, resolve_input):
+    """Custom emit for create_float_curve: extracts curve points from mapping data."""
+    points = []
+    curve = node.mapping.curves[0]
+    for pt in curve.points:
+        x, y = pt.location.x, pt.location.y
+        if pt.handle_type == 'AUTO':
+            points.append(f"({x}, {y})")
+        else:
+            points.append(f"({x}, {y}, '{pt.handle_type}')")
+
+    value_expr, _ = resolve_input(1)
+    factor_expr, factor_linked = resolve_input(0)
+
+    pts_str = ",\n        ".join(points)
+    lines = []
+    if not factor_linked and factor_expr == "1.0":
+        lines.append(f"    {var_name} = create_float_curve(group, {value_expr}, [")
+    else:
+        lines.append(f"    {var_name} = create_float_curve(group, {value_expr}, [")
+    lines.append(f"        {pts_str},")
+    if not factor_linked and factor_expr == "1.0":
+        lines.append(f"    ])")
+    else:
+        lines.append(f"    ], factor={factor_expr})")
+
+    return lines, {0: var_name}
+
+
+@node_helper(
+    bl_idname="ShaderNodeFloatCurve",
+    inputs={0: "factor", 1: "value"},
+    outputs={0: None},
+    custom_emit=_float_curve_emit,
+)
 def create_float_curve(group, value, points, factor=1.0):
     """Create a ShaderNodeFloatCurve with control points.
 

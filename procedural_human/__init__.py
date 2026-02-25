@@ -225,6 +225,7 @@ from procedural_human.decorators.module_discovery import (
 from procedural_human.decorators.operator_decorator import procedural_operator
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.decorators.shader_node_decorator import shader_node_group
+from procedural_human.decorators.node_helper_decorator import node_helper
 from procedural_human import menus
 from procedural_human import preferences
 _log_timing("imports_total", (_time_module.perf_counter() - _t0) * 1000)
@@ -312,6 +313,7 @@ def register():
 
     logger.info(f"Node group registry: {geo_node_group.registry}")
     logger.info(f"Shader group registry: {shader_node_group.registry}")
+    logger.info(f"Node helper registry: {list(node_helper.registry.keys())}")
     
     def validate_node_group(group, func_name):
         if group is None:
@@ -359,6 +361,14 @@ def register():
     bpy.app.timers.register(create_registered_shader_groups, first_interval=0.2)
 
     menus.register()
+
+    _t0 = _time_module.perf_counter()
+    try:
+        from procedural_human.utils import node_export_ui
+        node_export_ui.register()
+    except Exception as e:
+        logger.info(f"[Procedural Human] Could not register node export UI: {e}")
+    _log_timing("register:node_export_ui", (_time_module.perf_counter() - _t0) * 1000)
 
     try:
         from procedural_human.utils.curve_serialization import (
@@ -433,6 +443,18 @@ def unregister():
     except Exception:
         pass
     _log_timing("unregister:gizmo_module", (_time_module.perf_counter() - _t0) * 1000)
+
+    _t0 = _time_module.perf_counter()
+    try:
+        from procedural_human.utils import node_export_ui
+        node_export_ui.unregister()
+    except Exception:
+        pass
+    _log_timing("unregister:node_export_ui", (_time_module.perf_counter() - _t0) * 1000)
+
+    _t0 = _time_module.perf_counter()
+    node_helper.registry.clear()
+    _log_timing("unregister:node_helpers", (_time_module.perf_counter() - _t0) * 1000)
 
     _t0 = _time_module.perf_counter()
     menus.unregister()
