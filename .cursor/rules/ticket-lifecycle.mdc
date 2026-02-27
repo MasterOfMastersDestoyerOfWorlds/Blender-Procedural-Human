@@ -1,0 +1,51 @@
+---
+description: Updates JSON tickets in the ixdar-tickets/ directory when work is completed.
+alwaysApply: false
+---
+# Ticket Lifecycle Management
+
+## Context
+This project is tracked via JSON files in the `ixdar-tickets/content/` directory.
+`ixdar-tickets/` is a **separate git repository** (submodule/subrepo), not part of the
+parent repo's git history. A board summary at `ixdar-tickets/BOARD.md` is auto-generated
+by `ixdar-tickets/generate_board.py` via a Cursor `afterFileEdit` hook whenever any
+ticket file is modified.
+
+## Ticket JSON Schema
+Each ticket has these fields (preserve all when editing):
+- `id`, `title`, `description`, `epic` -- identity fields, do not change
+- `status` -- one of `TODO`, `IN_PROGRESS`, `DONE`
+- `priority` -- integer, lower = higher priority; do NOT change unless the user explicitly asks
+- `blocked-by`, `blocks` -- dependency links
+- `definition-of-done`, `testing-plan`, `todos`, `unknowns` -- planning fields
+- `changes-made`, `related-files` -- tracking fields
+
+## Automated Rule
+WHEN you perform a task that corresponds to a ticket ID (e.g., `CORP-1`, `ENG-5`):
+
+1.  **Locate**: Find the file `ixdar-tickets/content/<EPIC>/<ID>.json`.
+2.  **Verify**: Ensure you have the correct file content.
+3.  **Update**:
+    * If you *started* work: Set `"status": "IN_PROGRESS"`.
+    * If you *completed* work: Set `"status": "DONE"`.
+    * In `"todos"`: prune completed items by prefixing each completed todo with `"DONE : "` and keep only unfinished items unprefixed.
+    * Do NOT change `"priority"` unless explicitly asked.
+4.  **Silent Save**: Write the change to the JSON file immediately.
+
+## Creating New Tickets
+CRITICAL: `ixdar-tickets/` is its own git repo. Before picking an ID:
+
+1. List existing tickets: `git -C ixdar-tickets ls-files content/<EPIC>/`
+2. Find the highest number and use the next one.
+3. Do NOT rely on glob results from the parent repo -- they may be incomplete.
+
+When creating a new ticket, include all schema fields. Set `"priority"` relative to
+other tickets in the same epic (check existing tickets for reference). The `afterFileEdit`
+hook will regenerate the board automatically.
+
+## Example
+User: "I fixed the rendering bug in ENG-12."
+Action: You must update `ixdar-tickets/content/ENG/ENG-12.json` setting `"status": "DONE"`.
+
+User: "I finished 3 TODO items in ENG-5."
+Action: Prefix those completed items in `todos` with `"DONE : "` and leave remaining TODOs unchanged.

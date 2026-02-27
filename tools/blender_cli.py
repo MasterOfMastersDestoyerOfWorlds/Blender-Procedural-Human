@@ -20,6 +20,7 @@ import tools.commands.capture  # noqa: F401
 import tools.commands.geometry  # noqa: F401
 import tools.commands.lifecycle  # noqa: F401
 import tools.commands.node_tools  # noqa: F401
+import tools.commands.refactor  # noqa: F401
 import tools.commands.validation  # noqa: F401
 from tools.cli_registry import CliCommand, get_registry
 from tools.commands.common import BlenderClient, DEFAULT_BASE_URL
@@ -99,14 +100,17 @@ def _run(argv: list[str]) -> int:
     registry = get_registry()
     command = registry[args.command_name]
 
-    client = BlenderClient(base_url=args.base_url)
     kwargs = {
         param.name: getattr(args, param.name)
         for param in command.params
     }
 
     try:
-        result = command.function(client, **kwargs)
+        if command.needs_client:
+            client = BlenderClient(base_url=args.base_url)
+            result = command.function(client, **kwargs)
+        else:
+            result = command.function(**kwargs)
     except urllib.error.HTTPError as exc:
         result = {"ok": False, "error": f"HTTP {exc.code}: {exc.reason}"}
     except urllib.error.URLError as exc:

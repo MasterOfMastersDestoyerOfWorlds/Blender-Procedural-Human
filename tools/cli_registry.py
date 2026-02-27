@@ -28,6 +28,7 @@ class CliCommand:
     summary: str
     docstring: str
     params: list[CliParameter]
+    needs_client: bool = True
 
 
 _REGISTRY: dict[str, CliCommand] = {}
@@ -87,8 +88,11 @@ def cli_command(function: Callable[..., dict]) -> Callable[..., dict]:
     signature = inspect.signature(function)
     params: list[CliParameter] = []
 
+    first_param = next(iter(signature.parameters.values()), None)
+    needs_client = first_param is not None and first_param.name == "client"
+
     for index, parameter in enumerate(signature.parameters.values()):
-        if index == 0 and parameter.name == "client":
+        if index == 0 and needs_client:
             continue
 
         annotation = _normalize_annotation(parameter.annotation)
@@ -119,6 +123,7 @@ def cli_command(function: Callable[..., dict]) -> Callable[..., dict]:
         summary=summary,
         docstring=docstring,
         params=params,
+        needs_client=needs_client,
     )
     return function
 

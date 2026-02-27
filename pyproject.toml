@@ -3,7 +3,7 @@ name = "blender-procedural-human-tools"
 version = "0.1.0"
 description = "CLI tooling for Blender procedural human validation loop"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["rope"]
 
 [project.scripts]
 blender-cli = "tools.blender_cli:main"
