@@ -184,6 +184,6 @@ def _find_symbol_offset(source: str, symbol: str) -> int:
                 line = lines[node.lineno - 1]
                 col = line.find(keyword + symbol)
                 if col != -1:
-                    return offset + col
+                    return offset + col + len(keyword)
                 return offset
     return -1

@@ -1,26 +1,18 @@
-As a part of continuous improvement of the environment we would like to think about the blender-cli and how it could be better. Think about the following and propose changes to the cli:
+Reflect on the CLI tools you just used in this conversation. What friction did you hit? What's missing? Propose concrete improvements.
 
-## Commands & Capabilities
-- What blender-cli commands do you wish you had?
-- What multi-step workflows do you repeat that should be a single command?
-- Are there server-side handlers that have no CLI command (or vice versa)?
+## Friction & Pain Points
+- What was awkward, slow, or error-prone in the workflow you just did?
+- Did you have to work around any tool limitations?
+- Were there manual cleanup steps that the tool should have handled?
 
-## Verbosity & Output
-- What blender-cli commands are too verbose?
-- What output fields are never useful and should be removed or hidden behind --verbose?
-- Should any commands have a --brief mode that shows just pass/fail + key numbers?
+## Missing Commands
+- What commands would have made the task easier or faster?
+- What multi-step sequences did you repeat that should be a single command?
 
-## Observability
-- What information do you wish the blender-cli could show you?
-- What errors do you see frequently that could have better diagnostics?
-- Can we surface addon.log errors/warnings through CLI commands instead of reading the file?
+## Output & Diagnostics
+- Was any command output unhelpful, too verbose, or missing key info?
+- Did any error messages fail to explain what went wrong or how to fix it?
 
-## Validation & Safety
-- What information do you wish the blender-cli could automatically validate?
-- What checks should run automatically before/after common operations (export, promote, reload)?
-- Are there common failure modes that could be detected earlier?
-
-## Context & Persistence
-- What context is lost between conversations that should be persisted?
-- Should the CLI track operation history (last export, last promote, last validate)?
-- Would a .blender-cli-state file help avoid re-specifying common arguments?
+## Safety & Validation
+- Did anything break silently that should have been caught?
+- What pre/post checks would prevent the mistakes you saw?

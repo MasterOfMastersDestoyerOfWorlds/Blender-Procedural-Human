@@ -21,1142 +21,43 @@ Usage:
 
 import bpy
 import json
-import os
 import threading
 import traceback
 import time
-from datetime import datetime
-from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any, Dict, Optional, Callable
-from functools import partial
+
+from procedural_human.decorators.operator_decorator import procedural_operator
+from bpy.types import Operator
+from bpy.props import IntProperty, StringProperty
+from procedural_human.testing.handlers.geometry import (
+    handle_apply_node_group, handle_check_camera_visibility,
+    handle_check_corner, handle_check_node_tree, handle_check_watertight,
+    handle_get_mesh_metrics, handle_validate_geometry, handle_verify_topology,
+)
+from procedural_human.testing.handlers.nodes import (
+    handle_diff_group, handle_export_group, handle_inspect_group,
+    handle_list_groups,
+)
+from procedural_human.testing.handlers.lifecycle import (
+    handle_clean_scene, handle_exec_python, handle_open_file,
+    handle_reload_addon,
+)
+from procedural_human.testing.handlers.capture import (
+    handle_capture_viewport, handle_render_viewport,
+)
+from procedural_human.testing.handlers.testing import (
+    handle_apply_export, handle_get_csv_data, handle_get_point_data,
+    handle_run_test, handle_setup_basalt_test, handle_setup_test,
+)
+
+
 _server: Optional[HTTPServer] = None
 _server_thread: Optional[threading.Thread] = None
 _command_queue: list = []
 _result_queue: dict = {}
 _result_counter: int = 0
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 120
-
-
-def _log_path() -> Path:
-    from procedural_human.config import get_codebase_path, validate_codebase_path
-
-    codebase = get_codebase_path()
-    base_path = Path.cwd()
-    if codebase:
-        candidate = Path(codebase)
-        if validate_codebase_path(candidate):
-            base_path = candidate
-    logs_dir = base_path / ".cursor" / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    return logs_dir / "blender-server.log"
-
-
-def _log(message: str) -> None:
-    try:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        line = f"[{timestamp}] {message}\n"
-        with _log_path().open("a", encoding="utf-8") as handle:
-            handle.write(line)
-    except Exception:
-        pass
-
-
-def _active_object() -> Any:
-    obj = getattr(bpy.context, "active_object", None)
-    if obj is not None:
-        return obj
-    view_layer = getattr(bpy.context, "view_layer", None)
-    if view_layer is not None:
-        return getattr(view_layer.objects, "active", None)
-    return None
-
-
-def _create_plane_object(name: str) -> bpy.types.Object:
-    mesh = bpy.data.meshes.new(f"{name}Mesh")
-    mesh.from_pydata(
-        [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (0.5, 0.5, 0.0), (-0.5, 0.5, 0.0)],
-        [],
-        [(0, 1, 2, 3)],
-    )
-    mesh.update()
-    obj = bpy.data.objects.new(name, mesh)
-    bpy.context.scene.collection.objects.link(obj)
-    view_layer = getattr(bpy.context, "view_layer", None)
-    if view_layer is not None:
-        view_layer.objects.active = obj
-    obj.select_set(True)
-    return obj
-
-def handle_run_test(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Run the full Coon patch test."""
-    subdivisions = params.get("subdivisions", 2)
-    create_new = params.get("create_new_cube", True)
-    subdivide_edge = params.get("subdivide_edge", False)
-    
-    try:
-        result = bpy.ops.procedural.run_full_coon_test(
-            subdivisions=subdivisions,
-            create_new_cube=create_new,
-            subdivide_edge=subdivide_edge
-        )
-        passed = bpy.context.scene.get("coon_test_passed", 0)
-        failed = bpy.context.scene.get("coon_test_failed", 0)
-        total = bpy.context.scene.get("coon_test_total", 0)
-        
-        return {
-            "success": failed == 0,
-            "operator_result": str(result),
-            "passed": passed,
-            "failed": failed,
-            "total": total,
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_setup_test(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Setup a test scene."""
-    subdivisions = params.get("subdivisions", 2)
-    use_existing = params.get("use_existing_cube", True)
-    
-    try:
-        result = bpy.ops.procedural.setup_coon_test(
-            subdivisions=subdivisions,
-            use_existing_cube=use_existing
-        )
-        return {
-            "success": result == {'FINISHED'},
-            "operator_result": str(result)
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_apply_export(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply modifier and export CSVs."""
-    apply_mod = params.get("apply_modifier", True)
-    export_pts = params.get("export_points", True)
-    export_edg = params.get("export_edges", True)
-    
-    try:
-        result = bpy.ops.procedural.apply_and_export(
-            apply_modifier=apply_mod,
-            export_points=export_pts,
-            export_edges=export_edg
-        )
-        return {
-            "success": result == {'FINISHED'},
-            "operator_result": str(result)
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_verify_topology(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Verify mesh topology."""
-    point_csv = params.get("point_csv", "")
-    edge_csv = params.get("edge_csv", "")
-    
-    try:
-        result = bpy.ops.procedural.verify_topology(
-            point_csv=point_csv,
-            edge_csv=edge_csv
-        )
-        
-        passed = bpy.context.scene.get("coon_test_passed", 0)
-        failed = bpy.context.scene.get("coon_test_failed", 0)
-        total = bpy.context.scene.get("coon_test_total", 0)
-        
-        return {
-            "success": failed == 0,
-            "operator_result": str(result),
-            "passed": passed,
-            "failed": failed,
-            "total": total,
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_get_csv_data(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Get CSV data from the latest exports."""
-    from procedural_human.testing.topology_checker import (
-        get_latest_csvs,
-        load_point_csv,
-        load_edge_csv,
-    )
-    from procedural_human.config import get_codebase_path
-    
-    codebase = get_codebase_path()
-    tmp_dir = str(codebase / "tmp") if codebase else ""
-    
-    point_csv, edge_csv = get_latest_csvs(tmp_dir)
-    
-    if not point_csv or not edge_csv:
-        return {
-            "success": False,
-            "error": "No CSV files found"
-        }
-    
-    result = {
-        "success": True,
-        "point_csv": point_csv,
-        "edge_csv": edge_csv,
-    }
-    if params.get("include_points", False):
-        points = load_point_csv(point_csv)
-        result["points"] = {
-            pid: {
-                "position": p.position,
-                "face_idx": p.debug_orig_face_idx,
-                "flip_domain": p.debug_flip_domain,
-            }
-            for pid, p in points.items()
-        }
-    if params.get("include_edges", False):
-        edges = load_edge_csv(edge_csv)
-        result["edges"] = {
-            eid: {
-                "vert_x": e.vert_x,
-                "vert_y": e.vert_y,
-            }
-            for eid, e in edges.items()
-        }
-    
-    return result
-
-
-def handle_get_point_data(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Get data for a specific point."""
-    from procedural_human.testing.topology_checker import (
-        get_latest_csvs,
-        load_point_csv,
-    )
-    from procedural_human.config import get_codebase_path
-    
-    point_id = params.get("point_id")
-    if point_id is None:
-        return {"success": False, "error": "point_id required"}
-    
-    codebase = get_codebase_path()
-    tmp_dir = str(codebase / "tmp") if codebase else ""
-    
-    point_csv, _ = get_latest_csvs(tmp_dir)
-    if not point_csv:
-        return {"success": False, "error": "No point CSV found"}
-    
-    points = load_point_csv(point_csv)
-    
-    if point_id not in points:
-        return {"success": False, "error": f"Point {point_id} not found"}
-    
-    p = points[point_id]
-    return {
-        "success": True,
-        "point_id": point_id,
-        "position": p.position,
-        "face_idx": p.debug_orig_face_idx,
-        "loop_start": p.debug_orig_loop_start,
-        "flip_domain": p.debug_flip_domain,
-        "on_edge": p.debug_on_edge,
-        "domain_pos": (p.debug_domain_x, p.debug_domain_y),
-        "raw_data": p.raw_data,
-    }
-
-
-def handle_check_corner(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Check topology for a specific corner point."""
-    from procedural_human.testing.topology_checker import (
-        get_latest_csvs,
-        check_corner_topology,
-    )
-    from procedural_human.config import get_codebase_path
-    
-    corner_id = params.get("corner_id")
-    if corner_id is None:
-        return {"success": False, "error": "corner_id required"}
-    
-    codebase = get_codebase_path()
-    tmp_dir = str(codebase / "tmp") if codebase else ""
-    
-    point_csv, edge_csv = get_latest_csvs(tmp_dir)
-    if not point_csv or not edge_csv:
-        return {"success": False, "error": "No CSV files found"}
-    
-    result = check_corner_topology(
-        point_csv, edge_csv, corner_id,
-        expected_edge_length=params.get("edge_length", 2.0),
-        subdivisions=params.get("subdivisions", 2)
-    )
-    
-    return {
-        "success": True,
-        "passed": result.passed,
-        "corner_id": result.corner_id,
-        "message": result.message,
-        "connected_points": result.connected_points,
-        "distances": result.distances,
-        "star_pattern": result.star_pattern_detected,
-        "details": result.details,
-    }
-
-
-def handle_exec_python(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute arbitrary Python code (use with caution)."""
-    code = params.get("code", "")
-    if not code:
-        return {"success": False, "error": "No code provided"}
-    
-    try:
-        local_ns = {"bpy": bpy, "result": None}
-        exec(code, {"bpy": bpy}, local_ns)
-        
-        return {
-            "success": True,
-            "result": str(local_ns.get("result", None))
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_render_viewport(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Render the scene and save to file."""
-    from procedural_human.config import get_codebase_path
-    import os
-    from datetime import datetime
-    
-    codebase = get_codebase_path()
-    tmp_dir = str(codebase / "tmp") if codebase else ""
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    default_path = os.path.join(tmp_dir, f"render_{timestamp}.png")
-    output_path = params.get("output_path", default_path)
-    resolution = params.get("resolution", [800, 600])
-    
-    try:
-        scene = bpy.context.scene
-        obj_name = params.get("object_name")
-        obj = bpy.data.objects.get(obj_name) if obj_name else _active_object()
-
-        # Ensure a validation camera exists and frames the active object.
-        if not scene.camera:
-            cam_data = bpy.data.cameras.new("ValidationRenderCamera")
-            camera = bpy.data.objects.new("ValidationRenderCamera", cam_data)
-            bpy.context.collection.objects.link(camera)
-            scene.camera = camera
-        else:
-            camera = scene.camera
-
-        if obj and obj.type == "MESH":
-            from mathutils import Vector
-
-            corners_world = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
-            center = sum(corners_world, Vector((0.0, 0.0, 0.0))) / len(corners_world)
-            max_extent = max(max(obj.dimensions.x, obj.dimensions.y), obj.dimensions.z, 1.0)
-            camera.location = (
-                center.x + max_extent * 2.5,
-                center.y - max_extent * 2.5,
-                center.z + max_extent * 2.0,
-            )
-            direction = center - camera.location
-            camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
-
-        # Ensure at least one key light in clean scenes.
-        key_light = bpy.data.objects.get("ValidationKeyLight")
-        if key_light is None:
-            light_data = bpy.data.lights.new("ValidationKeyLight", type="SUN")
-            light_data.energy = 4.0
-            key_light = bpy.data.objects.new("ValidationKeyLight", light_data)
-            bpy.context.collection.objects.link(key_light)
-            key_light.rotation_euler = (0.8, 0.2, 0.5)
-
-        # Use a fast, deterministic render setup for CLI validation.
-        scene.render.engine = "BLENDER_EEVEE"
-        if scene.world is None:
-            scene.world = bpy.data.worlds.new("ValidationWorld")
-        scene.world.color = (0.04, 0.04, 0.04)
-        scene.render.resolution_x = resolution[0]
-        scene.render.resolution_y = resolution[1]
-        scene.render.filepath = output_path
-        scene.render.image_settings.file_format = 'PNG'
-        
-        bpy.ops.render.render(write_still=True)
-
-        # Guardrail: fallback to viewport capture if render is effectively black.
-        try:
-            img = bpy.data.images.load(output_path, check_existing=False)
-            px = img.pixels
-            if len(px) >= 4:
-                sample_count = min(2048, len(px) // 4)
-                step = max(1, (len(px) // 4) // sample_count)
-                luminance_sum = 0.0
-                count = 0
-                for i in range(0, (len(px) // 4), step):
-                    r = px[i * 4 + 0]
-                    g = px[i * 4 + 1]
-                    b = px[i * 4 + 2]
-                    luminance_sum += (0.2126 * r + 0.7152 * g + 0.0722 * b)
-                    count += 1
-                avg_lum = luminance_sum / max(1, count)
-                bpy.data.images.remove(img)
-                if avg_lum < 0.01:
-                    _log(f"render_black_fallback output={output_path} avg_lum={avg_lum:.6f}")
-                    return handle_capture_viewport({"output_path": output_path})
-        except Exception as img_exc:
-            _log(f"render_brightness_check_failed error={img_exc}")
-        
-        return {
-            "success": True,
-            "path": output_path,
-            "resolution": resolution
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_capture_viewport(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Capture 3D viewport screenshot using OpenGL render."""
-    from procedural_human.config import get_codebase_path
-    import os
-    from datetime import datetime
-    
-    codebase = get_codebase_path()
-    tmp_dir = str(codebase / "tmp") if codebase else ""
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    default_path = os.path.join(tmp_dir, f"viewport_{timestamp}.png")
-    output_path = params.get("output_path", default_path)
-    
-    try:
-        scene = bpy.context.scene
-        scene.render.filepath = output_path
-        scene.render.image_settings.file_format = 'PNG'
-        
-        bpy.ops.render.opengl(write_still=True)
-        
-        return {
-            "success": True,
-            "path": output_path
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_get_mesh_metrics(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Get geometric metrics for the active mesh object."""
-    obj_name = params.get("object_name")
-    
-    try:
-        if obj_name:
-            obj = bpy.data.objects.get(obj_name)
-            if not obj:
-                return {"success": False, "error": f"Object '{obj_name}' not found"}
-        else:
-            obj = _active_object()
-            if not obj:
-                return {"success": False, "error": "No active object"}
-        
-        if obj.type != 'MESH':
-            return {"success": False, "error": f"Object is not a mesh: {obj.type}"}
-        
-        mesh = obj.data
-        
-        # Count faces by number of sides
-        face_sides = {}
-        for poly in mesh.polygons:
-            sides = len(poly.vertices)
-            face_sides[sides] = face_sides.get(sides, 0) + 1
-        
-        # Calculate bounding box dimensions
-        bbox = [list(v[:]) for v in obj.bound_box]
-        
-        return {
-            "success": True,
-            "object_name": obj.name,
-            "vertex_count": len(mesh.vertices),
-            "edge_count": len(mesh.edges),
-            "face_count": len(mesh.polygons),
-            "face_sides_histogram": face_sides,
-            "bounding_box": bbox,
-            "dimensions": list(obj.dimensions),
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_apply_node_group(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Create an object with a geometry node group applied."""
-    group_name = params.get("group_name")
-    inputs = params.get("inputs", {})
-    object_name = params.get("object_name", "NodeGroupTest")
-    
-    if not group_name:
-        return {"success": False, "error": "group_name is required"}
-    
-    try:
-        # Create a simple mesh (plane or cube) as base
-        obj = _create_plane_object(object_name)
-        
-        # Add geometry nodes modifier
-        mod = obj.modifiers.new(name="GeometryNodes", type='NODES')
-        
-        # Get or create the node group
-        if group_name in bpy.data.node_groups:
-            node_group = bpy.data.node_groups[group_name]
-        else:
-            # Try to create it by calling the creation function
-            # Import the geo_node_groups module to trigger registration
-            from procedural_human import geo_node_groups
-            
-            # Check registry for creation function
-            from procedural_human.decorators.geo_node_decorator import geo_node_group as decorator
-            
-            # Look for matching creation function
-            create_func_name = f"create_{group_name.lower()}_group"
-            for func_name, func in decorator.registry.items():
-                if func_name.lower() == create_func_name.lower():
-                    node_group = func()
-                    break
-            else:
-                # Try direct group name match
-                if group_name in bpy.data.node_groups:
-                    node_group = bpy.data.node_groups[group_name]
-                else:
-                    return {"success": False, "error": f"Node group '{group_name}' not found"}
-        
-        mod.node_group = node_group
-        
-        # Set input values
-        for input_name, value in inputs.items():
-            if input_name in mod:
-                mod[input_name] = value
-        
-        return {
-            "success": True,
-            "object_name": obj.name,
-            "node_group": node_group.name,
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_check_node_tree(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Recursively walk a node group tree and report sub-groups with errors."""
-    group_name = params.get("group_name")
-    if not group_name:
-        return {"success": False, "error": "group_name is required"}
-
-    root = bpy.data.node_groups.get(group_name)
-    if not root:
-        return {"success": False, "error": f"Node group '{group_name}' not found"}
-
-    errors = []
-    visited = set()
-
-    def _walk(ng, path):
-        if ng.name in visited:
-            return
-        visited.add(ng.name)
-        if len(ng.nodes) == 0:
-            errors.append({"group": ng.name, "path": path, "error": "empty (0 nodes)"})
-            return
-        for node in ng.nodes:
-            if node.bl_idname == "GeometryNodeGroup" and node.node_tree:
-                child = node.node_tree
-                child_path = f"{path} > {child.name}"
-                _walk(child, child_path)
-
-    _walk(root, root.name)
-
-    log_path = _log_path()
-    log_errors = []
-    if log_path.exists():
-        text = log_path.read_text(encoding="utf-8", errors="replace")
-        for line in text.splitlines():
-            if "ERROR" in line and group_name.lower() in line.lower():
-                log_errors.append(line.strip())
-
-    all_ok = len(errors) == 0 and len(log_errors) == 0
-    return {
-        "success": all_ok,
-        "group": group_name,
-        "sub_groups_checked": len(visited),
-        "empty_groups": errors,
-        "log_errors": log_errors,
-    }
-
-
-def handle_setup_basalt_test(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Setup a basalt columns test scene with camera and lighting."""
-    size_x = params.get("size_x", 10.0)
-    size_y = params.get("size_y", 10.0)
-    resolution = params.get("resolution", 20)
-    render_after = params.get("render", True)
-    
-    try:
-        # Clear existing objects (optional)
-        if params.get("clear_scene", False):
-            bpy.ops.object.select_all(action='SELECT')
-            bpy.ops.object.delete()
-        
-        # Create basalt columns
-        result = handle_apply_node_group({
-            "group_name": "BasaltColumns",
-            "object_name": "BasaltTest",
-            "inputs": {
-                "Size X": size_x,
-                "Size Y": size_y,
-                "Resolution": resolution,
-            }
-        })
-        
-        if not result.get("success"):
-            return result
-        
-        obj = bpy.data.objects.get(result["object_name"])
-        
-        # Position camera
-        cam_data = bpy.data.cameras.new("TestCamera")
-        cam = bpy.data.objects.new("TestCamera", cam_data)
-        bpy.context.collection.objects.link(cam)
-        
-        # Isometric-ish view
-        cam.location = (size_x * 1.5, -size_y * 1.5, size_x * 1.2)
-        cam.rotation_euler = (1.1, 0, 0.8)
-        bpy.context.scene.camera = cam
-        
-        # Add sun light
-        light_data = bpy.data.lights.new("TestSun", type='SUN')
-        light_data.energy = 3
-        light = bpy.data.objects.new("TestSun", light_data)
-        bpy.context.collection.objects.link(light)
-        light.rotation_euler = (0.8, 0.2, 0.5)
-        
-        # Render if requested
-        render_path = None
-        if render_after:
-            render_result = handle_render_viewport({
-                "resolution": params.get("render_resolution", [800, 600])
-            })
-            if render_result.get("success"):
-                render_path = render_result["path"]
-        
-        return {
-            "success": True,
-            "object_name": result["object_name"],
-            "camera": cam.name,
-            "render_path": render_path,
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_validate_geometry(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate that evaluated geometry has actual data (vertices, edges, faces).
-    
-    Uses the depsgraph to get the EVALUATED geometry after modifiers/geometry nodes,
-    not just the base mesh data.
-    """
-    obj_name = params.get("object_name")
-    
-    try:
-        obj = bpy.data.objects.get(obj_name) if obj_name else _active_object()
-        if not obj:
-            return {"success": False, "error": "No object found"}
-        
-        if obj.type != 'MESH':
-            return {"success": False, "error": f"Object is not a mesh: {obj.type}"}
-        
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        eval_obj = obj.evaluated_get(depsgraph)
-        data = eval_obj.data
-        
-        vertex_count = len(data.vertices) if hasattr(data, 'vertices') else 0
-        edge_count = len(data.edges) if hasattr(data, 'edges') else 0
-        face_count = len(data.polygons) if hasattr(data, 'polygons') else 0
-        
-        has_geometry = vertex_count > 1 and face_count > 0
-        
-        return {
-            "success": has_geometry,
-            "object_name": obj.name,
-            "vertex_count": vertex_count,
-            "edge_count": edge_count,
-            "face_count": face_count,
-            "error": None if has_geometry else "Geometry must have at least 2 vertices and 1 face"
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-
-def handle_clean_scene(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Reset to a clean scene and remove any default objects."""
-    try:
-        bpy.ops.wm.read_homefile(use_empty=True)
-        removed = 0
-        for obj in list(bpy.data.objects):
-            bpy.data.objects.remove(obj, do_unlink=True)
-            removed += 1
-        return {"success": True, "removed_objects": removed}
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-        }
-
-
-def handle_check_watertight(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Check if evaluated mesh is watertight (all edges manifold)."""
-    import bmesh
-
-    obj_name = params.get("object_name")
-    try:
-        obj = bpy.data.objects.get(obj_name) if obj_name else _active_object()
-        if not obj:
-            return {"success": False, "error": "No object found"}
-        if obj.type != "MESH":
-            return {"success": False, "error": f"Object is not a mesh: {obj.type}"}
-
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        eval_obj = obj.evaluated_get(depsgraph)
-        eval_mesh = eval_obj.to_mesh()
-
-        bm = bmesh.new()
-        bm.from_mesh(eval_mesh)
-        non_manifold_edges = sum(1 for edge in bm.edges if not edge.is_manifold)
-        total_edges = len(bm.edges)
-
-        bm.free()
-        eval_obj.to_mesh_clear()
-
-        return {
-            "success": True,
-            "object_name": obj.name,
-            "is_watertight": non_manifold_edges == 0 and total_edges > 0,
-            "non_manifold_edges": non_manifold_edges,
-            "total_edges": total_edges,
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-        }
-
-
-def handle_check_camera_visibility(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Check whether object bounding box is visible in active camera frame."""
-    from bpy_extras.object_utils import world_to_camera_view
-    from mathutils import Vector
-
-    obj_name = params.get("object_name")
-    try:
-        obj = bpy.data.objects.get(obj_name) if obj_name else _active_object()
-        if not obj:
-            return {"success": False, "error": "No object found"}
-
-        scene = bpy.context.scene
-        camera = scene.camera
-        if not camera:
-            cam_data = bpy.data.cameras.new("ValidationCamera")
-            cam_data.type = "ORTHO"
-            camera = bpy.data.objects.new("ValidationCamera", cam_data)
-            bpy.context.collection.objects.link(camera)
-            corners_world = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
-            center = sum(corners_world, Vector((0.0, 0.0, 0.0))) / len(corners_world)
-            max_extent = max(max(obj.dimensions.x, obj.dimensions.y), obj.dimensions.z, 1.0)
-            cam_data.ortho_scale = max_extent * 3.0
-            camera.location = (
-                center.x + max_extent * 2.0,
-                center.y - max_extent * 2.0,
-                center.z + max_extent * 2.0,
-            )
-            direction = center - camera.location
-            camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
-            scene.camera = camera
-            _log(f"camera_auto_created name={camera.name} for_object={obj.name}")
-
-        corners_world = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
-        projected = [world_to_camera_view(scene, camera, corner) for corner in corners_world]
-
-        inside_count = sum(
-            1
-            for p in projected
-            if 0.0 <= p.x <= 1.0 and 0.0 <= p.y <= 1.0 and 0.0 <= p.z <= 1.0
-        )
-        fraction = inside_count / len(projected) if projected else 0.0
-        visible = inside_count > 0
-
-        # Headless clean scenes may not have a user-authored camera. If we had to
-        # auto-create one for validation, treat visibility as satisfied to avoid
-        # false negatives in CLI validation.
-        if not visible and camera.name.startswith("ValidationCamera"):
-            _log(f"camera_visibility_fallback object={obj.name} camera={camera.name}")
-            visible = True
-
-        return {
-            "success": True,
-            "object_name": obj.name,
-            "camera_name": camera.name,
-            "visible": visible,
-            "inside_corners": inside_count,
-            "total_corners": len(projected),
-            "fraction_in_frame": fraction,
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-        }
-
-
-def handle_reload_addon(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Reload addon and optionally clean scene before re-enable."""
-    clean_scene = params.get("clean_scene", True)
-    module_name = params.get("module_name", "procedural_human")
-    def _ensure_timer():
-        if not bpy.app.timers.is_registered(_process_command_queue):
-            bpy.app.timers.register(_process_command_queue, first_interval=0.1)
-            _log("reload_addon_timer_reregistered")
-
-    try:
-        clean_result = None
-        if clean_scene:
-            clean_result = handle_clean_scene({})
-            if not clean_result.get("success"):
-                return clean_result
-
-        bpy.ops.preferences.addon_disable(module=module_name)
-        bpy.ops.preferences.addon_enable(module=module_name)
-        _ensure_timer()
-        return {
-            "success": True,
-            "module": module_name,
-            "clean_scene": clean_scene,
-            "clean_result": clean_result,
-        }
-    except Exception as e:
-        error_text = str(e)
-        if "already registered as a subclass" in error_text:
-            _log(f"reload_addon_fallback module={module_name} error={error_text}")
-            import importlib
-            import sys
-
-            reloaded_modules = []
-            for name in sorted(list(sys.modules.keys()), key=len, reverse=True):
-                if name == module_name or name.startswith(f"{module_name}."):
-                    module = sys.modules.get(name)
-                    if module is None:
-                        continue
-                    try:
-                        importlib.reload(module)
-                        reloaded_modules.append(name)
-                    except Exception as reload_error:
-                        _log(f"reload_addon_fallback_module_error module={name} error={reload_error}")
-            try:
-                mod = sys.modules.get(module_name)
-                if mod and hasattr(mod, "register"):
-                    mod.register()
-                    _log("reload_addon_fallback_register_called")
-            except Exception as reg_err:
-                _log(f"reload_addon_fallback_register_error error={reg_err}")
-
-            _ensure_timer()
-            return {
-                "success": True,
-                "module": module_name,
-                "clean_scene": clean_scene,
-                "warning": error_text,
-                "fallback": "continued_with_existing_registration",
-                "reloaded_module_count": len(reloaded_modules),
-            }
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-        }
-
-
-def handle_open_file(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Open a .blend file in the running Blender instance.
-
-    Re-registers the command queue timer after opening because
-    ``open_mainfile`` resets Blender state including timers.
-    """
-    filepath = params.get("filepath", "")
-    if not filepath:
-        return {"success": False, "error": "No filepath provided"}
-
-    from pathlib import Path
-    p = Path(filepath)
-    if not p.exists():
-        return {"success": False, "error": f"File not found: {filepath}"}
-
-    try:
-        resolved = str(p.resolve())
-        bpy.ops.wm.open_mainfile(filepath=resolved)
-        if not bpy.app.timers.is_registered(_process_command_queue):
-            bpy.app.timers.register(_process_command_queue, first_interval=0.1)
-            _log("open_file_timer_reregistered")
-        return {"success": True, "filepath": resolved}
-    except Exception as e:
-        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
-
-
-def handle_list_groups(params: Dict[str, Any]) -> Dict[str, Any]:
-    """List all registered geo_node_group functions."""
-    try:
-        from procedural_human.decorators.geo_node_decorator import geo_node_group
-        groups = {}
-        for name, func in sorted(geo_node_group.registry.items()):
-            module = getattr(func, '__module__', 'unknown')
-            groups[name] = {"module": module}
-
-        blender_groups = sorted(bpy.data.node_groups.keys())
-        return {
-            "success": True,
-            "registered": groups,
-            "registered_count": len(groups),
-            "blender_groups": blender_groups,
-            "blender_count": len(blender_groups),
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
-
-
-def handle_inspect_group(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Inspect a node group's structure: nodes, links, interface, frames."""
-    group_name = params.get("group", "")
-    if not group_name:
-        return {"success": False, "error": "No group name provided"}
-
-    ng = bpy.data.node_groups.get(group_name)
-    if ng is None:
-        try:
-            from procedural_human.decorators.geo_node_decorator import geo_node_group
-            func = geo_node_group.registry.get(f"create_{group_name.lower().replace(' ', '_')}_group")
-            if func is None:
-                for name, f in geo_node_group.registry.items():
-                    if group_name.lower() in name.lower():
-                        func = f
-                        break
-            if func:
-                func()
-                ng = bpy.data.node_groups.get(group_name)
-        except Exception:
-            pass
-
-    if ng is None:
-        available = sorted(bpy.data.node_groups.keys())
-        return {"success": False, "error": f"Node group '{group_name}' not found", "available": available[:20]}
-
-    try:
-        node_types = {}
-        frames = []
-        for node in ng.nodes:
-            t = node.bl_idname
-            node_types[t] = node_types.get(t, 0) + 1
-            if t == "NodeFrame":
-                label = node.label or node.name
-                parent = node.parent.label if node.parent else None
-                frames.append({"name": node.name, "label": label, "parent": parent})
-
-        inputs = []
-        outputs = []
-        for item in ng.interface.items_tree:
-            if item.item_type == "PANEL":
-                continue
-            entry = {"name": item.name, "type": item.socket_type, "io": item.in_out}
-            if item.in_out == "INPUT":
-                inputs.append(entry)
-            else:
-                outputs.append(entry)
-
-        return {
-            "success": True,
-            "name": ng.name,
-            "node_count": len(ng.nodes),
-            "link_count": len(ng.links),
-            "node_types": node_types,
-            "frames": frames,
-            "inputs": inputs,
-            "outputs": outputs,
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
-
-
-def handle_export_group(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Export a node group to Python using the node exporter."""
-    group_name = params.get("group", "")
-    if not group_name:
-        return {"success": False, "error": "No group name provided"}
-
-    ng = bpy.data.node_groups.get(group_name)
-    if ng is None:
-        return {"success": False, "error": f"Node group '{group_name}' not found"}
-
-    try:
-        from procedural_human.utils.node_exporter.exporter import NodeGroupExporter, ExportOptions
-        from procedural_human.utils.node_exporter.utils import (
-            clean_string, to_snake_case, get_next_temp_file_path, get_tmp_base_dir,
-        )
-
-        options = ExportOptions(
-            include_locations=params.get("include_locations", False),
-            include_labels=params.get("include_labels", True),
-            include_names=params.get("include_names", False),
-            use_helpers=params.get("use_helpers", True),
-            split_frames=params.get("split_frames", False),
-        )
-
-        exporter = NodeGroupExporter(options)
-        exporter.process_group(ng)
-
-        base_dir = get_tmp_base_dir()
-        written_files = []
-
-        if options.split_frames:
-            group_dir_name = to_snake_case(clean_string(ng.name))
-            group_dir = base_dir / group_dir_name
-            group_dir.mkdir(parents=True, exist_ok=True)
-            init_path = group_dir / "__init__.py"
-            if not init_path.exists():
-                init_path.touch()
-            files = exporter.get_files(package_name=group_dir_name)
-            for filepath, code in files.items():
-                file_path = group_dir / filepath.replace("/", os.sep)
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                sub_init = file_path.parent / "__init__.py"
-                if not sub_init.exists():
-                    sub_init.touch()
-                with open(file_path, "w") as f:
-                    f.write(code)
-                written_files.append(str(file_path))
-        else:
-            code = exporter.get_full_code()
-            file_path = get_next_temp_file_path(str(base_dir))
-            with open(file_path, "w") as f:
-                f.write(code)
-            written_files.append(file_path)
-
-        return {
-            "success": True,
-            "group": group_name,
-            "files": written_files,
-            "helpers_used": sorted(exporter.used_helpers),
-            "known_groups_detected": [f for _, f in exporter.used_group_imports],
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
-
-
-def handle_diff_group(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Compare mesh metrics of a node group against a baseline.
-
-    Applies the node group, captures metrics, then optionally compares
-    against a previously saved baseline file.
-    """
-    group_name = params.get("group", "")
-    if not group_name:
-        return {"success": False, "error": "No group name provided"}
-
-    ng = bpy.data.node_groups.get(group_name)
-    if ng is None:
-        return {"success": False, "error": f"Node group '{group_name}' not found"}
-
-    try:
-        result = handle_apply_node_group({"group_name": group_name})
-        if not result.get("success"):
-            return result
-
-        obj = bpy.data.objects.get(result.get("object_name", ""))
-        if obj is None or obj.type != "MESH":
-            return {"success": False, "error": "No mesh object after applying group"}
-
-        mesh = obj.data
-        current = {
-            "vertices": len(mesh.vertices),
-            "edges": len(mesh.edges),
-            "faces": len(mesh.polygons),
-        }
-
-        baseline_path = params.get("baseline", "")
-        if baseline_path:
-            import json as _json
-            from pathlib import Path
-            bp = Path(baseline_path)
-            if bp.exists():
-                baseline = _json.loads(bp.read_text())
-                diff = {}
-                for key in current:
-                    if current[key] != baseline.get(key):
-                        diff[key] = {"current": current[key], "baseline": baseline.get(key)}
-                return {
-                    "success": True,
-                    "group": group_name,
-                    "current": current,
-                    "baseline": baseline,
-                    "diff": diff,
-                    "identical": len(diff) == 0,
-                }
-
-        save_path = params.get("save", "")
-        if save_path:
-            import json as _json
-            from pathlib import Path
-            Path(save_path).write_text(_json.dumps(current, indent=2))
-
-        return {"success": True, "group": group_name, "metrics": current}
-    except Exception as e:
-        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
 COMMAND_HANDLERS: Dict[str, Callable] = {
@@ -1255,7 +156,7 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
         _result_counter += 1
         command_id = _result_counter
         started_at = time.time()
-        _log(
+        procedural_human.testing.handlers.common._log(
             f"enqueue id={command_id} action={action} "
             f"queue_len={len(_command_queue) + 1} params={json.dumps(params, default=str)}"
         )
@@ -1270,7 +171,7 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
         
         while command_id not in _result_queue:
             if time.time() - start > timeout:
-                _log(
+                procedural_human.testing.handlers.common._log(
                     f"timeout id={command_id} action={action} "
                     f"wait_s={time.time() - started_at:.3f} queue_len={len(_command_queue)}"
                 )
@@ -1282,7 +183,7 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
                 return
             time.sleep(0.05)
         result = _result_queue.pop(command_id)
-        _log(
+        procedural_human.testing.handlers.common._log(
             f"complete id={command_id} action={action} "
             f"elapsed_s={time.time() - started_at:.3f} success={result.get('success')}"
         )
@@ -1296,7 +197,7 @@ def _process_command_queue():
     while _command_queue:
         cmd = _command_queue.pop(0)
         started_at = time.time()
-        _log(
+        procedural_human.testing.handlers.common._log(
             f"process_start id={cmd['id']} action={cmd['action']} "
             f"remaining_queue={len(_command_queue)}"
         )
@@ -1311,7 +212,7 @@ def _process_command_queue():
                 "error": str(e),
                 "traceback": traceback.format_exc()
             }
-        _log(
+        procedural_human.testing.handlers.common._log(
             f"process_end id={cmd['id']} action={cmd['action']} "
             f"elapsed_s={time.time() - started_at:.3f} success={result.get('success')}"
         )
@@ -1333,7 +234,7 @@ def start_server(port: int = 9876, host: str = "localhost") -> bool:
     
     if _server is not None:
         print(f"[BlenderServer] Server already running on {host}:{port}")
-        _log(f"server_already_running host={host} port={port}")
+        procedural_human.testing.handlers.common._log(f"server_already_running host={host} port={port}")
         return False
     
     try:
@@ -1345,12 +246,12 @@ def start_server(port: int = 9876, host: str = "localhost") -> bool:
         
         print(f"[BlenderServer] Started on http://{host}:{port}")
         print(f"[BlenderServer] Available commands: {list(COMMAND_HANDLERS.keys())}")
-        _log(f"server_started host={host} port={port}")
+        procedural_human.testing.handlers.common._log(f"server_started host={host} port={port}")
         return True
         
     except Exception as e:
         print(f"[BlenderServer] Failed to start: {e}")
-        _log(f"server_start_failed error={e}")
+        procedural_human.testing.handlers.common._log(f"server_start_failed error={e}")
         _server = None
         _server_thread = None
         return False
@@ -1362,7 +263,7 @@ def stop_server():
 
     if _server is None:
         print("[BlenderServer] Server not running")
-        _log("server_not_running")
+        procedural_human.testing.handlers.common._log("server_not_running")
         return
     if bpy.app.timers.is_registered(_process_command_queue):
         bpy.app.timers.unregister(_process_command_queue)
@@ -1380,7 +281,7 @@ def stop_server():
     shutdown_thread.start()
 
     print("[BlenderServer] Stopped")
-    _log("server_stopped")
+    procedural_human.testing.handlers.common._log("server_stopped")
 
 
 def is_server_running() -> bool:
@@ -1394,10 +295,6 @@ def get_server_url() -> Optional[str]:
         return None
     host, port = _server.server_address
     return f"http://{host}:{port}"
-
-from procedural_human.decorators.operator_decorator import procedural_operator
-from bpy.types import Operator
-from bpy.props import IntProperty, StringProperty
 
 
 @procedural_operator
