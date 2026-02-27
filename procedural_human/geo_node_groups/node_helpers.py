@@ -67,7 +67,12 @@ def link_or_set(group, socket_in, value):
     if is_socket(value):
         group.links.new(value, socket_in)
     elif isinstance(value, (int, float, bool, str)):
-        socket_in.default_value = value 
+        if socket_in.type == 'INT' and isinstance(value, float):
+            socket_in.default_value = int(value)
+        elif socket_in.type == 'VALUE' and isinstance(value, int) and not isinstance(value, bool):
+            socket_in.default_value = float(value)
+        else:
+            socket_in.default_value = value
     elif isinstance(value, (tuple, list)):
         socket_in.default_value = value
 

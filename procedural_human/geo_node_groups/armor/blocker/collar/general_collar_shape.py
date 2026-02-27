@@ -75,6 +75,7 @@ def create_blocker_collar_general_collar_shape_group():
     capture_attribute = nodes.new("GeometryNodeCaptureAttribute")
     capture_attribute.active_index = 0
     capture_attribute.domain = "POINT"
+    capture_attribute.capture_items.new("FLOAT", "Factor")
     links.new(set_spline_cyclic.outputs[0], capture_attribute.inputs[0])
     links.new(spline_parameter_002.outputs[0], capture_attribute.inputs[1])
 
@@ -83,17 +84,18 @@ def create_blocker_collar_general_collar_shape_group():
     set_curve_tilt.inputs[2].default_value = -1.472708821296692
     links.new(resample_curve_001.outputs[0], set_curve_tilt.inputs[0])
 
-    capture_attribute_001 = nodes.new("GeometryNodeCaptureAttribute")
-    capture_attribute_001.active_index = 0
-    capture_attribute_001.domain = "POINT"
-    links.new(set_curve_tilt.outputs[0], capture_attribute_001.inputs[0])
-    links.new(spline_parameter_002.outputs[0], capture_attribute_001.inputs[1])
-
     curve_to_mesh_004 = nodes.new("GeometryNodeCurveToMesh")
     curve_to_mesh_004.inputs[3].default_value = False
     links.new(set_spline_cyclic_001.outputs[0], curve_to_mesh_004.inputs[1])
     links.new(set_curve_tilt.outputs[0], curve_to_mesh_004.inputs[0])
     links.new(float_curve_001, curve_to_mesh_004.inputs[2])
+
+    capture_attribute_001 = nodes.new("GeometryNodeCaptureAttribute")
+    capture_attribute_001.active_index = 0
+    capture_attribute_001.domain = "POINT"
+    capture_attribute_001.capture_items.new("FLOAT", "Factor")
+    links.new(set_curve_tilt.outputs[0], capture_attribute_001.inputs[0])
+    links.new(spline_parameter_002.outputs[0], capture_attribute_001.inputs[1])
 
     curve_to_mesh_002 = nodes.new("GeometryNodeCurveToMesh")
     curve_to_mesh_002.inputs[3].default_value = False

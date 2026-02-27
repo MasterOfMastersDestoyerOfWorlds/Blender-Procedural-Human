@@ -54,7 +54,7 @@ def create_blocker_collar_gambeson_pattern_piping_group():
     compare_002.node.inputs[10].default_value = 0.8999999761581421
     compare_002.node.inputs[11].default_value = 0.08726649731397629
     compare_002.node.inputs[12].default_value = 0.0010000000474974513
-    links.new(index_001.outputs[0], compare_002.inputs[2])
+    links.new(index_001.outputs[0], compare_002.node.inputs[2])
 
     map_range_002 = nodes.new("ShaderNodeMapRange")
     map_range_002.clamp = True
@@ -96,6 +96,7 @@ def create_blocker_collar_gambeson_pattern_piping_group():
     capture_attribute_003 = nodes.new("GeometryNodeCaptureAttribute")
     capture_attribute_003.active_index = 0
     capture_attribute_003.domain = "POINT"
+    capture_attribute_003.capture_items.new("BOOLEAN", "Result")
     links.new(set_position.outputs[0], capture_attribute_003.inputs[0])
     links.new(compare_002, capture_attribute_003.inputs[1])
 

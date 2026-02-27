@@ -9,6 +9,7 @@ from tools.commands.geometry import (
     check_watertight,
     check_camera_visibility,
     check_degenerate,
+    check_node_tree,
 )
 from tools.commands.capture import screenshot
 
@@ -107,6 +108,8 @@ def validate(
     if not apply_result.get("success"):
         return _fail("Failed to apply node group", apply_result)
 
+    tree_check = check_node_tree(client, group=group)
+
     preflight_result = _run_preflight(
         client,
         object_name=object_name,
@@ -114,4 +117,17 @@ def validate(
     )
     preflight_result["reload"] = reload_result
     preflight_result["apply"] = apply_result
+    preflight_result["node_tree"] = tree_check
+
+    if not tree_check.get("ok"):
+        preflight_result["ok"] = False
+        errors = tree_check.get("empty_groups", [])
+        log_errors = tree_check.get("log_errors", [])
+        parts = []
+        if errors:
+            parts.append(f"{len(errors)} empty sub-group(s)")
+        if log_errors:
+            parts.append(f"{len(log_errors)} error(s) in addon log")
+        preflight_result["error"] = f"Node tree has issues: {', '.join(parts)}"
+
     return preflight_result

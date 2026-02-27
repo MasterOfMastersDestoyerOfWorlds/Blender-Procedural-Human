@@ -18,12 +18,21 @@ class FrameInterface:
     outbound_links: list = field(default_factory=list)
 
 
+_FRAME_EXCLUDED_TYPES = frozenset({"NodeGroupInput", "NodeGroupOutput"})
+
+
 def collect_frame_descendants(frame, all_nodes):
-    """Collect all nodes that are descendants of a frame."""
+    """Collect all nodes that are descendants of a frame.
+
+    NodeGroupInput and NodeGroupOutput are excluded — they reference the parent
+    group's interface, not the sub-group's, so they must remain unframed.
+    """
     members = set()
     members.add(frame.name)
     for node in all_nodes:
         if node == frame:
+            continue
+        if node.bl_idname in _FRAME_EXCLUDED_TYPES:
             continue
         ancestor = node.parent
         while ancestor is not None:
@@ -247,6 +256,26 @@ def generate_main_code(exporter, node_group, function_name, group_base_name,
             from_idx = socket_index(link.from_socket, link.from_node.outputs)
             used_output_main[link.from_node.name].add(from_idx)
 
+    node_input_map = dict(node_var_map)
+    for node in unframed_nodes:
+        meta = exporter.helper_registry.get(node.bl_idname) if opts.use_helpers else None
+        if not meta:
+            continue
+        var = node_var_map[node.name]
+        outputs = meta.resolve_outputs(node)
+        if any(suffix is None for suffix in outputs.values()):
+            node_input_map[node.name] = f"{var}.node"
+        else:
+            used = used_output_main.get(node.name, set())
+            for out_key, suffix in outputs.items():
+                out_idx = resolve_socket_key(out_key, node.outputs)
+                if out_idx in used and suffix is not None:
+                    node_input_map[node.name] = f"{var}{suffix}.node"
+                    break
+            else:
+                first_suffix = next(v for v in outputs.values() if v is not None)
+                node_input_map[node.name] = f"{var}{first_suffix}.node"
+
     processed = set()
     for node in sorted_unframed:
         var = node_var_map[node.name]
@@ -267,7 +296,8 @@ def generate_main_code(exporter, node_group, function_name, group_base_name,
         processed.add(node.name)
         _emit_interleaved_links(
             lines, node, processed, node_group.links,
-            all_main_names, consumed_sockets, output_expr_map, node_var_map
+            all_main_names, consumed_sockets, output_expr_map, node_var_map,
+            node_input_map=node_input_map
         )
         lines.append("")
 
@@ -316,7 +346,7 @@ def generate_main_code(exporter, node_group, function_name, group_base_name,
                 continue
             if to_node_name in node_var_map:
                 lines.append(
-                    f"    links.new({fvar}.outputs[{go_idx}], {node_var_map[to_node_name]}.inputs[{to_idx}])"
+                    f"    links.new({fvar}.outputs[{go_idx}], {node_input_map[to_node_name]}.inputs[{to_idx}])"
                 )
 
     # Boundary wiring: parent Group Input → internal targets
@@ -325,9 +355,8 @@ def generate_main_code(exporter, node_group, function_name, group_base_name,
             if (target_name, target_inp) in consumed_sockets:
                 continue
             if target_name in node_var_map:
-                target_var = node_var_map[target_name]
                 lines.append(
-                    f"    links.new(group_input.outputs[{gi_idx}], {target_var}.inputs[{target_inp}])"
+                    f"    links.new(group_input.outputs[{gi_idx}], {node_input_map[target_name]}.inputs[{target_inp}])"
                 )
             elif target_name in all_framed:
                 for frame in top_frames:
@@ -375,8 +404,10 @@ def generate_main_code(exporter, node_group, function_name, group_base_name,
 
 def _emit_interleaved_links(lines, current_node, processed, all_links,
                             all_node_names, consumed_sockets,
-                            output_expr_map, node_var_map):
+                            output_expr_map, node_var_map,
+                            node_input_map=None):
     """Emit links where current_node is one end and the other end is already processed."""
+    nim = node_input_map or node_var_map
     for link in all_links:
         if not link.is_valid:
             continue
@@ -405,5 +436,5 @@ def _emit_interleaved_links(lines, current_node, processed, all_links,
             f"{node_var_map[from_name]}.outputs[{from_idx}]"
         )
         lines.append(
-            f"    links.new({from_expr}, {node_var_map[to_name]}.inputs[{to_idx}])"
+            f"    links.new({from_expr}, {nim[to_name]}.inputs[{to_idx}])"
         )

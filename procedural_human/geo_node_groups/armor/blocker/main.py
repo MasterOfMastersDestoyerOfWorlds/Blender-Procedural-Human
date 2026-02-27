@@ -4,8 +4,8 @@ from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
 from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, math_op, separate_xyz, vec_math_op
 from procedural_human.utils.node_layout import auto_layout_nodes
-from procedural_human.tmp.blocker.chest import create_blocker_chest_group
-from procedural_human.tmp.blocker.collar.main import create_blocker_collar_group
+from procedural_human.geo_node_groups.armor.blocker.chest import create_blocker_chest_group
+from procedural_human.geo_node_groups.armor.blocker.collar.main import create_blocker_collar_group
 
 
 @geo_node_group
@@ -29,6 +29,10 @@ def create_blocker_group():
 
     join_geometry = nodes.new("GeometryNodeJoinGeometry")
 
+    group_input = nodes.new("NodeGroupInput")
+
+    group_input_001 = nodes.new("NodeGroupInput")
+
     set_shade_smooth = nodes.new("GeometryNodeSetShadeSmooth")
     set_shade_smooth.domain = "FACE"
     set_shade_smooth.inputs[1].default_value = True
@@ -38,7 +42,9 @@ def create_blocker_group():
     group_output = nodes.new("NodeGroupOutput")
     links.new(set_shade_smooth.outputs[0], group_output.inputs[0])
 
+    links.new(group_input.outputs[0], chest.inputs[0])
     links.new(chest.outputs[0], join_geometry.inputs[0])
+    links.new(group_input_001.outputs[0], collar.inputs[0])
     links.new(collar.outputs[0], join_geometry.inputs[0])
 
     auto_layout_nodes(group)

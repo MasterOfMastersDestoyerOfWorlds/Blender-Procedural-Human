@@ -38,6 +38,7 @@ SKIP_PROPS = frozenset({
     "show_options", "show_preview", "hide", "mute", "show_texture",
     "bl_description", "bl_idname", "active_item",
     "is_active_output", "input_type", "output_type",
+    "capture_items", "repeat_items", "index_switch_items",
 })
 
 SKIP_OBJECT_TYPES = (

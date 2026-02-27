@@ -72,7 +72,7 @@ def create_blocker_collar_displacement_group():
     links.new(vector_math_006, set_position_001.inputs[3])
 
     links.new(group_input.outputs[0], set_position_001.inputs[0])
-    links.new(group_input.outputs[1], vector_math_003.inputs[0])
+    links.new(group_input.outputs[1], vector_math_003.node.inputs[0])
     links.new(set_position_001.outputs[0], group_output.inputs[0])
 
     auto_layout_nodes(group)

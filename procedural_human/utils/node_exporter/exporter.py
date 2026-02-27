@@ -14,6 +14,14 @@ from procedural_human.utils.node_exporter.frame_split import (
 )
 
 
+def _typed_repr(socket):
+    """Return to_python_repr of a socket's default_value, casting float→int for INT sockets."""
+    val = socket.default_value
+    if socket.type == 'INT' and isinstance(val, float):
+        return repr(int(val))
+    return to_python_repr(val)
+
+
 @dataclass
 class ExportOptions:
     include_locations: bool = False
@@ -169,12 +177,12 @@ class NodeGroupExporter:
                 return f"{node_var_map[from_node.name]}.outputs[{from_idx}]", True
             socket = node.inputs[inp_idx]
             if hasattr(socket, "default_value") and socket.default_value is not None:
-                return to_python_repr(socket.default_value), False
+                return _typed_repr(socket), False
             return "None", False
 
         socket = node.inputs[inp_idx]
         if hasattr(socket, "default_value") and socket.default_value is not None:
-            return to_python_repr(socket.default_value), False
+            return _typed_repr(socket), False
         return "None", False
 
     # =====================================================================
@@ -247,6 +255,26 @@ class NodeGroupExporter:
                 node_helper_meta[node.name] = None
                 for i in range(len(node.outputs)):
                     output_expr_map[(node.name, i)] = f"{var}.outputs[{i}]"
+
+        node_input_map = dict(node_var_map)
+        for node in all_nodes:
+            meta = node_helper_meta.get(node.name)
+            if not meta:
+                continue
+            var = node_var_map[node.name]
+            outputs = meta.resolve_outputs(node)
+            if any(suffix is None for suffix in outputs.values()):
+                node_input_map[node.name] = f"{var}.node"
+            else:
+                used = used_output_indices.get(node.name, set())
+                for out_key, suffix in outputs.items():
+                    out_idx = resolve_socket_key(out_key, node.outputs)
+                    if out_idx in used and suffix is not None:
+                        node_input_map[node.name] = f"{var}{suffix}.node"
+                        break
+                else:
+                    first_suffix = next(v for v in outputs.values() if v is not None)
+                    node_input_map[node.name] = f"{var}{first_suffix}.node"
 
         sorted_nodes = self._topological_sort(all_nodes, node_group.links, all_node_names)
 
@@ -331,7 +359,8 @@ class NodeGroupExporter:
             self._emit_interleaved_links(
                 lines, node, processed, node_group.links,
                 all_node_names, consumed_sockets,
-                output_expr_map, node_var_map, emitted_links
+                output_expr_map, node_var_map, emitted_links,
+                node_input_map=node_input_map
             )
 
             lines.append("")
@@ -342,7 +371,7 @@ class NodeGroupExporter:
                 if to_node_name in node_var_map:
                     lines.append(
                         f"    links.new(group_input.outputs[{gi_out_idx}], "
-                        f"{node_var_map[to_node_name]}.inputs[{to_inp_idx}])"
+                        f"{node_input_map[to_node_name]}.inputs[{to_inp_idx}])"
                     )
         if boundary_output_map:
             for sock_id, (from_node_name, from_out_idx, go_inp_idx) in boundary_output_map.items():
@@ -395,8 +424,10 @@ class NodeGroupExporter:
 
     def _emit_interleaved_links(self, lines, current_node, processed, all_links,
                                 all_node_names, consumed_sockets,
-                                output_expr_map, node_var_map, emitted_links):
+                                output_expr_map, node_var_map, emitted_links,
+                                node_input_map=None):
         """Emit links where both endpoints have been processed."""
+        nim = node_input_map or node_var_map
         for link in all_links:
             if not link.is_valid:
                 continue
@@ -424,7 +455,7 @@ class NodeGroupExporter:
                 f"{node_var_map[from_name]}.outputs[{from_idx}]"
             )
             lines.append(
-                f"    links.new({from_expr}, {node_var_map[to_name]}.inputs[{to_idx}])"
+                f"    links.new({from_expr}, {nim[to_name]}.inputs[{to_idx}])"
             )
 
     # =====================================================================
@@ -484,6 +515,21 @@ class NodeGroupExporter:
         else:
             lines.append(f"    {var} = {meta.func_name}({', '.join(args)})")
 
+        if any(v is None for v in outputs.values()):
+            node_accessor = f"{var}.node"
+        elif multi_outputs:
+            node_accessor = None
+            for out_key in sorted(multi_outputs.keys()):
+                suffix = multi_outputs[out_key]
+                out_idx = resolve_socket_key(out_key, node.outputs)
+                if out_idx in used:
+                    node_accessor = f"{var}{suffix}.node"
+                    break
+            if node_accessor is None:
+                return
+        else:
+            node_accessor = var
+
         consumed_keys = set(inputs.keys())
         for j, inp in enumerate(node.inputs):
             if j in consumed_keys or inp.name in consumed_keys:
@@ -491,8 +537,7 @@ class NodeGroupExporter:
             if not inp.is_linked and hasattr(inp, "default_value"):
                 val = inp.default_value
                 if val is not None and not isinstance(val, SKIP_VALUE_TYPES):
-                    accessor = f"{var}.node" if any(v is None for v in outputs.values()) else var
-                    lines.append(f"    {accessor}.inputs[{j}].default_value = {to_python_repr(val)}")
+                    lines.append(f"    {node_accessor}.inputs[{j}].default_value = {_typed_repr(inp)}")
 
     # =====================================================================
     # Emit: raw node
@@ -535,6 +580,8 @@ class NodeGroupExporter:
 
         lines.extend(generate_curve_mapping_lines(var, node))
 
+        self._emit_dynamic_items(lines, node, var)
+
         for j, inp in enumerate(node.inputs):
             if (node.name, j) in consumed_sockets:
                 continue
@@ -543,8 +590,52 @@ class NodeGroupExporter:
                     val = inp.default_value
                     if val is not None and not isinstance(val, SKIP_VALUE_TYPES):
                         lines.append(
-                            f"    {var}.inputs[{j}].default_value = {to_python_repr(val)}"
+                            f"    {var}.inputs[{j}].default_value = {_typed_repr(inp)}"
                         )
+
+    _DYNAMIC_ITEM_ATTRS = {
+        "GeometryNodeCaptureAttribute": "capture_items",
+        "GeometryNodeRepeatOutput": "repeat_items",
+        "GeometryNodeSimulationOutput": "items",
+        "GeometryNodeIndexSwitch": "index_switch_items",
+    }
+
+    _DATA_TYPE_TO_SOCKET_TYPE = {
+        "FLOAT": "FLOAT",
+        "INT": "INT",
+        "BOOLEAN": "BOOLEAN",
+        "FLOAT_VECTOR": "VECTOR",
+        "FLOAT_COLOR": "RGBA",
+        "FLOAT2": "VECTOR",
+        "QUATERNION": "ROTATION",
+        "FLOAT4X4": "MATRIX",
+        "ROTATION": "ROTATION",
+        "VECTOR": "VECTOR",
+        "RGBA": "RGBA",
+        "MATRIX": "MATRIX",
+        "STRING": "STRING",
+        "GEOMETRY": "GEOMETRY",
+    }
+
+    def _emit_dynamic_items(self, lines, node, var):
+        attr_name = self._DYNAMIC_ITEM_ATTRS.get(node.bl_idname)
+        if not attr_name:
+            return
+        items = getattr(node, attr_name, None)
+        if items is None:
+            return
+        for item in items:
+            data_type = getattr(item, "data_type", None)
+            name = getattr(item, "name", "")
+            if data_type is not None:
+                socket_type = self._DATA_TYPE_TO_SOCKET_TYPE.get(data_type, data_type)
+                lines.append(
+                    f'    {var}.{attr_name}.new("{socket_type}", "{clean_string(name)}")'
+                )
+            else:
+                lines.append(
+                    f'    {var}.{attr_name}.new()'
+                )
 
     # =====================================================================
     # Frame splitting

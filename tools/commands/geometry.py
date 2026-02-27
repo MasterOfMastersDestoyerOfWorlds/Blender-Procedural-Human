@@ -106,3 +106,15 @@ def check_degenerate(client: BlenderClient, object_name: str = "") -> dict:
         "dimensions": dims,
         "object_name": metrics.get("object_name", ""),
     }
+
+
+@cli_command
+def check_node_tree(client: BlenderClient, group: str) -> dict:
+    """Check a node group and all sub-groups for build errors.
+
+    :param client: Blender HTTP client.
+    :param group: Name of the root node group to check.
+    """
+    result = client.command("check_node_tree", {"group_name": group})
+    result["ok"] = bool(result.get("success"))
+    return result

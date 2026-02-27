@@ -577,6 +577,52 @@ def handle_apply_node_group(params: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+def handle_check_node_tree(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively walk a node group tree and report sub-groups with errors."""
+    group_name = params.get("group_name")
+    if not group_name:
+        return {"success": False, "error": "group_name is required"}
+
+    root = bpy.data.node_groups.get(group_name)
+    if not root:
+        return {"success": False, "error": f"Node group '{group_name}' not found"}
+
+    errors = []
+    visited = set()
+
+    def _walk(ng, path):
+        if ng.name in visited:
+            return
+        visited.add(ng.name)
+        if len(ng.nodes) == 0:
+            errors.append({"group": ng.name, "path": path, "error": "empty (0 nodes)"})
+            return
+        for node in ng.nodes:
+            if node.bl_idname == "GeometryNodeGroup" and node.node_tree:
+                child = node.node_tree
+                child_path = f"{path} > {child.name}"
+                _walk(child, child_path)
+
+    _walk(root, root.name)
+
+    log_path = _log_path()
+    log_errors = []
+    if log_path.exists():
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            if "ERROR" in line and group_name.lower() in line.lower():
+                log_errors.append(line.strip())
+
+    all_ok = len(errors) == 0 and len(log_errors) == 0
+    return {
+        "success": all_ok,
+        "group": group_name,
+        "sub_groups_checked": len(visited),
+        "empty_groups": errors,
+        "log_errors": log_errors,
+    }
+
+
 def handle_setup_basalt_test(params: Dict[str, Any]) -> Dict[str, Any]:
     """Setup a basalt columns test scene with camera and lighting."""
     size_x = params.get("size_x", 10.0)
@@ -869,7 +915,7 @@ def handle_reload_addon(params: Dict[str, Any]) -> Dict[str, Any]:
                 "clean_scene": clean_scene,
                 "warning": error_text,
                 "fallback": "continued_with_existing_registration",
-                "reloaded_modules": reloaded_modules,
+                "reloaded_module_count": len(reloaded_modules),
             }
         return {
             "success": False,
@@ -1131,6 +1177,7 @@ COMMAND_HANDLERS: Dict[str, Callable] = {
     "clean_scene": handle_clean_scene,
     "reload_addon": handle_reload_addon,
     "apply_node_group": handle_apply_node_group,
+    "check_node_tree": handle_check_node_tree,
     "setup_basalt_test": handle_setup_basalt_test,
     "open_file": handle_open_file,
     "list_groups": handle_list_groups,

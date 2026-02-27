@@ -31,8 +31,8 @@ def create_blocker_collar_thickness_group():
     vector_math_004.node.inputs[1].default_value = [0.0, 0.0, 0.0]
     vector_math_004.node.inputs[2].default_value = [0.0, 0.0, 0.0]
 
-    links.new(group_input.outputs[0], separate_x_y_z_003.inputs[0])
-    links.new(group_input.outputs[1], vector_math_004.inputs[0])
+    links.new(group_input.outputs[0], separate_x_y_z_003_z.node.inputs[0])
+    links.new(group_input.outputs[1], vector_math_004.node.inputs[0])
     links.new(vector_math_004, group_output.inputs[0])
 
     auto_layout_nodes(group)

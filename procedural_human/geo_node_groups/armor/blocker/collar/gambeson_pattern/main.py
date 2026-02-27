@@ -4,9 +4,9 @@ from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
 from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, math_op, separate_xyz, vec_math_op
 from procedural_human.utils.node_layout import auto_layout_nodes
-from procedural_human.tmp.blocker.collar.gambeson_pattern.piping import create_blocker_collar_gambeson_pattern_piping_group
-from procedural_human.tmp.blocker.collar.gambeson_pattern.quilting import create_blocker_collar_gambeson_pattern_quilting_group
-from procedural_human.tmp.blocker.collar.gambeson_pattern.stitching import create_blocker_collar_gambeson_pattern_stitching_group
+from procedural_human.geo_node_groups.armor.blocker.collar.gambeson_pattern.piping import create_blocker_collar_gambeson_pattern_piping_group
+from procedural_human.geo_node_groups.armor.blocker.collar.gambeson_pattern.quilting import create_blocker_collar_gambeson_pattern_quilting_group
+from procedural_human.geo_node_groups.armor.blocker.collar.gambeson_pattern.stitching import create_blocker_collar_gambeson_pattern_stitching_group
 
 
 @geo_node_group
@@ -81,6 +81,8 @@ def create_blocker_collar_gambeson_pattern_group():
 
     index_switch = nodes.new("GeometryNodeIndexSwitch")
     index_switch.data_type = "FLOAT"
+    index_switch.index_switch_items.new()
+    index_switch.index_switch_items.new()
     index_switch.inputs[1].default_value = 0.09000000357627869
     index_switch.inputs[2].default_value = 0.09000000357627869
     links.new(index.outputs[0], index_switch.inputs[0])
@@ -190,10 +192,6 @@ def create_blocker_collar_gambeson_pattern_group():
     links.new(separate_geometry.outputs[0], join_geometry_007.inputs[0])
     links.new(fill_curve.outputs[0], join_geometry_007.inputs[0])
 
-    flip_faces_003 = nodes.new("GeometryNodeFlipFaces")
-    flip_faces_003.inputs[1].default_value = True
-    links.new(subdivide_mesh.outputs[0], flip_faces_003.inputs[0])
-
     extrude_mesh_004 = nodes.new("GeometryNodeExtrudeMesh")
     extrude_mesh_004.mode = "FACES"
     extrude_mesh_004.inputs[1].default_value = True
@@ -201,6 +199,10 @@ def create_blocker_collar_gambeson_pattern_group():
     extrude_mesh_004.inputs[3].default_value = 0.009999999776482582
     extrude_mesh_004.inputs[4].default_value = False
     links.new(subdivide_mesh.outputs[0], extrude_mesh_004.inputs[0])
+
+    flip_faces_003 = nodes.new("GeometryNodeFlipFaces")
+    flip_faces_003.inputs[1].default_value = True
+    links.new(subdivide_mesh.outputs[0], flip_faces_003.inputs[0])
 
     merge_by_distance_002 = nodes.new("GeometryNodeMergeByDistance")
     merge_by_distance_002.inputs[1].default_value = True

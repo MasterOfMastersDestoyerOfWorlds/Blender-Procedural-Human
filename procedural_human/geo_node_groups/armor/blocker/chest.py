@@ -14,9 +14,11 @@ def create_blocker_chest_group():
         return group
 
     group.interface.new_socket(name="Output", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    group.interface.new_socket(name="Switch", in_out="INPUT", socket_type="NodeSocketBool")
 
     nodes = group.nodes
     links = group.links
+    group_input = nodes.new("NodeGroupInput")
     group_output = nodes.new("NodeGroupOutput")
     group_output.is_active_output = True
     ico_sphere = nodes.new("GeometryNodeMeshIcoSphere")
@@ -47,8 +49,6 @@ def create_blocker_chest_group():
     random_value.inputs[6].default_value = 0.5
     random_value.inputs[7].default_value = 0
     random_value.inputs[8].default_value = 2
-
-    group_input = nodes.new("NodeGroupInput")
 
     transform_geometry = nodes.new("GeometryNodeTransform")
     transform_geometry.inputs[1].default_value = "Components"
@@ -145,8 +145,8 @@ def create_blocker_chest_group():
     switch = nodes.new("GeometryNodeSwitch")
     links.new(realize_instances.outputs[0], switch.inputs[2])
     links.new(reroute.outputs[0], switch.inputs[1])
-    links.new(group_input.outputs[0], switch.inputs[0])
 
+    links.new(group_input.outputs[0], switch.inputs[0])
     links.new(switch.outputs[0], group_output.inputs[0])
 
     auto_layout_nodes(group)
