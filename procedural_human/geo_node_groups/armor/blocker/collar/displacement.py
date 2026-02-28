@@ -2,7 +2,7 @@ import bpy
 from mathutils import Vector, Color, Matrix, Euler
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
-from procedural_human.geo_node_groups.node_helpers import math_op, vec_math_op
+from procedural_human.geo_node_groups.node_helpers import math_op, set_position, vec_math_op
 from procedural_human.utils.node_layout import auto_layout_nodes
 
 
@@ -66,14 +66,11 @@ def create_blocker_collar_displacement_group():
     vector_math_006.node.inputs[2].default_value = [0.0, 0.0, 0.0]
     vector_math_006.node.inputs[3].default_value = 1.0
 
-    set_position_001 = nodes.new("GeometryNodeSetPosition")
-    set_position_001.inputs[1].default_value = True
-    set_position_001.inputs[2].default_value = [0.0, 0.0, 0.0]
-    links.new(vector_math_006, set_position_001.inputs[3])
+    set_position_001 = set_position(group, None, True, [0.0, 0.0, 0.0], vector_math_006)
 
-    links.new(group_input.outputs[0], set_position_001.inputs[0])
+    links.new(group_input.outputs[0], set_position_001.node.inputs[0])
     links.new(group_input.outputs[1], vector_math_003.node.inputs[0])
-    links.new(set_position_001.outputs[0], group_output.inputs[0])
+    links.new(set_position_001, group_output.inputs[0])
 
     auto_layout_nodes(group)
     return group

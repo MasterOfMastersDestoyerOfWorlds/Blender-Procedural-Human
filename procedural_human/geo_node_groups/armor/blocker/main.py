@@ -2,7 +2,7 @@ import bpy
 from mathutils import Vector, Color, Matrix, Euler
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
-from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, math_op, separate_xyz, vec_math_op
+from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, curve_circle, math_op, resample_curve, separate_xyz, set_position, store_named_attribute, switch_node, vec_math_op
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.geo_node_groups.armor.blocker.chest import create_blocker_chest_group
 from procedural_human.geo_node_groups.armor.blocker.collar.main import create_blocker_collar_group

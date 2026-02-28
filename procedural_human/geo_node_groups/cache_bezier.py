@@ -35,9 +35,9 @@ def get_precompute_edge_data_group():
     P0_can = s_v1.outputs[0]
     P3_can = s_v2.outputs[0]
     def get_handle_vec(prefix):
-        x = get_attr(ng, f"{prefix}_x", "FLOAT")
-        y = get_attr(ng, f"{prefix}_y", "FLOAT")
-        z = get_attr(ng, f"{prefix}_z", "FLOAT")
+        x = get_attr(ng, "FLOAT", f"{prefix}_x")
+        y = get_attr(ng, "FLOAT", f"{prefix}_y")
+        z = get_attr(ng, "FLOAT", f"{prefix}_z")
         comb = ng.nodes.new("ShaderNodeCombineXYZ")
         ng.links.new(x, comb.inputs["X"])
         ng.links.new(y, comb.inputs["Y"])

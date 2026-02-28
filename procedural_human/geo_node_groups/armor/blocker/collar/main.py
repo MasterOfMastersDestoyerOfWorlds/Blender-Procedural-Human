@@ -2,7 +2,7 @@ import bpy
 from mathutils import Vector, Color, Matrix, Euler
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
-from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, math_op, separate_xyz, vec_math_op
+from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, curve_circle, math_op, resample_curve, separate_xyz, set_position, store_named_attribute, switch_node, vec_math_op
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.geo_node_groups.armor.blocker.collar.gambeson_pattern.main import create_blocker_collar_gambeson_pattern_group
 from procedural_human.geo_node_groups.armor.blocker.collar.thickness import create_blocker_collar_thickness_group
@@ -52,13 +52,7 @@ def create_blocker_collar_group():
     reroute_002 = nodes.new("NodeReroute")
     reroute_002.socket_idname = "NodeSocketGeometry"
 
-    switch_001 = nodes.new("GeometryNodeSwitch")
-
-    sample_u_v_surface = nodes.new("GeometryNodeSampleUVSurface")
-    sample_u_v_surface.data_type = "FLOAT_VECTOR"
-    links.new(reroute_002.outputs[0], sample_u_v_surface.inputs[0])
-    links.new(reroute_001.outputs[0], sample_u_v_surface.inputs[2])
-    links.new(position_005.outputs[0], sample_u_v_surface.inputs[1])
+    switch_001 = switch_node(group, "GEOMETRY", general_collar_shape.outputs[2], group_input.outputs[0], displacement.outputs[0])
 
     sample_u_v_surface_001 = nodes.new("GeometryNodeSampleUVSurface")
     sample_u_v_surface_001.data_type = "FLOAT_VECTOR"
@@ -66,13 +60,13 @@ def create_blocker_collar_group():
     links.new(reroute_001.outputs[0], sample_u_v_surface_001.inputs[2])
     links.new(normal_003.outputs[0], sample_u_v_surface_001.inputs[1])
 
-    store_named_attribute_001 = nodes.new("GeometryNodeStoreNamedAttribute")
-    store_named_attribute_001.data_type = "BOOLEAN"
-    store_named_attribute_001.domain = "POINT"
-    store_named_attribute_001.inputs[1].default_value = True
-    store_named_attribute_001.inputs[2].default_value = "skip"
-    store_named_attribute_001.inputs[3].default_value = True
-    links.new(switch_001.outputs[0], store_named_attribute_001.inputs[0])
+    sample_u_v_surface = nodes.new("GeometryNodeSampleUVSurface")
+    sample_u_v_surface.data_type = "FLOAT_VECTOR"
+    links.new(reroute_002.outputs[0], sample_u_v_surface.inputs[0])
+    links.new(reroute_001.outputs[0], sample_u_v_surface.inputs[2])
+    links.new(position_005.outputs[0], sample_u_v_surface.inputs[1])
+
+    store_named_attribute_001 = store_named_attribute(group, "BOOLEAN", "POINT", switch_001, True, "skip", True)
 
     capture_attribute_002 = nodes.new("GeometryNodeCaptureAttribute")
     capture_attribute_002.active_index = 0
@@ -83,43 +77,24 @@ def create_blocker_collar_group():
     links.new(sample_u_v_surface_001.outputs[0], capture_attribute_002.inputs[2])
     links.new(sample_u_v_surface.outputs[0], capture_attribute_002.inputs[1])
 
-    store_named_attribute = nodes.new("GeometryNodeStoreNamedAttribute")
-    store_named_attribute.data_type = "BOOLEAN"
-    store_named_attribute.domain = "POINT"
-    store_named_attribute.inputs[1].default_value = True
-    store_named_attribute.inputs[2].default_value = "blocker"
-    store_named_attribute.inputs[3].default_value = True
-    links.new(store_named_attribute_001.outputs[0], store_named_attribute.inputs[0])
+    store_named_attribute = store_named_attribute(group, "BOOLEAN", "POINT", store_named_attribute_001, True, "blocker", True)
 
-    store_named_attribute_002 = nodes.new("GeometryNodeStoreNamedAttribute")
-    store_named_attribute_002.data_type = "FLOAT2"
-    store_named_attribute_002.domain = "CORNER"
-    store_named_attribute_002.inputs[1].default_value = True
-    store_named_attribute_002.inputs[2].default_value = "UVMap"
-    links.new(capture_attribute_002.outputs[0], store_named_attribute_002.inputs[0])
-    links.new(capture_attribute_002.outputs[3], store_named_attribute_002.inputs[3])
+    store_named_attribute_002 = store_named_attribute(group, "FLOAT2", "CORNER", capture_attribute_002.outputs[0], True, "UVMap", capture_attribute_002.outputs[3])
 
-    set_position_003 = nodes.new("GeometryNodeSetPosition")
-    set_position_003.inputs[1].default_value = True
-    links.new(store_named_attribute_002.outputs[0], set_position_003.inputs[0])
-    links.new(capture_attribute_002.outputs[1], set_position_003.inputs[2])
+    set_position_003 = set_position(group, store_named_attribute_002, True, capture_attribute_002.outputs[1], thickness.outputs[0])
 
     links.new(gambeson_pattern.outputs[0], capture_attribute_002.inputs[0])
     links.new(u_v_map.outputs[1], thickness.inputs[0])
     links.new(capture_attribute_002.outputs[2], thickness.inputs[1])
-    links.new(thickness.outputs[0], set_position_003.inputs[3])
     links.new(gambeson_pattern.outputs[0], u_v_map.inputs[0])
     links.new(u_v_map.outputs[0], sample_u_v_surface.inputs[3])
     links.new(u_v_map.outputs[0], sample_u_v_surface_001.inputs[3])
     links.new(u_v_map.outputs[0], capture_attribute_002.inputs[3])
     links.new(general_collar_shape.outputs[0], reroute_001.inputs[0])
     links.new(general_collar_shape.outputs[1], reroute_002.inputs[0])
-    links.new(general_collar_shape.outputs[2], switch_001.inputs[1])
-    links.new(set_position_003.outputs[0], displacement.inputs[0])
+    links.new(set_position_003, displacement.inputs[0])
     links.new(capture_attribute_002.outputs[3], displacement.inputs[1])
-    links.new(displacement.outputs[0], switch_001.inputs[2])
-    links.new(group_input.outputs[0], switch_001.inputs[0])
-    links.new(store_named_attribute.outputs[0], group_output.inputs[0])
+    links.new(store_named_attribute, group_output.inputs[0])
 
     auto_layout_nodes(group)
     return group

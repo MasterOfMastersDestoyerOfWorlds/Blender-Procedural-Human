@@ -2,7 +2,7 @@ import bpy
 from mathutils import Vector, Color, Matrix, Euler
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
-from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, math_op, separate_xyz
+from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, curve_circle, math_op, resample_curve, separate_xyz, set_position
 from procedural_human.utils.node_layout import auto_layout_nodes
 
 
@@ -22,20 +22,12 @@ def create_blocker_collar_gambeson_pattern_piping_group():
     group_input = nodes.new("NodeGroupInput")
     group_output = nodes.new("NodeGroupOutput")
     group_output.is_active_output = True
-    curve_circle_003 = nodes.new("GeometryNodeCurvePrimitiveCircle")
-    curve_circle_003.mode = "RADIUS"
-    curve_circle_003.inputs[0].default_value = 57
-    curve_circle_003.inputs[1].default_value = Vector((-1.0, 0.0, 0.0))
-    curve_circle_003.inputs[2].default_value = Vector((0.0, 1.0, 0.0))
-    curve_circle_003.inputs[3].default_value = Vector((1.0, 0.0, 0.0))
-    curve_circle_003.inputs[4].default_value = 0.004999999888241291
+    curve_circle_003 = curve_circle(group, "RADIUS", 57, 0.004999999888241291)
+    curve_circle_003.node.inputs[1].default_value = Vector((-1.0, 0.0, 0.0))
+    curve_circle_003.node.inputs[2].default_value = Vector((0.0, 1.0, 0.0))
+    curve_circle_003.node.inputs[3].default_value = Vector((1.0, 0.0, 0.0))
 
-    resample_curve_002 = nodes.new("GeometryNodeResampleCurve")
-    resample_curve_002.keep_last_segment = True
-    resample_curve_002.inputs[1].default_value = True
-    resample_curve_002.inputs[2].default_value = "Length"
-    resample_curve_002.inputs[3].default_value = 10
-    resample_curve_002.inputs[4].default_value = 0.009999999776482582
+    resample_curve_002 = resample_curve(group, True, None, True, "Length", 10, 0.009999999776482582)
 
     position = nodes.new("GeometryNodeInputPosition")
 
@@ -46,7 +38,7 @@ def create_blocker_collar_gambeson_pattern_piping_group():
     transform_geometry_002.inputs[2].default_value = Vector((0.0, 0.0, 0.0))
     transform_geometry_002.inputs[3].default_value = Euler((0.0, 0.0, 0.0), 'XYZ')
     transform_geometry_002.inputs[4].default_value = Vector((1.0, 0.5, 1.0))
-    links.new(curve_circle_003.outputs[0], transform_geometry_002.inputs[0])
+    links.new(curve_circle_003, transform_geometry_002.inputs[0])
 
     separate_x_y_z_x, separate_x_y_z_y, separate_x_y_z_z = separate_xyz(group, position.outputs[0])
 
@@ -87,23 +79,19 @@ def create_blocker_collar_gambeson_pattern_piping_group():
 
     combine_x_y_z_002 = combine_xyz(group, separate_x_y_z_x, math, separate_x_y_z_z)
 
-    set_position = nodes.new("GeometryNodeSetPosition")
-    set_position.inputs[1].default_value = True
-    set_position.inputs[3].default_value = Vector((0.0, 0.0, 0.0))
-    links.new(transform_geometry_002.outputs[0], set_position.inputs[0])
-    links.new(combine_x_y_z_002, set_position.inputs[2])
+    set_position = set_position(group, transform_geometry_002.outputs[0], True, combine_x_y_z_002, Vector((0.0, 0.0, 0.0)))
 
     capture_attribute_003 = nodes.new("GeometryNodeCaptureAttribute")
     capture_attribute_003.active_index = 0
     capture_attribute_003.domain = "POINT"
     capture_attribute_003.capture_items.new("BOOLEAN", "Result")
-    links.new(set_position.outputs[0], capture_attribute_003.inputs[0])
+    links.new(set_position, capture_attribute_003.inputs[0])
     links.new(compare_002, capture_attribute_003.inputs[1])
 
     curve_to_mesh_003 = nodes.new("GeometryNodeCurveToMesh")
     curve_to_mesh_003.inputs[2].default_value = 1.0
     curve_to_mesh_003.inputs[3].default_value = False
-    links.new(resample_curve_002.outputs[0], curve_to_mesh_003.inputs[0])
+    links.new(resample_curve_002, curve_to_mesh_003.inputs[0])
     links.new(capture_attribute_003.outputs[0], curve_to_mesh_003.inputs[1])
 
     mesh_to_curve_001 = nodes.new("GeometryNodeMeshToCurve")
@@ -111,7 +99,7 @@ def create_blocker_collar_gambeson_pattern_piping_group():
     links.new(curve_to_mesh_003.outputs[0], mesh_to_curve_001.inputs[0])
     links.new(capture_attribute_003.outputs[1], mesh_to_curve_001.inputs[1])
 
-    links.new(group_input.outputs[0], resample_curve_002.inputs[0])
+    links.new(group_input.outputs[0], resample_curve_002.node.inputs[0])
     links.new(mesh_to_curve_001.outputs[0], group_output.inputs[0])
     links.new(curve_to_mesh_003.outputs[0], group_output.inputs[1])
 

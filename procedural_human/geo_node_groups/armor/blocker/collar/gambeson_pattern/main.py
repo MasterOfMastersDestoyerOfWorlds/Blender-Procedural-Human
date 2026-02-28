@@ -2,7 +2,7 @@ import bpy
 from mathutils import Vector, Color, Matrix, Euler
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
-from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, math_op, separate_xyz, vec_math_op
+from procedural_human.geo_node_groups.node_helpers import combine_xyz, compare_op, create_float_curve, curve_circle, math_op, resample_curve, separate_xyz, set_position, store_named_attribute, switch_node, vec_math_op
 from procedural_human.utils.node_layout import auto_layout_nodes
 from procedural_human.geo_node_groups.armor.blocker.collar.gambeson_pattern.piping import create_blocker_collar_gambeson_pattern_piping_group
 from procedural_human.geo_node_groups.armor.blocker.collar.gambeson_pattern.quilting import create_blocker_collar_gambeson_pattern_quilting_group
@@ -67,12 +67,7 @@ def create_blocker_collar_gambeson_pattern_group():
     compare_004.node.inputs[11].default_value = 0.08726649731397629
     compare_004.node.inputs[12].default_value = 0.0010000000474974513
 
-    store_named_attribute_004 = nodes.new("GeometryNodeStoreNamedAttribute")
-    store_named_attribute_004.data_type = "BOOLEAN"
-    store_named_attribute_004.domain = "POINT"
-    store_named_attribute_004.inputs[1].default_value = True
-    store_named_attribute_004.inputs[2].default_value = "piping"
-    store_named_attribute_004.inputs[3].default_value = True
+    store_named_attribute_004 = store_named_attribute(group, "BOOLEAN", "POINT", piping.outputs[1], True, "piping", True)
 
     set_spline_type = nodes.new("GeometryNodeCurveSplineType")
     set_spline_type.spline_type = "BEZIER"
@@ -107,7 +102,7 @@ def create_blocker_collar_gambeson_pattern_group():
     links.new(flip_faces_004.outputs[0], join_geometry_006.inputs[0])
 
     join_geometry_008 = nodes.new("GeometryNodeJoinGeometry")
-    links.new(store_named_attribute_004.outputs[0], join_geometry_008.inputs[0])
+    links.new(store_named_attribute_004, join_geometry_008.inputs[0])
 
     fillet_curve = nodes.new("GeometryNodeFilletCurve")
     fillet_curve.inputs[2].default_value = False
@@ -159,6 +154,10 @@ def create_blocker_collar_gambeson_pattern_group():
     links.new(set_shade_smooth_001.outputs[0], set_shade_smooth_002.inputs[0])
     links.new(compare_004, set_shade_smooth_002.inputs[1])
 
+    flip_faces_002 = nodes.new("GeometryNodeFlipFaces")
+    flip_faces_002.inputs[1].default_value = True
+    links.new(fill_curve.outputs[0], flip_faces_002.inputs[0])
+
     extrude_mesh_002 = nodes.new("GeometryNodeExtrudeMesh")
     extrude_mesh_002.mode = "FACES"
     extrude_mesh_002.inputs[1].default_value = True
@@ -166,10 +165,6 @@ def create_blocker_collar_gambeson_pattern_group():
     extrude_mesh_002.inputs[3].default_value = 0.009999999776482582
     extrude_mesh_002.inputs[4].default_value = False
     links.new(fill_curve.outputs[0], extrude_mesh_002.inputs[0])
-
-    flip_faces_002 = nodes.new("GeometryNodeFlipFaces")
-    flip_faces_002.inputs[1].default_value = True
-    links.new(fill_curve.outputs[0], flip_faces_002.inputs[0])
 
     separate_geometry = nodes.new("GeometryNodeSeparateGeometry")
     separate_geometry.domain = "EDGE"
@@ -235,7 +230,6 @@ def create_blocker_collar_gambeson_pattern_group():
     links.new(extrude_mesh_004.outputs[1], delete_geometry_002.inputs[1])
 
     links.new(fillet_curve.outputs[0], piping.inputs[0])
-    links.new(piping.outputs[1], store_named_attribute_004.inputs[0])
     links.new(delete_geometry_002.outputs[0], quilting.inputs[0])
     links.new(join_geometry_007.outputs[0], quilting.inputs[1])
     links.new(quilting.outputs[0], transform_geometry_003.inputs[0])

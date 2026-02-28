@@ -85,7 +85,7 @@ def create_charrot_gregory_group():
     })
     local_i = math_op(group, "SUBTRACT", accum_idx.outputs["Trailing"], 1)
     
-    N_field = get_attr(group, "poly_N", "INT")
+    N_field = get_attr(group, "INT", "poly_N")
     N_val = accum_idx.outputs["Total"] 
 
     two_pi = 6.283185307
@@ -164,7 +164,7 @@ def create_charrot_gregory_group():
     links.new(D1, repB_out.inputs["PrevDist"]) # Pass D1 as next D0
     
     sumW = repB_out.outputs["SumW"]
-    orig_loop_start_field = get_attr(group, "orig_loop_start", "INT")
+    orig_loop_start_field = get_attr(group, "INT", "orig_loop_start")
     repC_in = nodes.new("GeometryNodeRepeatInput")
     repC_out = nodes.new("GeometryNodeRepeatOutput")
     repC_in.pair_with_output(repC_out)

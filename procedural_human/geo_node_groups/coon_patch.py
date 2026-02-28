@@ -242,10 +242,10 @@ def create_coons_patch_group():
             vec_math_op(group, 'ADD', vec_math_op(group, 'SCALE', P2, c2), vec_math_op(group, 'SCALE', P3, c3))
         )
 
-    e0, d0 = get_attr(group, "e0", "INT"), get_attr(group, "d0", 'BOOLEAN')
-    e1, d1 = get_attr(group, "e1", "INT"), get_attr(group, "d1", 'BOOLEAN')
-    e2, d2 = get_attr(group, "e2", "INT"), get_attr(group, "d2", 'BOOLEAN')
-    e3, d3 = get_attr(group, "e3", "INT"), get_attr(group, "d3", 'BOOLEAN')
+    e0, d0 = get_attr(group, "INT", "e0"), get_attr(group, 'BOOLEAN', "d0")
+    e1, d1 = get_attr(group, "INT", "e1"), get_attr(group, 'BOOLEAN', "d1")
+    e2, d2 = get_attr(group, "INT", "e2"), get_attr(group, 'BOOLEAN', "d2")
+    e3, d3 = get_attr(group, "INT", "e3"), get_attr(group, 'BOOLEAN', "d3")
 
     c_bottom = eval_bezier_curve(subdivided_geo, e0, d0, u_raw, group_input.outputs[0])
     c_top = eval_bezier_curve(subdivided_geo, e2, d2, math_op(group, 'SUBTRACT', 1.0, u_raw), group_input.outputs[0])

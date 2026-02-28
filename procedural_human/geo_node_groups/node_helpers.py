@@ -276,19 +276,31 @@ def create_float_curve(group, value, points, factor=1.0):
     n.mapping.update()
     return n.outputs[0]
 
-def get_attr(group, name, dtype='INT'):
+@node_helper(
+    bl_idname="GeometryNodeInputNamedAttribute",
+    prop_args=["data_type"],
+    inputs={"Name": "name"},
+    outputs={0: None},
+)
+def get_attr(group, dtype, name):
     """Get a named attribute from the geometry.
     
     :param group: The node group to add the node to.
+    :param dtype: The data type of the attribute. Options: 'INT', 'FLOAT', 'FLOAT_VECTOR', 'BOOLEAN', etc.
     :param name: The name of the attribute to retrieve.
-    :param dtype: The data type of the attribute. Defaults to 'INT'. Options: 'INT', 'FLOAT', 'FLOAT_VECTOR', 'BOOLEAN', etc.
     :returns: The output socket containing the attribute value.
     """
     n = group.nodes.new("GeometryNodeInputNamedAttribute")
     n.data_type = dtype
-    n.inputs["Name"].default_value = name
+    link_or_set(group, n.inputs["Name"], name)
     return n.outputs[0]
 
+@node_helper(
+    bl_idname="FunctionNodeIntegerMath",
+    prop_args=["operation"],
+    inputs={0: "a", 1: "b"},
+    outputs={0: None},
+)
 def int_op(group, op, a, b):
     """Create an integer math operation node.
     
@@ -361,11 +373,17 @@ def int_to_float(group, a):
     n.inputs[1].default_value = 0.0
     return n.outputs["Value"]
 
+@node_helper(
+    bl_idname="GeometryNodeSwitch",
+    prop_args=["input_type"],
+    inputs={"Switch": "sw", "False": "false_val", "True": "true_val"},
+    outputs={"Output": None},
+)
 def switch_node(group, dtype, sw, false_val, true_val):
     """Generic switch for INT, FLOAT, or VECTOR types.
     
     :param group: The node group to add the node to.
-    :param dtype: The data type for the switch ("INT", "FLOAT", or "VECTOR").
+    :param dtype: The data type for the switch ("INT", "FLOAT", "VECTOR", "GEOMETRY", "BOOLEAN", etc.).
     :param sw: Boolean switch value (socket or bool). If True, returns true_val; if False, returns false_val.
     :param false_val: Value to return when switch is False (socket or value matching dtype).
     :param true_val: Value to return when switch is True (socket or value matching dtype).
@@ -373,7 +391,7 @@ def switch_node(group, dtype, sw, false_val, true_val):
     """
     n = group.nodes.new("GeometryNodeSwitch")
     n.input_type = dtype
-    group.links.new(sw, n.inputs["Switch"])
+    link_or_set(group, n.inputs["Switch"], sw)
     link_or_set(group, n.inputs["False"], false_val)
     link_or_set(group, n.inputs["True"], true_val)
     return n.outputs["Output"]
@@ -432,6 +450,104 @@ def smoother_step(group, t):
     s2 = math_op(group, "ADD", math_op(group, "MULTIPLY", t, s1), 10.0)
     t3 = math_op(group, "POWER", t, 3.0)
     return math_op(group, "MULTIPLY", t3, s2)
+
+@node_helper(
+    bl_idname="GeometryNodeStoreNamedAttribute",
+    prop_args=["data_type", "domain"],
+    inputs={0: "geometry", 1: "selection", 2: "name", 3: "value"},
+    outputs={0: None},
+)
+def store_named_attribute(group, data_type, domain, geometry, selection, name, value):
+    """Store a named attribute on geometry.
+    
+    :param group: The node group to add the node to.
+    :param data_type: The data type (e.g., "BOOLEAN", "FLOAT", "INT", "FLOAT_VECTOR", "FLOAT2").
+    :param domain: The domain to store on (e.g., "POINT", "EDGE", "FACE", "CORNER", "INSTANCE").
+    :param geometry: Geometry input (socket or geometry).
+    :param selection: Selection mask (socket or bool).
+    :param name: Attribute name (socket or string).
+    :param value: Value to store (socket or value matching data_type).
+    :returns: The output geometry socket.
+    """
+    n = group.nodes.new("GeometryNodeStoreNamedAttribute")
+    n.data_type = data_type
+    n.domain = domain
+    link_or_set(group, n.inputs[0], geometry)
+    link_or_set(group, n.inputs[1], selection)
+    link_or_set(group, n.inputs[2], name)
+    link_or_set(group, n.inputs[3], value)
+    return n.outputs[0]
+
+@node_helper(
+    bl_idname="GeometryNodeSetPosition",
+    inputs={0: "geometry", 1: "selection", 2: "position", 3: "offset"},
+    outputs={0: None},
+)
+def set_position(group, geometry, selection, position, offset):
+    """Set the position of geometry points.
+    
+    :param group: The node group to add the node to.
+    :param geometry: Geometry input (socket or geometry).
+    :param selection: Selection mask (socket or bool).
+    :param position: New position (socket or vector). Use default to keep existing positions.
+    :param offset: Offset to apply (socket or vector).
+    :returns: The output geometry socket.
+    """
+    n = group.nodes.new("GeometryNodeSetPosition")
+    link_or_set(group, n.inputs[0], geometry)
+    link_or_set(group, n.inputs[1], selection)
+    link_or_set(group, n.inputs[2], position)
+    link_or_set(group, n.inputs[3], offset)
+    return n.outputs[0]
+
+@node_helper(
+    bl_idname="GeometryNodeCurvePrimitiveCircle",
+    prop_args=["mode"],
+    inputs={0: "resolution", 4: "radius"},
+    outputs={0: None},
+)
+def curve_circle(group, mode, resolution, radius):
+    """Create a curve circle primitive.
+    
+    :param group: The node group to add the node to.
+    :param mode: Circle mode ("RADIUS" or "POINTS").
+    :param resolution: Number of control points (socket or int).
+    :param radius: Circle radius (socket or float). Only used in RADIUS mode.
+    :returns: The output curve socket.
+    """
+    n = group.nodes.new("GeometryNodeCurvePrimitiveCircle")
+    n.mode = mode
+    link_or_set(group, n.inputs[0], resolution)
+    link_or_set(group, n.inputs[4], radius)
+    return n.outputs[0]
+
+@node_helper(
+    bl_idname="GeometryNodeResampleCurve",
+    prop_args=["keep_last_segment"],
+    inputs={0: "curve", 1: "selection", 2: "mode", 3: "count", 4: "length"},
+    outputs={0: None},
+)
+def resample_curve(group, keep_last_segment, curve, selection, mode, count, length):
+    """Resample a curve with a specified mode.
+    
+    :param group: The node group to add the node to.
+    :param keep_last_segment: Whether to keep the last segment (bool).
+    :param curve: Curve geometry input (socket or geometry).
+    :param selection: Selection mask (socket or bool).
+    :param mode: Resample mode (socket or string: "Count", "Length", "Evaluated").
+    :param count: Number of points for Count mode (socket or int).
+    :param length: Segment length for Length mode (socket or float).
+    :returns: The output curve socket.
+    """
+    n = group.nodes.new("GeometryNodeResampleCurve")
+    n.keep_last_segment = keep_last_segment
+    link_or_set(group, n.inputs[0], curve)
+    link_or_set(group, n.inputs[1], selection)
+    link_or_set(group, n.inputs[2], mode)
+    link_or_set(group, n.inputs[3], count)
+    link_or_set(group, n.inputs[4], length)
+    return n.outputs[0]
+
 def tan_half_angle(group, cos_a):
     """Calculate tan(α/2) from cos(α).
     

@@ -485,7 +485,10 @@ class NodeGroupExporter:
         args = ["group"]
         for prop in meta.prop_args:
             val = getattr(node, prop)
-            args.append(f'"{val}"')
+            if isinstance(val, str):
+                args.append(f'"{val}"')
+            else:
+                args.append(repr(val))
 
         inputs = meta.resolve_inputs(node)
         optional = meta.resolve_optional_inputs(node)

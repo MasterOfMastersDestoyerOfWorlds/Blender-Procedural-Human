@@ -2,7 +2,7 @@ import bpy
 from mathutils import Vector, Color, Matrix, Euler
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
-from procedural_human.geo_node_groups.node_helpers import compare_op, separate_xyz
+from procedural_human.geo_node_groups.node_helpers import compare_op, curve_circle, separate_xyz, switch_node
 from procedural_human.utils.node_layout import auto_layout_nodes
 
 
@@ -25,13 +25,10 @@ def create_blocker_chest_group():
     ico_sphere.inputs[0].default_value = 0.1300000250339508
     ico_sphere.inputs[1].default_value = 3
 
-    curve_circle_001 = nodes.new("GeometryNodeCurvePrimitiveCircle")
-    curve_circle_001.mode = "RADIUS"
-    curve_circle_001.inputs[0].default_value = 9
-    curve_circle_001.inputs[1].default_value = Vector((-1.0, 0.0, 0.0))
-    curve_circle_001.inputs[2].default_value = Vector((0.0, 1.0, 0.0))
-    curve_circle_001.inputs[3].default_value = Vector((1.0, 0.0, 0.0))
-    curve_circle_001.inputs[4].default_value = 0.004999999888241291
+    curve_circle_001 = curve_circle(group, "RADIUS", 9, 0.004999999888241291)
+    curve_circle_001.node.inputs[1].default_value = Vector((-1.0, 0.0, 0.0))
+    curve_circle_001.node.inputs[2].default_value = Vector((0.0, 1.0, 0.0))
+    curve_circle_001.node.inputs[3].default_value = Vector((1.0, 0.0, 0.0))
 
     position_002 = nodes.new("GeometryNodeInputPosition")
 
@@ -67,8 +64,8 @@ def create_blocker_chest_group():
     curve_to_mesh_001 = nodes.new("GeometryNodeCurveToMesh")
     curve_to_mesh_001.inputs[2].default_value = 0.21000000834465027
     curve_to_mesh_001.inputs[3].default_value = False
-    links.new(curve_circle_001.outputs[0], curve_to_mesh_001.inputs[0])
-    links.new(curve_circle_001.outputs[0], curve_to_mesh_001.inputs[1])
+    links.new(curve_circle_001, curve_to_mesh_001.inputs[0])
+    links.new(curve_circle_001, curve_to_mesh_001.inputs[1])
 
     separate_x_y_z_001_x, _, _ = separate_xyz(group, position_002.outputs[0])
 
@@ -142,12 +139,10 @@ def create_blocker_chest_group():
     realize_instances.inputs[3].default_value = 0
     links.new(instance_on_points.outputs[0], realize_instances.inputs[0])
 
-    switch = nodes.new("GeometryNodeSwitch")
-    links.new(realize_instances.outputs[0], switch.inputs[2])
-    links.new(reroute.outputs[0], switch.inputs[1])
+    switch = switch_node(group, "GEOMETRY", reroute.outputs[0], False, realize_instances.outputs[0])
 
-    links.new(group_input.outputs[0], switch.inputs[0])
-    links.new(switch.outputs[0], group_output.inputs[0])
+    links.new(group_input.outputs[0], switch.node.inputs[0])
+    links.new(switch, group_output.inputs[0])
 
     auto_layout_nodes(group)
     return group

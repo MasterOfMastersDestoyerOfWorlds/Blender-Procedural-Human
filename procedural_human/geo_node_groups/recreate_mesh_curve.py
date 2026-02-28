@@ -23,18 +23,18 @@ def create_recreate_curves_from_mesh_group():
     group_output.is_active_output = True
 
     # Get handle attributes and combine into vectors
-    start_x = get_attr(group, "handle_start_x", "FLOAT")
-    start_y = get_attr(group, "handle_start_y", "FLOAT")
-    start_z = get_attr(group, "handle_start_z", "FLOAT")
+    start_x = get_attr(group, "FLOAT", "handle_start_x")
+    start_y = get_attr(group, "FLOAT", "handle_start_y")
+    start_z = get_attr(group, "FLOAT", "handle_start_z")
 
     combine_start_offset = nodes.new("ShaderNodeCombineXYZ")
     links.new(start_x, combine_start_offset.inputs[0])
     links.new(start_y, combine_start_offset.inputs[1])
     links.new(start_z, combine_start_offset.inputs[2])
 
-    end_x = get_attr(group, "handle_end_x", "FLOAT")
-    end_y = get_attr(group, "handle_end_y", "FLOAT")
-    end_z = get_attr(group, "handle_end_z", "FLOAT")
+    end_x = get_attr(group, "FLOAT", "handle_end_x")
+    end_y = get_attr(group, "FLOAT", "handle_end_y")
+    end_z = get_attr(group, "FLOAT", "handle_end_z")
 
     combine_end_offset = nodes.new("ShaderNodeCombineXYZ")
     links.new(end_x, combine_end_offset.inputs[0])

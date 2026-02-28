@@ -42,7 +42,7 @@ def create_store_attributes_on_points_group():
     index = nodes.new("GeometryNodeInputIndex")
 
     # Sample and store handle_left attribute
-    handle_left_attr = get_attr(group, "handle_left", "FLOAT_VECTOR")
+    handle_left_attr = get_attr(group, "FLOAT_VECTOR", "handle_left")
     sample_left = create_node(group, "GeometryNodeSampleIndex", {
         "Geometry": group_input.outputs[0],
         "Domain": "POINT",
@@ -61,7 +61,7 @@ def create_store_attributes_on_points_group():
     store_left.inputs[1].default_value = True
 
     # Sample and store handle_right attribute
-    handle_right_attr = get_attr(group, "handle_right", "FLOAT_VECTOR")
+    handle_right_attr = get_attr(group, "FLOAT_VECTOR", "handle_right")
     sample_right = create_node(group, "GeometryNodeSampleIndex", {
         "Geometry": group_input.outputs[0],
         "Domain": "POINT",

@@ -2,7 +2,7 @@ import bpy
 from mathutils import Vector, Color, Matrix, Euler
 from procedural_human.decorators.geo_node_decorator import geo_node_group
 from procedural_human.geo_node_groups.node_helpers import get_or_rebuild_node_group
-from procedural_human.geo_node_groups.node_helpers import combine_xyz, math_op
+from procedural_human.geo_node_groups.node_helpers import combine_xyz, math_op, set_position
 from procedural_human.utils.node_layout import auto_layout_nodes
 
 
@@ -57,14 +57,11 @@ def create_blocker_collar_gambeson_pattern_quilting_group():
 
     combine_x_y_z = combine_xyz(group, 0.0, 0.0, math_003)
 
-    set_position_002 = nodes.new("GeometryNodeSetPosition")
-    set_position_002.inputs[1].default_value = True
-    set_position_002.inputs[2].default_value = [0.0, 0.0, 0.0]
-    links.new(combine_x_y_z, set_position_002.inputs[3])
+    set_position_002 = set_position(group, None, True, [0.0, 0.0, 0.0], combine_x_y_z)
 
-    links.new(group_input.outputs[0], set_position_002.inputs[0])
+    links.new(group_input.outputs[0], set_position_002.node.inputs[0])
     links.new(group_input.outputs[1], geometry_proximity.inputs[0])
-    links.new(set_position_002.outputs[0], group_output.inputs[0])
+    links.new(set_position_002, group_output.inputs[0])
     links.new(geometry_proximity.outputs[1], group_output.inputs[1])
 
     auto_layout_nodes(group)
