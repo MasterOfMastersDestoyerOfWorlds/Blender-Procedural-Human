@@ -1,3 +1,4 @@
+import inspect
 from dataclasses import dataclass, field
 
 
@@ -13,6 +14,7 @@ class NodeHelperMeta:
     optional_inputs: object = field(default_factory=set)
     outputs: object = field(default_factory=dict)
     custom_emit: object = None
+    arg_order: list = field(default_factory=list)
 
     def resolve_inputs(self, node):
         return self.inputs(node) if callable(self.inputs) else self.inputs
@@ -64,6 +66,10 @@ class node_helper:
         self._custom_emit = custom_emit
 
     def __call__(self, func):
+        params = list(inspect.signature(func).parameters.keys())
+        skip = 1 + len(self._prop_args)
+        arg_order = params[skip:]
+
         meta = NodeHelperMeta(
             bl_idname=self._bl_idname,
             func_name=func.__name__,
@@ -73,6 +79,7 @@ class node_helper:
             optional_inputs=self._optional_inputs,
             outputs=self._outputs,
             custom_emit=self._custom_emit,
+            arg_order=arg_order,
         )
         func._node_helper_meta = meta
         node_helper.registry[self._bl_idname] = meta

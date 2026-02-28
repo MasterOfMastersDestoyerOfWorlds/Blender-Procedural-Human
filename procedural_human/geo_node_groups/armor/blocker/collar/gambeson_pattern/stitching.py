@@ -83,13 +83,13 @@ def create_blocker_collar_gambeson_pattern_stitching_group():
     join_geometry_001 = nodes.new("GeometryNodeJoinGeometry")
     links.new(mesh_to_curve.outputs[0], join_geometry_001.inputs[0])
 
-    resample_curve = resample_curve(group, True, join_geometry_001.outputs[0], True, "Length", 101, 0.003000000026077032)
+    resample_curve_000 = resample_curve(group, True, join_geometry_001.outputs[0], True, "Length", 101, 0.003000000026077032)
 
     instance_on_points_001 = nodes.new("GeometryNodeInstanceOnPoints")
     instance_on_points_001.inputs[1].default_value = True
     instance_on_points_001.inputs[3].default_value = False
     instance_on_points_001.inputs[4].default_value = 0
-    links.new(resample_curve, instance_on_points_001.inputs[0])
+    links.new(resample_curve_000, instance_on_points_001.inputs[0])
     links.new(align_rotation_to_vector_001.outputs[0], instance_on_points_001.inputs[5])
     links.new(transform_geometry_004.outputs[0], instance_on_points_001.inputs[2])
     links.new(random_value_001.outputs[0], instance_on_points_001.inputs[6])

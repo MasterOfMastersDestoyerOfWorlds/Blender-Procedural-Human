@@ -14,6 +14,7 @@ from procedural_human.geo_node_groups.node_helpers import (
     compare_op,
     get_or_rebuild_node_group,
     separate_xyz,
+    float_curve,
 )
 from procedural_human.geo_node_groups.node_helpers import create_float_curve
 
@@ -1313,7 +1314,7 @@ def create_shoulders_group():
     links.new(separate_x_y_z_002.outputs[1], combine_x_y_z_001.inputs[1])
 
 
-    float_curve = float_curve(group, map_range_002.outputs[0], [
+    float_curve_000 = float_curve(group, map_range_002.outputs[0], [
         (0.0, 0.0),
         (0.16918471455574036, 0.04741369187831879),
         (0.22054383158683777, 1.0),
@@ -1322,8 +1323,8 @@ def create_shoulders_group():
         (1.0, 1.0),
     ])
 
-    links.new(float_curve.outputs[0], combine_x_y_z_001.inputs[0])
-    links.new(separate_x_y_z_002.outputs[0], float_curve.inputs[1])
+    links.new(float_curve_000.outputs[0], combine_x_y_z_001.inputs[0])
+    links.new(separate_x_y_z_002.outputs[0], float_curve_000.inputs[1])
 
     vector_math_008 = nodes.new("ShaderNodeVectorMath")
     vector_math_008.operation = "SCALE"

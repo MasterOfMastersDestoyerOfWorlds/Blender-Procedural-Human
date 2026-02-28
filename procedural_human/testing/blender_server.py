@@ -50,6 +50,7 @@ from procedural_human.testing.handlers.testing import (
     handle_apply_export, handle_get_csv_data, handle_get_point_data,
     handle_run_test, handle_setup_basalt_test, handle_setup_test,
 )
+from procedural_human.testing.handlers.common import _log
 
 
 _server: Optional[HTTPServer] = None
@@ -156,7 +157,7 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
         _result_counter += 1
         command_id = _result_counter
         started_at = time.time()
-        procedural_human.testing.handlers.common._log(
+        _log(
             f"enqueue id={command_id} action={action} "
             f"queue_len={len(_command_queue) + 1} params={json.dumps(params, default=str)}"
         )
@@ -171,7 +172,7 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
         
         while command_id not in _result_queue:
             if time.time() - start > timeout:
-                procedural_human.testing.handlers.common._log(
+                _log(
                     f"timeout id={command_id} action={action} "
                     f"wait_s={time.time() - started_at:.3f} queue_len={len(_command_queue)}"
                 )
@@ -183,7 +184,7 @@ class BlenderCommandHandler(BaseHTTPRequestHandler):
                 return
             time.sleep(0.05)
         result = _result_queue.pop(command_id)
-        procedural_human.testing.handlers.common._log(
+        _log(
             f"complete id={command_id} action={action} "
             f"elapsed_s={time.time() - started_at:.3f} success={result.get('success')}"
         )
@@ -197,7 +198,7 @@ def _process_command_queue():
     while _command_queue:
         cmd = _command_queue.pop(0)
         started_at = time.time()
-        procedural_human.testing.handlers.common._log(
+        _log(
             f"process_start id={cmd['id']} action={cmd['action']} "
             f"remaining_queue={len(_command_queue)}"
         )
@@ -212,7 +213,7 @@ def _process_command_queue():
                 "error": str(e),
                 "traceback": traceback.format_exc()
             }
-        procedural_human.testing.handlers.common._log(
+        _log(
             f"process_end id={cmd['id']} action={cmd['action']} "
             f"elapsed_s={time.time() - started_at:.3f} success={result.get('success')}"
         )
@@ -234,7 +235,7 @@ def start_server(port: int = 9876, host: str = "localhost") -> bool:
     
     if _server is not None:
         print(f"[BlenderServer] Server already running on {host}:{port}")
-        procedural_human.testing.handlers.common._log(f"server_already_running host={host} port={port}")
+        _log(f"server_already_running host={host} port={port}")
         return False
     
     try:
@@ -246,12 +247,12 @@ def start_server(port: int = 9876, host: str = "localhost") -> bool:
         
         print(f"[BlenderServer] Started on http://{host}:{port}")
         print(f"[BlenderServer] Available commands: {list(COMMAND_HANDLERS.keys())}")
-        procedural_human.testing.handlers.common._log(f"server_started host={host} port={port}")
+        _log(f"server_started host={host} port={port}")
         return True
         
     except Exception as e:
         print(f"[BlenderServer] Failed to start: {e}")
-        procedural_human.testing.handlers.common._log(f"server_start_failed error={e}")
+        _log(f"server_start_failed error={e}")
         _server = None
         _server_thread = None
         return False
@@ -263,7 +264,7 @@ def stop_server():
 
     if _server is None:
         print("[BlenderServer] Server not running")
-        procedural_human.testing.handlers.common._log("server_not_running")
+        _log("server_not_running")
         return
     if bpy.app.timers.is_registered(_process_command_queue):
         bpy.app.timers.unregister(_process_command_queue)
@@ -281,7 +282,7 @@ def stop_server():
     shutdown_thread.start()
 
     print("[BlenderServer] Stopped")
-    procedural_human.testing.handlers.common._log("server_stopped")
+    _log("server_stopped")
 
 
 def is_server_running() -> bool:

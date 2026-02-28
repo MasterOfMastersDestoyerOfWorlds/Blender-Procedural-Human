@@ -128,7 +128,7 @@ def generate_main_code(exporter, node_group, function_name, group_base_name,
     input_link_map = exporter._build_input_link_map(node_group.links)
 
     node_var_map = {}
-    existing_var_names = set()
+    existing_var_names = exporter._get_reserved_names()
     frame_var_map = {}
 
     for node in unframed_nodes:

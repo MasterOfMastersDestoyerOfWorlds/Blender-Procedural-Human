@@ -1,3 +1,4 @@
 {
-  "blender_executable": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Blender\\blender.exe"
+  "blender_executable": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Blender\\blender.exe",
+  "blender_executable_linux": "/home/acw/.local/share/Steam/steamapps/common/Blender/blender"
 }

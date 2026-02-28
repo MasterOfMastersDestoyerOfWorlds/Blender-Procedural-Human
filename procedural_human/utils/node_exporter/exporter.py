@@ -31,6 +31,14 @@ class ExportOptions:
     split_frames: bool = False
 
 
+_RESERVED_CODEGEN_NAMES = frozenset({
+    'group_name', 'group', 'needs_rebuild', 'nodes', 'links',
+    'group_input', 'group_output', 'socket',
+    'bpy', 'Vector', 'Color', 'Matrix', 'Euler',
+    'geo_node_group', 'get_or_rebuild_node_group', 'auto_layout_nodes',
+})
+
+
 class NodeGroupExporter:
     def __init__(self, options=None):
         self.options = options or ExportOptions()
@@ -49,6 +57,14 @@ class NodeGroupExporter:
             if '.tmp.' in module or module.endswith('.tmp'):
                 continue
             self.known_groups[name] = module
+
+    def _get_reserved_names(self):
+        """Collect names that will be in scope in generated code to prevent variable collisions."""
+        reserved = set(_RESERVED_CODEGEN_NAMES)
+        for meta in self.helper_registry.values():
+            reserved.add(meta.func_name)
+        reserved.update(self.known_groups.keys())
+        return reserved
 
     def _build_helper_registry(self):
         """Build the helper registry by scanning node_helpers for decorated functions.
@@ -210,7 +226,7 @@ class NodeGroupExporter:
         input_link_map = self._build_input_link_map(node_group.links)
 
         node_var_map = {}
-        existing_var_names = set()
+        existing_var_names = self._get_reserved_names()
         for node in all_nodes:
             base_name = node.name
             if hasattr(node, "node_tree") and node.node_tree:
@@ -493,7 +509,8 @@ class NodeGroupExporter:
         inputs = meta.resolve_inputs(node)
         optional = meta.resolve_optional_inputs(node)
 
-        sorted_inputs = sorted(inputs.items(), key=lambda x: (isinstance(x[0], str), x[0]))
+        arg_positions = {name: i for i, name in enumerate(meta.arg_order)}
+        sorted_inputs = sorted(inputs.items(), key=lambda x: arg_positions.get(x[1], 999))
         for inp_key, arg_name in sorted_inputs:
             expr, is_linked = resolve_input(inp_key)
             if not is_linked and inp_key in optional:

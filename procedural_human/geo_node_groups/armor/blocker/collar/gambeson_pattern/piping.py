@@ -79,13 +79,13 @@ def create_blocker_collar_gambeson_pattern_piping_group():
 
     combine_x_y_z_002 = combine_xyz(group, separate_x_y_z_x, math, separate_x_y_z_z)
 
-    set_position = set_position(group, transform_geometry_002.outputs[0], True, combine_x_y_z_002, Vector((0.0, 0.0, 0.0)))
+    set_position_000 = set_position(group, transform_geometry_002.outputs[0], True, combine_x_y_z_002, Vector((0.0, 0.0, 0.0)))
 
     capture_attribute_003 = nodes.new("GeometryNodeCaptureAttribute")
     capture_attribute_003.active_index = 0
     capture_attribute_003.domain = "POINT"
     capture_attribute_003.capture_items.new("BOOLEAN", "Result")
-    links.new(set_position, capture_attribute_003.inputs[0])
+    links.new(set_position_000, capture_attribute_003.inputs[0])
     links.new(compare_002, capture_attribute_003.inputs[1])
 
     curve_to_mesh_003 = nodes.new("GeometryNodeCurveToMesh")

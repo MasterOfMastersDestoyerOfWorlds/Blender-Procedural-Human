@@ -77,7 +77,7 @@ def create_blocker_collar_group():
     links.new(sample_u_v_surface_001.outputs[0], capture_attribute_002.inputs[2])
     links.new(sample_u_v_surface.outputs[0], capture_attribute_002.inputs[1])
 
-    store_named_attribute = store_named_attribute(group, "BOOLEAN", "POINT", store_named_attribute_001, True, "blocker", True)
+    store_named_attribute_000 = store_named_attribute(group, "BOOLEAN", "POINT", store_named_attribute_001, True, "blocker", True)
 
     store_named_attribute_002 = store_named_attribute(group, "FLOAT2", "CORNER", capture_attribute_002.outputs[0], True, "UVMap", capture_attribute_002.outputs[3])
 
@@ -94,7 +94,7 @@ def create_blocker_collar_group():
     links.new(general_collar_shape.outputs[1], reroute_002.inputs[0])
     links.new(set_position_003, displacement.inputs[0])
     links.new(capture_attribute_002.outputs[3], displacement.inputs[1])
-    links.new(store_named_attribute, group_output.inputs[0])
+    links.new(store_named_attribute_000, group_output.inputs[0])
 
     auto_layout_nodes(group)
     return group
