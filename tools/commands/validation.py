@@ -84,6 +84,7 @@ def validate(
     object_name: str = "NodeGroupTest",
     no_watertight: bool = False,
     inputs: str = "{}",
+    brief: bool = False,
 ) -> dict:
     """Run full validation cycle: reload clean scene, apply node group, run preflight checks.
 
@@ -92,21 +93,31 @@ def validate(
     :param object_name: Name of object to create and validate.
     :param no_watertight: Disable watertight check.
     :param inputs: JSON object string with modifier input values.
+    :param brief: Single-line pass/fail output instead of full JSON.
     """
     reload_result = client.command("reload_addon", {"clean_scene": True})
     if not reload_result.get("success"):
-        return _fail("Reload step failed", reload_result)
+        result = _fail("Reload step failed", reload_result)
+        if brief:
+            result["_brief"] = f"FAIL {group}: reload failed"
+        return result
 
     parsed_inputs, error = parse_inputs(inputs)
     if error:
-        return _fail(error)
+        result = _fail(error)
+        if brief:
+            result["_brief"] = f"FAIL {group}: {error}"
+        return result
 
     apply_result = client.command(
         "apply_node_group",
         {"group_name": group, "object_name": object_name, "inputs": parsed_inputs},
     )
     if not apply_result.get("success"):
-        return _fail("Failed to apply node group", apply_result)
+        result = _fail("Failed to apply node group", apply_result)
+        if brief:
+            result["_brief"] = f"FAIL {group}: failed to apply node group"
+        return result
 
     tree_check = check_node_tree(client, group=group)
 
@@ -130,4 +141,24 @@ def validate(
             parts.append(f"{len(log_errors)} error(s) in addon log")
         preflight_result["error"] = f"Node tree has issues: {', '.join(parts)}"
 
+    if brief:
+        preflight_result["_brief"] = _format_validate_brief(group, preflight_result)
+
     return preflight_result
+
+
+def _format_validate_brief(group: str, result: dict) -> str:
+    """Format a single-line summary for validate --brief."""
+    if not result.get("ok"):
+        reason = result.get("error", "unknown failure")
+        return f"FAIL {group}: {reason}"
+
+    checks = result.get("checks", {})
+    geo = checks.get("geometry", {})
+    verts = geo.get("vertex_count", "?")
+    faces = geo.get("face_count", "?")
+
+    tree = result.get("node_tree", {})
+    sub_groups = tree.get("total_groups", "?")
+
+    return f"PASS {group} ({verts} verts, {faces} faces, {sub_groups} sub-groups)"

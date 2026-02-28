@@ -19,10 +19,13 @@ if str(REPO_ROOT) not in sys.path:
 import tools.commands.capture  # noqa: F401
 import tools.commands.geometry  # noqa: F401
 import tools.commands.lifecycle  # noqa: F401
+import tools.commands.logs  # noqa: F401
 import tools.commands.node_tools  # noqa: F401
 import tools.commands.refactor  # noqa: F401
+import tools.commands.testing  # noqa: F401
 import tools.commands.validation  # noqa: F401
 from tools.cli_registry import CliCommand, get_registry
+from tools.cli_state import save_state, load_state
 from tools.commands.common import BlenderClient, DEFAULT_BASE_URL
 
 # Keyword-named module must be imported dynamically.
@@ -44,6 +47,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--base-url",
         default=DEFAULT_BASE_URL,
         help="Blender server base URL (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--last",
+        action="store_true",
+        default=False,
+        help="Re-use arguments from the previous invocation of the same command.",
     )
     subparsers = parser.add_subparsers(dest="command_name", required=True)
 
@@ -105,6 +114,16 @@ def _run(argv: list[str]) -> int:
         for param in command.params
     }
 
+    if args.last:
+        saved = load_state(args.command_name)
+        for key, value in saved.items():
+            if key in kwargs and kwargs[key] is None:
+                kwargs[key] = value
+            elif key in kwargs:
+                param = next((p for p in command.params if p.name == key), None)
+                if param and param.has_default and kwargs[key] == param.default:
+                    kwargs[key] = value
+
     try:
         if command.needs_client:
             client = BlenderClient(base_url=args.base_url)
@@ -122,7 +141,14 @@ def _run(argv: list[str]) -> int:
             "traceback": traceback.format_exc(),
         }
 
-    print(json.dumps(result, indent=2))
+    if result.get("ok", False):
+        save_state(args.command_name, kwargs)
+
+    brief = result.pop("_brief", None)
+    if brief is not None:
+        print(brief)
+    else:
+        print(json.dumps(result, indent=2))
     return 0 if result.get("ok", False) else 2
 
 
