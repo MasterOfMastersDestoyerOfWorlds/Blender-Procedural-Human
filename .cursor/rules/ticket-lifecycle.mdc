@@ -35,9 +35,12 @@ WHEN you perform a task that corresponds to a ticket ID (e.g., `CORP-1`, `ENG-5`
 ## Creating New Tickets
 CRITICAL: `ixdar-tickets/` is its own git repo. Before picking an ID:
 
-1. List existing tickets: `git -C ixdar-tickets ls-files content/<EPIC>/`
-2. Find the highest number and use the next one.
-3. Do NOT rely on glob results from the parent repo -- they may be incomplete.
+```
+python ixdar-tickets/generate_board.py next-id <EPIC>
+```
+
+This searches both `content/` and `done/` (archived tickets) and prints the
+next available ID. Do NOT manually guess ticket numbers.
 
 When creating a new ticket, include all schema fields. Set `"priority"` relative to
 other tickets in the same epic (check existing tickets for reference). The `afterFileEdit`
