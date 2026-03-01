@@ -7,6 +7,7 @@ dependencies = ["rope"]
 
 [project.scripts]
 blender-cli = "tools.blender_cli:main"
+generate-board = "tools.generate_board_wrapper:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

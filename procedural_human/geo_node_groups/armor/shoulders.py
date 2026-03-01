@@ -12,11 +12,10 @@ from procedural_human.geo_node_groups.utilities.rotate_on_center import create_r
 from procedural_human.geo_node_groups.utilities.swap_attr import create_swap__attr_group
 from procedural_human.geo_node_groups.node_helpers import (
     compare_op,
+    create_float_curve,
     get_or_rebuild_node_group,
     separate_xyz,
-    float_curve,
 )
-from procedural_human.geo_node_groups.node_helpers import create_float_curve
 
 @geo_node_group
 def create_shoulders_group():
@@ -1314,7 +1313,7 @@ def create_shoulders_group():
     links.new(separate_x_y_z_002.outputs[1], combine_x_y_z_001.inputs[1])
 
 
-    float_curve_000 = float_curve(group, map_range_002.outputs[0], [
+    float_curve_000 = create_float_curve(group, map_range_002.outputs[0], [
         (0.0, 0.0),
         (0.16918471455574036, 0.04741369187831879),
         (0.22054383158683777, 1.0),
