@@ -220,24 +220,24 @@ def _process_command_queue():
         _result_queue[cmd["id"]] = result
     return 0.1
 
-def start_server(port: int = 9876, host: str = "localhost") -> bool:
+def start_server(port: int | None = None, host: str = "localhost") -> bool:
     """
     Start the HTTP command server.
-    
-    Args:
-        port: Port to listen on (default 9876)
-        host: Host to bind to (default localhost)
-        
-    Returns:
-        True if server started successfully
+
+    Port is taken from BLENDER_SERVER_PORT env (when set by CLI for headless),
+    otherwise from the port argument, default 9876.
     """
     global _server, _server_thread
-    
+
+    if port is None:
+        import os
+        port = int(os.environ.get("BLENDER_SERVER_PORT", "9876"))
+
     if _server is not None:
         print(f"[BlenderServer] Server already running on {host}:{port}")
         _log(f"server_already_running host={host} port={port}")
         return False
-    
+
     try:
         _server = HTTPServer((host, port), BlenderCommandHandler)
         _server_thread = threading.Thread(target=_server.serve_forever, daemon=True)

@@ -1,0 +1,16 @@
+# Exclude from Blender Docker build
+.git
+.cursor
+*.pyc
+__pycache__
+.venv
+venv
+node_modules
+*.blend1
+tmp
+.cursor
+ixdar-tickets
+*.egg-info
+.pytest_cache
+.coverage
+htmlcov

@@ -3,15 +3,60 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
-
 
 DEFAULT_BASE_URL = "http://localhost:9876"
 COMMAND_TIMEOUT_SECONDS = 30
+SESSION_FILENAME = ".blender-session.json"
+
+
+def get_session_path() -> Path:
+    """Path to the session file for the current working directory (one session per CWD)."""
+    return Path.cwd().resolve() / SESSION_FILENAME
+
+
+def read_session() -> dict[str, Any] | None:
+    """Read session state from CWD .blender-session.json, or None if missing/invalid."""
+    path = get_session_path()
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def write_session(port: int, pid: int, backend: str = "process", container_id: str | None = None) -> None:
+    """Write session state so CLI commands resolve to this Blender instance."""
+    path = get_session_path()
+    data: dict[str, Any] = {"port": port, "pid": pid, "backend": backend}
+    if container_id is not None:
+        data["container_id"] = container_id
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def clear_session() -> bool:
+    """Remove session file. Returns True if it existed and was removed."""
+    path = get_session_path()
+    if path.exists():
+        path.unlink()
+        return True
+    return False
+
+
+def resolve_base_url() -> str:
+    """Base URL for Blender server: from session file if present, else default."""
+    session = read_session()
+    if session and isinstance(session.get("port"), int):
+        return f"http://localhost:{session['port']}"
+    return DEFAULT_BASE_URL
 
 
 @dataclass

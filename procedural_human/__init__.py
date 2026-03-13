@@ -393,9 +393,10 @@ def register():
     _log_timing("register:search_asset_manager", (_time_module.perf_counter() - _t0) * 1000)
     _t0 = _time_module.perf_counter()
     try:
-        from procedural_human.testing.blender_server import start_server
-        start_server(port=9876)
-        logger.info("[Procedural Human] Started test server on port 9876")
+        from procedural_human.testing.blender_server import start_server, get_server_url
+        start_server()
+        url = get_server_url()
+        logger.info(f"[Procedural Human] Started test server: {url or 'unknown'}")
     except Exception as e:
         logger.info(f"[Procedural Human] Could not start test server: {e}")
     _log_timing("register:test_server", (_time_module.perf_counter() - _t0) * 1000)

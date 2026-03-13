@@ -1,0 +1,43 @@
+# Headless Blender + Procedural Human addon for CLI/agent validation.
+# Build: docker build -f Dockerfile.blender -t procedural-human-blender .
+# The addon starts an HTTP server on BLENDER_SERVER_PORT (set at run time).
+
+FROM debian:bookworm-slim
+
+# 1. Install minimal dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    xz-utils \
+    libgl1-mesa-glx \
+    libxi6 \
+    libxrender1 \
+    libxkbcommon0 \
+    libsm6 \
+    libxext6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Download Blender tarball directly
+ARG BLENDER_MAJOR=5.0
+ARG BLENDER_VERSION=5.0.1
+ARG BLENDER_URL=https://download.blender.org/release/Blender${BLENDER_MAJOR}/blender-${BLENDER_VERSION}-linux-x64.tar.xz
+
+RUN wget -q ${BLENDER_URL} --no-check-certificate \
+    && tar -xf blender-${BLENDER_VERSION}-linux-x64.tar.xz -C /usr/local/ \
+    && mv /usr/local/blender-${BLENDER_VERSION}-linux-x64 /usr/local/blender \
+    && rm blender-${BLENDER_VERSION}-linux-x64.tar.xz
+
+ENV PATH="/usr/local/blender:${PATH}"
+
+# 3. Verify Blender works during build
+RUN blender -b --version
+
+# 4. Addon layout: Blender looks for addons under $BLENDER_USER_SCRIPTS/scripts/addons
+ENV BLENDER_USER_SCRIPTS=/workspace
+RUN mkdir -p /workspace/scripts/addons /workspace/tools
+
+COPY procedural_human /workspace/scripts/addons/procedural_human
+COPY tools/blender_bootstrap.py /workspace/tools/
+
+WORKDIR /workspace
+# Port is passed at run time: docker run -e BLENDER_SERVER_PORT=12345 -p 12345:12345 ...
+CMD ["blender", "-b", "-P", "/workspace/tools/blender_bootstrap.py"]

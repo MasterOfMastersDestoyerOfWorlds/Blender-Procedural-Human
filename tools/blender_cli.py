@@ -26,7 +26,7 @@ import tools.commands.testing  # noqa: F401
 import tools.commands.validation  # noqa: F401
 from tools.cli_registry import CliCommand, get_registry
 from tools.cli_state import save_state, load_state
-from tools.commands.common import BlenderClient, DEFAULT_BASE_URL
+from tools.commands.common import BlenderClient, DEFAULT_BASE_URL, resolve_base_url
 
 # Keyword-named module must be imported dynamically.
 importlib.import_module("tools.commands.exec")
@@ -126,7 +126,8 @@ def _run(argv: list[str]) -> int:
 
     try:
         if command.needs_client:
-            client = BlenderClient(base_url=args.base_url)
+            base_url = resolve_base_url() if args.base_url == DEFAULT_BASE_URL else args.base_url
+            client = BlenderClient(base_url=base_url)
             result = command.function(client, **kwargs)
         else:
             result = command.function(**kwargs)

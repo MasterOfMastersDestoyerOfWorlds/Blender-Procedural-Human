@@ -5,18 +5,32 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
 from pathlib import Path
 
 from tools.cli_registry import cli_command
-from tools.commands.common import BlenderClient
-
+from tools.commands.common import (
+    BlenderClient,
+    clear_session,
+    get_session_path,
+    read_session,
+    write_session,
+)
 
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = TOOLS_DIR.parent
 PID_PATH = REPO_ROOT / "tmp" / ".blender_pid"
 CONFIG_PATH = TOOLS_DIR / "blender_config.json"
 BOOTSTRAP_PATH = TOOLS_DIR / "blender_bootstrap.py"
+BLENDER_LOG_PATH = REPO_ROOT / "tmp" / "blender-server.log"
+
+
+def _find_free_port() -> int:
+    """Return a free port for the Blender server to bind to."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
 
 
 def _resolve_blender_executable(explicit_path: str = "") -> tuple[str | None, str | None]:
@@ -78,6 +92,7 @@ def _clear_pid() -> None:
 
 
 def _read_pid() -> int | None:
+    """Legacy: read PID from global file (for backward compat with pre-session runs)."""
     if not PID_PATH.exists():
         return None
     try:
@@ -116,18 +131,45 @@ def ping(client: BlenderClient) -> dict:
 
 
 @cli_command
-def start(client: BlenderClient, blender: str = "", blend_file: str = "") -> dict:
+def start(
+    client: BlenderClient,
+    blender: str = "",
+    blend_file: str = "",
+    headless: bool = True,
+) -> dict:
     """Start Blender in background and wait for server health.
 
-    :param client: Blender HTTP client.
+    Uses a free port and writes .blender-session.json in the current directory
+    so subsequent commands (ping, validate, shutdown) find this instance.
+    Headless (-b) by default so no GUI is shown and stdout/stderr go to a log file.
+
+    :param client: Blender HTTP client (base_url ignored; port comes from new session).
     :param blender: Optional path to Blender executable.
     :param blend_file: Optional blend file to open on startup.
+    :param headless: If True (default), run with -b and redirect output to log.
     """
+    session = read_session()
+    if session and isinstance(session.get("port"), int):
+        check_client = BlenderClient(base_url=f"http://localhost:{session['port']}")
+        if check_client.ping_with_backoff(max_attempts=1):
+            return {
+                "ok": True,
+                "pid": session.get("pid"),
+                "port": session["port"],
+                "message": "Blender already running for this directory.",
+            }
+
     blender_executable, error = _resolve_blender_executable(blender)
     if error:
         return {"ok": False, "error": error}
 
+    port = _find_free_port()
+    env = os.environ.copy()
+    env["BLENDER_SERVER_PORT"] = str(port)
+
     command: list[str] = [blender_executable]
+    if headless:
+        command.append("-b")
     if blend_file:
         command.append(blend_file)
     command.extend(["--python", str(BOOTSTRAP_PATH)])
@@ -136,23 +178,36 @@ def start(client: BlenderClient, blender: str = "", blend_file: str = "") -> dic
     if os.name == "nt":
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
 
+    BLENDER_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    log_file = open(BLENDER_LOG_PATH, "w", encoding="utf-8")
+
     process = subprocess.Popen(
         command,
         cwd=str(REPO_ROOT),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        env=env,
         creationflags=creationflags,
     )
-    _write_pid(process.pid)
+    log_file.close()
 
-    healthy = client.ping_with_backoff(max_attempts=10, base_delay=0.5)
+    write_session(port=port, pid=process.pid, backend="process")
+
+    session_client = BlenderClient(base_url=f"http://localhost:{port}")
+    healthy = session_client.ping_with_backoff(max_attempts=10, base_delay=0.5)
     if not healthy:
         return {
             "ok": False,
             "pid": process.pid,
+            "port": port,
             "error": "Blender launched but server did not become healthy in time.",
         }
-    return {"ok": True, "pid": process.pid, "message": "Blender started and server is healthy."}
+    return {
+        "ok": True,
+        "pid": process.pid,
+        "port": port,
+        "message": "Blender started and server is healthy.",
+    }
 
 
 @cli_command
@@ -167,24 +222,60 @@ def reload(client: BlenderClient, keep_scene: bool = False) -> dict:
     return result
 
 
+def _stop_container(container_id: str) -> tuple[bool, str]:
+    """Stop and remove a Docker container. Returns (success, message)."""
+    try:
+        r = subprocess.run(
+            ["docker", "stop", container_id],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if r.returncode == 0:
+            return True, "Container stopped."
+        return False, (r.stderr or r.stdout or "docker stop failed").strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        return False, str(e)
+
+
 @cli_command
 def shutdown(client: BlenderClient) -> dict:
-    """Shutdown Blender process tracked by CLI (preferred over direct taskkill).
+    """Shutdown Blender for this directory (session file or legacy PID), or via server quit.
 
-    :param client: Blender HTTP client.
+    :param client: Blender HTTP client (used when no session/PID found).
     """
+    session = read_session()
+    if session:
+        backend = session.get("backend", "process")
+        if backend == "container" and session.get("container_id"):
+            cid = session["container_id"]
+            ok, msg = _stop_container(cid)
+            clear_session()
+            if ok:
+                return {"ok": True, "method": "container", "container_id": cid, "message": msg}
+            return {"ok": False, "method": "container", "container_id": cid, "error": msg}
+        pid = session.get("pid")
+        if isinstance(pid, int):
+            ok, message = _kill_pid(pid)
+            clear_session()
+            if ok:
+                return {"ok": True, "method": "session", "pid": pid, "message": message}
+            return {"ok": False, "method": "session", "pid": pid, "error": message}
+
     pid = _read_pid()
     if pid is not None:
         ok, message = _kill_pid(pid)
         if ok:
             _clear_pid()
+            clear_session()
             return {"ok": True, "method": "pid", "pid": pid, "message": message}
         return {"ok": False, "method": "pid", "pid": pid, "error": message}
 
     try:
         result = client.command("exec_python", {"code": "import bpy; bpy.ops.wm.quit_blender()"})
         if result.get("success"):
-            _clear_pid()
+            clear_session()
             return {
                 "ok": True,
                 "method": "server",
@@ -200,7 +291,7 @@ def shutdown(client: BlenderClient) -> dict:
         return {
             "ok": False,
             "error": (
-                "No tracked PID and unable to reach Blender server for shutdown. "
+                "No session or PID for this directory and unable to reach Blender server. "
                 f"{exc}"
             ),
         }
