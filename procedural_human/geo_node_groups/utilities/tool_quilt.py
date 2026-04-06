@@ -17,23 +17,12 @@ from procedural_human.geo_node_groups.node_helpers import (
     switch_vec,
     resample_curve,
 )
+from procedural_human.geo_node_groups.utilities.surface_tiling import (
+    tangent_frame,
+    axis_cell_dist,
+    face_local_rotation,
+)
 from procedural_human.utils.node_layout import auto_layout_nodes
-
-
-def axis_cell_dist(group, coord, scale):
-    """Compute normalized cell distance for one axis: 0 at seam, 1 at center.
-
-    :param group: The node group.
-    :param coord: Coordinate value in face-local rotated space (socket).
-    :param scale: Cell size for this axis (socket or float).
-    :returns: Output socket with distance 0..1.
-    """
-    divided = math_op(group, "DIVIDE", coord, scale)
-    shifted = math_op(group, "ADD", divided, 0.5)
-    cell = math_op(group, "FRACT", shifted)
-    mirror = math_op(group, "SUBTRACT", 1.0, cell)
-    half = math_op(group, "MINIMUM", cell, mirror)
-    return math_op(group, "MULTIPLY", half, 2.0)
 
 
 def boolean_and(group, a, b):
@@ -164,33 +153,10 @@ def create_quilting_group():
     # === Face-normal tangent frame ===
     face_normal = nodes.new("GeometryNodeInputNormal")
     position = nodes.new("GeometryNodeInputPosition")
-
-    z_axis = combine_xyz(group, 0.0, 0.0, 1.0)
-    x_axis = combine_xyz(group, 1.0, 0.0, 0.0)
-
-    n_dot_z = vec_math_op(group, "DOT_PRODUCT", face_normal.outputs[0], z_axis)
-    abs_n_dot_z = math_op(group, "ABSOLUTE", n_dot_z)
-    is_z_aligned = compare_op(group, "GREATER_THAN", "FLOAT", abs_n_dot_z, 0.99)
-
-    reference = switch_vec(group, is_z_aligned, z_axis, x_axis)
-
-    t1_raw = vec_math_op(group, "CROSS_PRODUCT", face_normal.outputs[0], reference)
-    t1 = vec_math_op(group, "NORMALIZE", t1_raw)
-    t2 = vec_math_op(group, "CROSS_PRODUCT", face_normal.outputs[0], t1)
-
-    local_u = vec_math_op(group, "DOT_PRODUCT", position.outputs[0], t1)
-    local_v = vec_math_op(group, "DOT_PRODUCT", position.outputs[0], t2)
+    local_u, local_v = tangent_frame(group, face_normal.outputs[0], position.outputs[0])
 
     # === Apply rotation in tangent plane ===
-    cos_a = math_op(group, "COSINE", rotation_sock)
-    sin_a = math_op(group, "SINE", rotation_sock)
-
-    rotated_u = math_op(group, "SUBTRACT",
-        math_op(group, "MULTIPLY", local_u, cos_a),
-        math_op(group, "MULTIPLY", local_v, sin_a))
-    rotated_v = math_op(group, "ADD",
-        math_op(group, "MULTIPLY", local_u, sin_a),
-        math_op(group, "MULTIPLY", local_v, cos_a))
+    rotated_u, rotated_v = face_local_rotation(group, local_u, local_v, rotation_sock)
 
     # === FRACT-based cell distance ===
     dist_x = axis_cell_dist(group, rotated_u, scale_x_sock)
